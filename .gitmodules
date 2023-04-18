@@ -1,0 +1,3 @@
+[submodule "submodules/LibStevi"]
+	path = submodules/LibStevi
+	url = git@github.com:french-paragon/LibStevi.git
