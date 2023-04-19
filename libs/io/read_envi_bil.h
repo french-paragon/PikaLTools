@@ -10,6 +10,7 @@
 #include <optional>
 #include <type_traits>
 #include <complex>
+#include <vector>
 
 #include <iostream>
 #include <fstream>
@@ -161,5 +162,22 @@ Multidim::Array<T, 3> read_envi_bil(std::string const& filename) {
     return ret;
 
 }
+
+Multidim::Array<float, 3> read_envi_bil_to_float(std::string const& filename);
+
+std::vector<double> read_envi_bil_times(std::string const& filename);
+
+struct EnviBilLcfLine {
+    int nLine;
+    double timeStamp;
+    double roll;
+    double pitch;
+    double yaw;
+    double lat;
+    double lon;
+    double height;
+};
+
+std::vector<EnviBilLcfLine> read_envi_bil_lcf_data(std::string const& filename);
 
 #endif // PIKALTOOLS_READ_ENVI_BIL_H

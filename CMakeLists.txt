@@ -17,6 +17,12 @@ find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Core Test Widgets REQUIRED)
 
 set(CMAKE_AUTOMOC ON)
 
+find_library(QCUSTOMPLOT_LIBRARY NAMES qcustomplot)
+
+if (NOT QCUSTOMPLOT_LIBRARY)
+    message(SEND_ERROR "QCustomPlot not found")
+endif()
+
 add_subdirectory(libs)
 
 add_subdirectory(submodules)
