@@ -23,6 +23,9 @@ if (NOT QCUSTOMPLOT_LIBRARY)
     message(SEND_ERROR "QCustomPlot not found")
 endif()
 
+find_package(Eigen3 3.3 REQUIRED)
+include_directories(${EIGEN3_INCLUDE_DIR})
+
 add_subdirectory(libs)
 
 add_subdirectory(submodules)

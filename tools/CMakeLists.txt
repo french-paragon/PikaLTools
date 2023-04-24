@@ -1,2 +1,3 @@
 add_subdirectory(bil_file_viewer)
 add_subdirectory(impulse_detector)
+add_subdirectory(lcf_file_viewer)

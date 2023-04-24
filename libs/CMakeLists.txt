@@ -14,3 +14,4 @@ macro(define_pikaltools_lib varname name)
 endmacro()
 
 add_pikaltools_libdirectory(io)
+add_pikaltools_libdirectory(geo)
