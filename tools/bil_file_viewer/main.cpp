@@ -8,156 +8,9 @@
 
 #include <LibStevi/utils/types_manipulations.h>
 
-#include "nextandpreviousframeeventfilter.h"
-
-template<typename Array_T, Multidim::ArrayDataAccessConstness viewConstness = Multidim::NonConstView>
-class HyperspectralSliceDisplayAdapter : public QImageDisplay::ImageAdapter
-{
-public:
-
-    HyperspectralSliceDisplayAdapter(Multidim::Array<Array_T, 3, viewConstness> const* array,
-                        Array_T blackLevel = StereoVision::TypesManipulations::defaultBlackLevel<Array_T>(),
-                        Array_T whiteLevel = StereoVision::TypesManipulations::defaultWhiteLevel<Array_T>(),
-                        int xAxis = 1,
-                        int yAxis = 0,
-                        int channelAxis = 2,
-                        int sliceChannel = 0,
-                        QObject* parent = nullptr) :
-        QImageDisplay::ImageAdapter(parent),
-        _array(array),
-        _x_axis(xAxis),
-        _y_axis(yAxis),
-        _channel_axis(channelAxis),
-        _slice_channel(sliceChannel),
-        _black_level(blackLevel),
-        _white_level(whiteLevel)
-    {
-
-    }
-
-    QSize getImageSize() const override {
-        if (_array == nullptr) {
-            return QSize();
-        }
-        return QSize(_array->shape()[_x_axis], _array->shape()[_y_axis]);
-    }
-
-    QColor getColorAtPoint(int x, int y) const override{
-
-        if (_array == nullptr) {
-            return QColor();
-        }
-
-        std::array<int, 3> idx;
-        idx[_x_axis] = x;
-        idx[_y_axis] = y;
-
-        QColor ret;
-
-        idx[_channel_axis] = _slice_channel;
-        Array_T value = _array->valueOrAlt(idx, 0);
-        ret.setRed(valueToColor(value));
-        ret.setGreen(valueToColor(value));
-        ret.setBlue(valueToColor(value));
-
-        return ret;
-    }
-
-    QVector<ChannelInfo> getOriginalChannelsInfos(QPoint const& pos) const override {
-
-        if (!_displayOriginalChannels) {
-            return QImageDisplay::ImageAdapter::getOriginalChannelsInfos(pos);
-        }
-
-        QVector<ChannelInfo> ret(1);
-
-        QString formatStr = "%1 ";
-
-        std::array<int, 3> idx;
-        idx[_x_axis] = pos.x();
-        idx[_y_axis] = pos.y();
-        idx[_channel_axis] = _slice_channel;
-
-        ret[0].channelName = _channelName;
-
-        double tmp = _array->valueOrAlt(idx, 0);
-
-        if (std::is_floating_point_v<Array_T>) {
-            ret[0].channelValue = QString(formatStr).arg(tmp, 0, 'g', 3);
-        } else {
-            ret[0].channelValue = QString(formatStr).arg(_array->valueOrAlt(idx, 0));
-        }
-
-        return ret;
-
-    }
-
-    inline void configureOriginalChannelDisplay( QString const& channelName) {
-        _displayOriginalChannels = true;
-        _channelName = channelName;
-    }
-
-    inline void clearOriginalChannelDisplay() {
-        _displayOriginalChannels = false;
-        _channelName.clear();
-    }
-
-    void nextChannel() {
-        _slice_channel++;
-        _slice_channel %= _array->shape()[_channel_axis];
-
-        Q_EMIT imageValuesChanged(QRect());
-    }
-
-    void previousChannel() {
-        _slice_channel--;
-        if (_slice_channel < 0) {
-            _slice_channel += _array->shape()[_channel_axis];
-        }
-        _slice_channel %= _array->shape()[_channel_axis];
-
-        Q_EMIT imageValuesChanged(QRect());
-    }
-
-    int getChannel() {
-        return _slice_channel;
-    }
-
-protected:
-
-    using ComputeType = StereoVision::TypesManipulations::accumulation_extended_t<Array_T>;
-
-    inline uint8_t valueToColor(Array_T const& value) const {
-
-        if (value < _black_level) {
-            return 0;
-        }
-
-        if (value >= _white_level) {
-            return 255;
-        }
-
-        ComputeType transformed = (255*(static_cast<ComputeType>(value) - static_cast<ComputeType>(_black_level)))
-                /(_white_level - _black_level);
-
-        return static_cast<uint8_t>(transformed);
-    }
-
-    Multidim::Array<Array_T, 3, viewConstness> const* _array;
-
-    int _slice_channel;
-
-    int _x_axis;
-    int _y_axis;
-    int _channel_axis;
-
-    Array_T _black_level;
-    Array_T _white_level;
-
-    bool _displayOriginalChannels;
-    QString _channelName;
-
-};
+#include "gui/nextandpreviousframeeventfilter.h"
+#include "gui/hyperspectralslicedisplayadapter.h"
+#include "gui/hyperspectralsimplepseudocolordisplayadapter.h"
 
 
 template<typename T>
@@ -201,38 +54,99 @@ int displayBilImage(std::string const& filename, int argc, char** argv) {
         whiteLevel = std::stoi(headerData["ceiling"]);
     }
     catch(std::invalid_argument const& e) {
-        return false;
+        out << "Invalid ceiling value in header file!" << Qt::endl;
+        return 1;
+    }
+
+    QVector<float> waveLengths;
+
+    if (headerData.count("wavelength") > 0) {
+        QString elements = QString::fromStdString(headerData["wavelength"]).mid(1,headerData["wavelength"].size()-2);
+        QStringList splittedElements = elements.split(",");
+        waveLengths.reserve(splittedElements.size());
+
+        for (QString const& element : splittedElements) {
+            bool ok;
+            float value = element.toFloat(&ok);
+
+            if (ok) {
+                waveLengths.push_back(value);
+            }
+        }
     }
 
     constexpr int ScanLinesAxis = 0;
     constexpr int SamplesAxis = 1;
     constexpr int SpectralAxis = 2;
 
-    int xAxis = SamplesAxis;
-    int yAxis = SpectralAxis;
-    int channelAxis = ScanLinesAxis;
+    int line_viewer_xAxis = SamplesAxis;
+    int line_viewer_yAxis = SpectralAxis;
+    int line_viewer_channelAxis = ScanLinesAxis;
+
+    int image_viewer_xAxis = SamplesAxis;
+    int image_viewer_yAxis = ScanLinesAxis;
+    int image_viewer_channelAxis = SpectralAxis;
 
     int selectedChannel = 0;
 
-    HyperspectralSliceDisplayAdapter<T> imgAdapter(&spectral_data, blackLevel, whiteLevel, xAxis, yAxis, channelAxis, selectedChannel);
+    HyperspectralSliceDisplayAdapter<T> lineViewAdapter(&spectral_data, blackLevel, whiteLevel, line_viewer_xAxis, line_viewer_yAxis, line_viewer_channelAxis, selectedChannel);
 
-    QImageDisplay::ImageWindow imgWindow;
-    imgWindow.setImage(&imgAdapter);
+    QImageDisplay::ImageWindow lineViewWindow;
+    lineViewWindow.setImage(&lineViewAdapter);
 
     NextAndPreviousFrameEventFilter nextAndPreviousFilter;
-    QObject::connect(&nextAndPreviousFilter, &NextAndPreviousFrameEventFilter::nextFrameRequested, [&imgAdapter, &imgWindow] () {
-        imgAdapter.nextChannel();
-        imgWindow.setWindowTitle(QString("BIL slice #%1 view").arg(imgAdapter.getChannel()));
+    QObject::connect(&nextAndPreviousFilter, &NextAndPreviousFrameEventFilter::nextFrameRequested, [&lineViewAdapter, &lineViewWindow] () {
+        lineViewAdapter.nextChannel();
+        lineViewWindow.setWindowTitle(QString("BIL slice #%1 view").arg(lineViewAdapter.getChannel()));
     });
-    QObject::connect(&nextAndPreviousFilter, &NextAndPreviousFrameEventFilter::previousFrameRequested, [&imgAdapter, &imgWindow] () {
-        imgAdapter.previousChannel();
-        imgWindow.setWindowTitle(QString("BIL slice #%1 view").arg(imgAdapter.getChannel()));
+    QObject::connect(&nextAndPreviousFilter, &NextAndPreviousFrameEventFilter::previousFrameRequested, [&lineViewAdapter, &lineViewWindow] () {
+        lineViewAdapter.previousChannel();
+        lineViewWindow.setWindowTitle(QString("BIL slice #%1 view").arg(lineViewAdapter.getChannel()));
     });
 
-    imgWindow.installEventFilter(&nextAndPreviousFilter);
+    lineViewWindow.installEventFilter(&nextAndPreviousFilter);
 
-    imgWindow.setWindowTitle(QString("BIL slice #%1 view").arg(imgAdapter.getChannel()));
-    imgWindow.show();
+    lineViewWindow.setWindowTitle(QString("BIL slice #%1 view").arg(lineViewAdapter.getChannel()));
+    lineViewWindow.show();
+
+    std::array<int, 3> colorChannels = {spectral_data.shape()[SpectralAxis]/4,
+                                        spectral_data.shape()[SpectralAxis]/2,
+                                        spectral_data.shape()[SpectralAxis]-spectral_data.shape()[SpectralAxis]/4};
+
+    if (waveLengths.size() == spectral_data.shape()[SpectralAxis]) {
+
+        std::array<float, 3> referenceWl = {630, 532, 465};
+        std::array<float, 3> currentWl = {waveLengths[colorChannels[0]], waveLengths[colorChannels[1]], waveLengths[colorChannels[2]]};
+
+
+        for (int i = 0; i < waveLengths.size(); i++) {
+            for (int c = 0; c < 3; c++) {
+
+                float candDelta = std::fabs(waveLengths[i] - referenceWl[c]);
+                float currentDelta = std::fabs(currentWl[c] - referenceWl[c]);
+
+                if (candDelta < currentDelta) {
+                    currentWl[c] = waveLengths[i];
+                    colorChannels[c] = i;
+                }
+            }
+        }
+
+    }
+
+    HyperspectralSimplePseudocolorDisplayAdapter<T> imageViewAdapter(&spectral_data,
+                                                                     blackLevel,
+                                                                     whiteLevel,
+                                                                     image_viewer_xAxis,
+                                                                     image_viewer_yAxis,
+                                                                     image_viewer_channelAxis,
+                                                                     colorChannels);
+    QImageDisplay::ImageWindow imageViewWindow;
+    imageViewWindow.setImage(&imageViewAdapter);
+
+    imageViewWindow.setWindowTitle("Pseudo color image");
+    imageViewWindow.show();
+
 
     return app.exec();
 }

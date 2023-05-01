@@ -16,6 +16,10 @@
 #include <fstream>
 #include <sstream>
 
+constexpr int LineAxis = 0;
+constexpr int SamplesAxis = 1;
+constexpr int BandsAxis = 2;
+
 std::optional<std::map<std::string, std::string>> readHeaderData(std::string const& filename);
 
 template<typename T>

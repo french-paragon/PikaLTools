@@ -15,3 +15,4 @@ endmacro()
 
 add_pikaltools_libdirectory(io)
 add_pikaltools_libdirectory(geo)
+add_pikaltools_libdirectory(gui)

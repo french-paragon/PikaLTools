@@ -232,8 +232,8 @@ std::vector<EnviBilLcfLine> read_envi_bil_lcf_data(std::string const& filename) 
         extractor >> ret.back().roll;
         extractor >> ret.back().pitch;
         extractor >> ret.back().yaw;
-        extractor >> ret.back().lat;
         extractor >> ret.back().lon;
+        extractor >> ret.back().lat;
         extractor >> ret.back().height;
 
     }

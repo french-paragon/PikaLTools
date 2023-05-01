@@ -46,15 +46,14 @@ QVector<timedPositions> getINSMotionValue(QVector<QString> const& files) {
     meanLat /= accumulated.size();
     meanLon /= accumulated.size();
 
-    Eigen::Matrix<double,3,4> ecef2local = getLocalFrameAtPos<double>(meanLat, meanLon, WGS84_Ellipsoid);
+    StereoVision::Geometry::AffineTransform<double> ecef2local = getLocalFrameAtPos<double>(meanLat, meanLon, WGS84_Ellipsoid);
 
     for (timedPositions & pos : accumulated) {
 
-        Eigen::Matrix<double,4,1> homogeneous;
+        Eigen::Matrix<double,3,1> homogeneous;
         homogeneous[0] = pos.pos.x;
         homogeneous[1] = pos.pos.y;
         homogeneous[2] = pos.pos.z;
-        homogeneous[3] = 1;
 
         Eigen::Matrix<double,3,1> local = ecef2local*homogeneous;
         pos.pos.x = local[0];

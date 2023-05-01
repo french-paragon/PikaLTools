@@ -7,6 +7,8 @@
 #include <Eigen/Core>
 #include <Eigen/Dense>
 
+#include <LibStevi/geometry/core.h>
+
 struct EllipsoidDefinition {
     double equatorialRadius;
     double polarRadius;
@@ -97,7 +99,7 @@ inline CartesianCoord<CT> convertLatLonToECEF(CT lat, CT lon, CT alt, EllipsoidD
  * \return a 3x4 matrix, representing the affine transform from ECEF to the local frame.
  */
 template<typename CT>
-inline Eigen::Matrix<CT,3,4> getLocalFrameAtPos(CT lat, CT lon, EllipsoidDefinition ellipsoid) {
+inline StereoVision::Geometry::AffineTransform<CT> getLocalFrameAtPos(CT lat, CT lon, EllipsoidDefinition ellipsoid) {
 
     CT latRad = lat*M_PI/180;
     CT lonRad = lon*M_PI/180;
@@ -123,9 +125,7 @@ inline Eigen::Matrix<CT,3,4> getLocalFrameAtPos(CT lat, CT lon, EllipsoidDefinit
 
     Eigen::Matrix<CT,3,3> Recef2local = Rlocal2ecef.transpose();
 
-    Eigen::Matrix<CT,3,4> ret;
-    ret.template block<3,3>(0,0) = Recef2local;
-    ret.template block<3,1>(0,3) = -Recef2local*vec_zero;
+    StereoVision::Geometry::AffineTransform<CT> ret(Recef2local, -Recef2local*vec_zero);
 
     return ret;
 }
