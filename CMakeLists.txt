@@ -27,6 +27,12 @@ endif()
 find_package(Eigen3 3.3 REQUIRED)
 include_directories(${EIGEN3_INCLUDE_DIR})
 
+find_package(SteviappSdk)
+
+if(${SteviappSdk_FOUND})
+    message("Found steviapp sdk")
+endif()
+
 add_subdirectory(submodules)
 include_directories(${MODULES_INCLUDE_DIRECTORIES})
 link_directories(${MODULES_LINK_DIRECTORIES})

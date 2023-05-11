@@ -1,5 +1,6 @@
 
 set(PIKALTOOLS_LIB_PREFIX PikaLTools)
+set(CMAKE_POSITION_INDEPENDENT_CODE True)
 
 macro(add_pikaltools_libdirectory directory)
     add_subdirectory(${directory})
