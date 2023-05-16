@@ -15,7 +15,7 @@ public:
     QString itemClassName() const override;
 
     QList<QAction*> factorizeClassContextActions(QObject* parent, StereoVisionApp::Project* p) const override;
-    QList<QAction*> factorizeItemContextActions(QObject* parent, StereoVisionApp::DataBlock* p) const override;
+    QList<QAction*> factorizeItemContextActions(QObject* parent, StereoVisionApp::DataBlock* d) const override;
     QList<QAction*> factorizeMultiItemsContextActions(QObject* parent, StereoVisionApp::Project* p, QModelIndexList const& projectIndex) const override;
 
 Q_SIGNALS:

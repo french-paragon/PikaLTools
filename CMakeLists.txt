@@ -16,7 +16,9 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/libs)
 find_package(QT NAMES Qt6 Qt5 COMPONENTS Core Test Widgets REQUIRED)
 find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Core Test Widgets REQUIRED)
 
+set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
 
 find_library(QCUSTOMPLOT_LIBRARY NAMES qcustomplot)
 

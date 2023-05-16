@@ -114,10 +114,6 @@ inline StereoVision::Geometry::AffineTransform<CT> getLocalFrameAtPos(CT lat, CT
     Eigen::Matrix<CT,3,1> z_local = vec_z_one - vec_zero;
     Eigen::Matrix<CT,3,1> y_local = z_local.cross(x_local);
 
-
-    Eigen::Matrix<CT,3,1> vec_x_one = vec_zero + x_local;
-    Eigen::Matrix<CT,3,1> vec_y_one = vec_zero + y_local;
-
     Eigen::Matrix<CT,3,3> Rlocal2ecef;
     Rlocal2ecef.template block<3,1>(0,0) = x_local;
     Rlocal2ecef.template block<3,1>(0,1) = y_local;

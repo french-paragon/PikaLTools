@@ -8,7 +8,12 @@ set(MODULE_SRC
     actions/bilsequenceactionmanager.h
     actions/bilsequenceactionmanager.cpp
     actions/bilsequenceactions.h
-    actions/bilsequenceactions.cpp)
+    actions/bilsequenceactions.cpp
+    gui/opengldrawables/opengldrawabletrajectory.h
+    gui/opengldrawables/opengldrawabletrajectory.cpp
+    gui/trajectoryvieweditor.h
+    gui/trajectoryvieweditor.cpp
+    gui/shaders.qrc)
 
 
 add_library(

@@ -4,10 +4,13 @@
 
 #include <steviapp/control/application.h>
 #include <steviapp/control/actionmanager.h>
+#include <steviapp/control/mainwindow.h>
 
 #include <steviapp/datablocks/project.h>
 
 #include "datablocks/bilacquisitiondata.h"
+
+#include "./gui/trajectoryvieweditor.h"
 
 #include "actions/bilsequenceactionmanager.h"
 
@@ -32,6 +35,12 @@ int PikaLSteviappModule::loadModule(StereoVisionApp::StereoVisionApplication* ap
     pF.addType(new BilSequenceAcquisitionDataFactory(app));
 
     aml.registerDatablockActionManager(new BilSequenceActionManager(&pF));
+
+    StereoVisionApp::MainWindow* w = app->mainWindow();
+
+    if (w != nullptr) {
+        w->installEditor(new TrajectoryViewEditorFactory(app));
+    }
 
     out << "PikaL Steviapp module loaded!" << Qt::endl;
 

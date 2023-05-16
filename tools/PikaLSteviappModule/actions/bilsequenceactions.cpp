@@ -4,6 +4,7 @@
 #include <steviapp/control/mainwindow.h>
 
 #include "../datablocks/bilacquisitiondata.h"
+#include "../gui/trajectoryvieweditor.h"
 
 #include <QList>
 #include <QDir>
@@ -97,6 +98,37 @@ int loadBilSequenceFromFolder(StereoVisionApp::Project* p, QString const& pFolde
 
     return 0;
 
+}
+
+
+
+bool showLcfTrajectory(BilSequenceAcquisitionData* bilSequence) {
+
+    if (bilSequence == nullptr) {
+        return false;
+    }
+
+    StereoVisionApp::MainWindow* mw = StereoVisionApp::MainWindow::getActiveMainWindow();
+
+    if (mw == nullptr) {
+        return false; //need main windows to display trajectory
+    }
+
+    StereoVisionApp::Editor* e = mw->openEditor(TrajectoryViewEditor::staticMetaObject.className());
+
+    TrajectoryViewEditor* trjve = qobject_cast<TrajectoryViewEditor*>(e);
+
+    if (trjve == nullptr) {
+        return false;
+    }
+
+    trjve->setTrajectory(bilSequence->localTrajectory());
+
+    QObject::connect(bilSequence, &BilSequenceAcquisitionData::bilSequenceChanged, trjve, [trjve, bilSequence] () {
+        trjve->setTrajectory(bilSequence->localTrajectory());
+    });
+
+    return true;
 }
 
 } // namespace PikaLTools

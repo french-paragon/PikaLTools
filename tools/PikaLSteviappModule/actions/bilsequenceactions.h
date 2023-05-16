@@ -9,7 +9,11 @@ namespace StereoVisionApp{
 
 namespace PikaLTools {
 
+class BilSequenceAcquisitionData;
+
 int loadBilSequenceFromFolder(StereoVisionApp::Project* p, QString const& folder = "");
+
+bool showLcfTrajectory(BilSequenceAcquisitionData *bilSequence);
 
 } // namespace PikaLTools
 

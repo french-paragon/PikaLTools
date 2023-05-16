@@ -32,8 +32,21 @@ QList<QAction*> BilSequenceActionManager::factorizeClassContextActions(QObject* 
 
 }
 
-QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* parent, StereoVisionApp::DataBlock* p) const {
-    return StereoVisionApp::DatablockActionManager::factorizeItemContextActions(parent, p);
+QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* parent, StereoVisionApp::DataBlock* d) const {
+
+    BilSequenceAcquisitionData* bilSeq = qobject_cast<BilSequenceAcquisitionData*>(d);
+
+    if (bilSeq == nullptr) {
+        return {};
+    }
+
+    QAction* view_trajectory = new QAction(tr("View lcf trajectory"), parent);
+
+    connect(view_trajectory, &QAction::triggered, [bilSeq] () {
+        showLcfTrajectory(bilSeq);
+    });
+
+    return {view_trajectory};
 }
 
 QList<QAction*> BilSequenceActionManager::factorizeMultiItemsContextActions(QObject* parent, StereoVisionApp::Project* p, QModelIndexList const& projectIndex) const {
