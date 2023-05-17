@@ -168,7 +168,9 @@ Multidim::Array<T, 3> read_envi_bil(std::string const& filename) {
 }
 
 template<typename T>
-Multidim::Array<T, 3> read_bil_sequence(std::vector<std::string> const& filenames) {
+Multidim::Array<T, 3> read_bil_sequence(std::vector<std::string> const& filenames,
+                                        std::optional<int> firstLine = std::nullopt,
+                                        std::optional<int> lastLine = std::nullopt) {
 
     for (std::string const& filename : filenames) {
         if (!envi_bil_img_match_type<T>(filename)) {
@@ -266,14 +268,49 @@ Multidim::Array<T, 3> read_bil_sequence(std::vector<std::string> const& filename
         return Multidim::Array<T, 3>();
     }
 
-    std::array<int, 3> shape = {lines, samples, bands};
+    int s_Line = 0;
+    int l_Line = lines;
+
+    if (firstLine.has_value()) {
+        int firstLineVal = firstLine.value();
+
+        if (firstLineVal >= 0 and firstLineVal < lines) {
+            s_Line = firstLineVal;
+        }
+    }
+
+    if (lastLine.has_value()) {
+        int lastLineVal = lastLine.value();
+
+        if (lastLineVal > s_Line and lastLineVal <= lines) {
+            l_Line = lastLineVal;
+        }
+    }
+
+    int n_loaded_lines = l_Line - s_Line;
+
+    std::array<int, 3> shape = {n_loaded_lines, samples, bands};
     std::array<int, 3> strides = {samples*bands,1,samples};
 
     Multidim::Array<T, 3> ret(shape, strides);
 
     int nLinesCopied = 0;
+    int nLinesSeen = 0;
 
     for (int i = 0; i < filenames.size(); i++) {
+
+        if (nLinesSeen > s_Line) {
+            //all required data copied
+            break;
+        }
+
+        int imgNLines = imgs_shapes[i][LineAxis];
+
+        if (nLinesSeen + imgNLines <= s_Line) {
+            //not in the region of interest yet
+            nLinesSeen += imgNLines;
+            continue;
+        }
 
         std::ifstream image(filenames[i]);
 
@@ -284,9 +321,20 @@ Multidim::Array<T, 3> read_bil_sequence(std::vector<std::string> const& filename
         image.seekg(0, std::ios::end);
         size_t n_bytes = image.tellg();
 
-        if (n_bytes != lines*samples*bands*sizeof (T)) {
+        if (n_bytes != imgNLines*samples*bands*sizeof (T)) {
             //invalid file size
             return Multidim::Array<T, 3>();
+        }
+
+        int sub_sLine = 0;
+        int sub_lLine = imgNLines;
+
+        if (nLinesSeen < s_Line and nLinesSeen + imgNLines >= s_Line) {
+            sub_sLine = s_Line - nLinesSeen;
+        }
+
+        if (nLinesSeen < l_Line and nLinesSeen + imgNLines >= l_Line) {
+            sub_lLine = l_Line - nLinesSeen;
         }
 
         T* buffer = new T[n_bytes/sizeof (T)];
@@ -296,24 +344,36 @@ Multidim::Array<T, 3> read_bil_sequence(std::vector<std::string> const& filename
 
         Multidim::Array<T, 3> sub(buffer, imgs_shapes[i], imgs_strides[i], true);
 
-        if (imgs_strides[i][1] == strides[1] and imgs_strides[i][2] == strides[2]) {
-            int n = imgs_strides[i][0]*imgs_strides[i][1]*imgs_strides[i][2];
+        if (imgs_strides[i][0] == strides[0] and
+                imgs_strides[i][1] == strides[1] and
+                imgs_strides[i][2] == strides[2]) {
+
+            int nLines = sub_lLine - sub_sLine;
+            int n = nLines*imgs_strides[i][LineAxis]; //possible only if the strides are dense
 
             T* cell0 = &ret.atUnchecked(nLinesCopied, 0, 0);
-            T* dataStart = &sub.atUnchecked(0,0,0);
+            T* dataStart = &sub.atUnchecked(sub_sLine,0,0);
 
             std::memcpy(cell0, dataStart, n*sizeof(T));
+
+            nLinesCopied += nLines;
+
         } else {
 
-            for (int l = 0; l < imgs_shapes[i][0]; l++) {
+            for (int l = sub_sLine; l < sub_lLine; l++) {
+
                 for (int s = 0; s < imgs_shapes[i][1]; s++) {
                     for (int b = 0; b < imgs_shapes[i][2]; b++) {
-                        ret.atUnchecked(nLinesCopied+l, s, b) = sub.atUnchecked(l,s,b);
+                        ret.atUnchecked(nLinesCopied, s, b) = sub.atUnchecked(l,s,b);
                     }
                 }
+
+                nLinesCopied++;
             }
 
         }
+
+        nLinesSeen += imgs_shapes[i][LineAxis];
 
     }
 

@@ -13,6 +13,10 @@ set(MODULE_SRC
     gui/opengldrawables/opengldrawabletrajectory.cpp
     gui/trajectoryvieweditor.h
     gui/trajectoryvieweditor.cpp
+    gui/bilcubevieweditor.h
+    gui/bilcubevieweditor.cpp
+    gui/imageOverlays/bilsequencelandmarksoverlay.h
+    gui/imageOverlays/bilsequencelandmarksoverlay.cpp
     gui/shaders.qrc)
 
 

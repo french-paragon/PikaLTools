@@ -46,7 +46,13 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
         showLcfTrajectory(bilSeq);
     });
 
-    return {view_trajectory};
+    QAction* view_bil_cube = new QAction(tr("View hyperspectral cube"), parent);
+
+    connect(view_bil_cube, &QAction::triggered, [bilSeq] () {
+        showBilImage(bilSeq);
+    });
+
+    return {view_trajectory, view_bil_cube};
 }
 
 QList<QAction*> BilSequenceActionManager::factorizeMultiItemsContextActions(QObject* parent, StereoVisionApp::Project* p, QModelIndexList const& projectIndex) const {

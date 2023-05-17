@@ -15,6 +15,8 @@ int loadBilSequenceFromFolder(StereoVisionApp::Project* p, QString const& folder
 
 bool showLcfTrajectory(BilSequenceAcquisitionData *bilSequence);
 
+bool showBilImage(BilSequenceAcquisitionData *bilSequence);
+
 } // namespace PikaLTools
 
 #endif // BILSEQUENCEACTIONS_H

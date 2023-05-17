@@ -2,15 +2,25 @@
 #define PIKALTOOLS_BILACQUISITIONDATA_H
 
 #include <steviapp/datablocks/project.h>
+#include <steviapp/datablocks/landmark.h>
+#include <steviapp/datablocks/floatparameter.h>
+
+#include <MultidimArrays/MultidimArrays.h>
 
 #include <QMap>
 #include <QString>
 #include <QList>
 #include <QJsonObject>
+#include <QPoint>
+#include <QPointF>
 
 #include "LibStevi/geometry/rotations.h"
 
+#include "../../libs/io/read_envi_bil.h"
+
 namespace PikaLTools {
+
+class BilSequenceLandmark;
 
 class BilSequenceAcquisitionData : public StereoVisionApp::DataBlock
 {
@@ -58,7 +68,52 @@ public:
         return _localTrajectory;
     }
 
+    template<typename T>
+    Multidim::Array<T, 3> getBilData(int startLine, int lastLine) const {
+
+        if (startLine >= lastLine) {
+            return Multidim::Array<T, 3>();
+        }
+
+        std::vector<std::string> files;
+
+        QStringList qfiles = getBilFiles();
+
+        for (QString f : qfiles) {
+            files.push_back(f.toStdString());
+        }
+
+        return read_bil_sequence<T>(files, startLine, lastLine);
+
+    }
+
+    template<typename T>
+    bool sequenceMatchType() const {
+
+        QString fFile = getBilFiles().first();
+        std::string firstFile = fFile.toStdString();
+
+        return envi_bil_img_match_type<T>(firstFile);
+    }
+
+    Multidim::Array<float, 3> getFloatBilData(int startLine, int lastLine) const;
+    int nLinesInSequence() const;
+
+    qint64 addBilSequenceLandmark(const QPointF &coordinates, bool uncertain = false, qreal sigma_pos = 1.0);
+    qint64 addBilSequenceLandmark(const QPointF &coordinates, qint64 attacheLandmarkId, bool uncertain = false, qreal sigma_pos = 1.0);
+    BilSequenceLandmark* getBilSequenceLandmark(qint64 id) const;
+    QVector<BilSequenceLandmark*> getBilSequenceLandmarkByLandmarkId(qint64 id) const;
+    void clearBilSequenceLandmark(qint64 id);
+    qint64 getBilSequenceLandmarkAt(QPointF const& coord, float tol = 3);
+    QVector<qint64> getAttachedLandmarksIds() const;
+
+    int countPointsRefered(QSet<qint64> const& excluded = {}) const;
+    int countPointsRefered(QVector<qint64> const& excluded) const;
+
 Q_SIGNALS:
+
+    void pointAdded(qint64 pt);
+    void pointRemoved(qint64 pt);
 
     void bilSequenceChanged();
 
@@ -94,6 +149,55 @@ public:
     virtual StereoVisionApp::DataBlock* factorizeDataBlock(StereoVisionApp::Project *parent = nullptr) const;
 
     virtual QString itemClassName() const;
+};
+
+class BilSequenceLandmark : public StereoVisionApp::DataBlock
+{
+    Q_OBJECT
+public:
+
+    explicit BilSequenceLandmark(BilSequenceAcquisitionData* parent = nullptr);
+
+    qint64 attachedLandmarkid() const;
+    void setAttachedLandmark(qint64 id);
+    QString attachedLandmarkName() const;
+    StereoVisionApp::Landmark* attachedLandmark() const;
+
+    StereoVisionApp::floatParameter x() const;
+    void setX(const StereoVisionApp::floatParameter &x);
+    void setX(float x);
+
+    StereoVisionApp::floatParameter y() const;
+    void setY(const StereoVisionApp::floatParameter &y);
+    void setY(float y);
+
+    void setBilSequenceCoordinates(QPointF const& point);
+    QPointF bilSequenceCoordinates() const;
+
+
+Q_SIGNALS:
+
+    void attachedLandmarkidChanged(qint64 id);
+
+    void xCoordChanged(StereoVisionApp::floatParameter);
+    void yCoordChanged(StereoVisionApp::floatParameter);
+
+    void coordsChanged();
+
+protected:
+
+    QJsonObject encodeJson() const override;
+    void configureFromJson(QJsonObject const& data) override;
+
+    void referedCleared(QVector<qint64> const& referedId) override;
+
+    qint64 _attachedLandmarkId;
+
+    StereoVisionApp::floatParameter _x;
+    StereoVisionApp::floatParameter _y;
+
+    friend class BilSequenceAcquisitionData;
+
 };
 
 } // namespace PikaLTools

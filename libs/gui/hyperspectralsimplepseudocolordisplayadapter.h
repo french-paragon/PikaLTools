@@ -109,11 +109,11 @@ public:
         _channelName.clear();
     }
 
-    std::array<int, 3> getChannel() const {
+    std::array<int, 3> getChannels() const {
         return _slice_channel_rgb;
     }
 
-    void setChannel(std::array<int, 3> const& channels) {
+    void setChannels(std::array<int, 3> const& channels) {
         if (channels != _slice_channel_rgb) {
             _slice_channel_rgb = channels;
             Q_EMIT imageValuesChanged(QRect());

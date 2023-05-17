@@ -5,6 +5,7 @@
 
 #include "../datablocks/bilacquisitiondata.h"
 #include "../gui/trajectoryvieweditor.h"
+#include "../gui/bilcubevieweditor.h"
 
 #include <QList>
 #include <QDir>
@@ -129,6 +130,32 @@ bool showLcfTrajectory(BilSequenceAcquisitionData* bilSequence) {
     });
 
     return true;
+}
+
+bool showBilImage(BilSequenceAcquisitionData *bilSequence) {
+
+    if (bilSequence == nullptr) {
+        return false;
+    }
+
+    StereoVisionApp::MainWindow* mw = StereoVisionApp::MainWindow::getActiveMainWindow();
+
+    if (mw == nullptr) {
+        return false; //need main windows to display trajectory
+    }
+
+    StereoVisionApp::Editor* e = mw->openEditor(BilCubeViewEditor::staticMetaObject.className());
+
+    BilCubeViewEditor* bcve = qobject_cast<BilCubeViewEditor*>(e);
+
+    if (bcve == nullptr) {
+        return false;
+    }
+
+    bcve->setSequence(bilSequence);
+
+    return true;
+
 }
 
 } // namespace PikaLTools
