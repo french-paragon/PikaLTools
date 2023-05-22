@@ -22,6 +22,9 @@ public:
 
     void setSceneScale(float newSceneScale);
 
+    void setSegmentStart(float newSegment_start);
+    void setSegmentEnd(float newSegment_end);
+
 protected:
 
     bool _has_data;
@@ -29,14 +32,19 @@ protected:
 
     float _sceneScale;
 
+    float _segment_start;
+    float _segment_end;
+
     QOpenGLVertexArrayObject _scene_vao;
     QOpenGLVertexArrayObject _scene_ids_vao;
 
     QOpenGLBuffer _traj_buffer;
+    QOpenGLBuffer _idx_buffer;
 
     QOpenGLShaderProgram* _trajectoryProgram;
 
     std::vector<GLfloat> _traj_pos;
+    std::vector<GLint> _traj_idxs;
 };
 
 } // namespace PikaLTools

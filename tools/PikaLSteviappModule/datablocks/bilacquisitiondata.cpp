@@ -6,18 +6,23 @@
 
 #include <QJsonArray>
 
+#include <QFile>
+
 namespace PikaLTools {
 
 BilSequenceAcquisitionData::BilSequenceAcquisitionData(StereoVisionApp::Project *parent) :
     StereoVisionApp::DataBlock(parent),
     _lcfDataLoaded(false)
+
 {
     connect(this, &BilSequenceAcquisitionData::bilSequenceChanged, this, [this] () {
         _lcfDataLoaded = false;
     });
 }
 BilSequenceAcquisitionData::BilAcquisitionData::BilAcquisitionData(QString path) :
-    _bil_file_path(path)
+    _bil_file_path(path),
+    _nLines(std::nullopt),
+    _nLcfLines(std::nullopt)
 {
 
 }
@@ -55,6 +60,21 @@ QMap<QString, QString> BilSequenceAcquisitionData::BilAcquisitionData::headerDat
     }
 
     return ret;
+}
+
+std::vector<EnviBilLcfLine> BilSequenceAcquisitionData::BilAcquisitionData::loadLcfData() const {
+    std::vector<EnviBilLcfLine> ret = read_envi_bil_lcf_data(lcfFilePath().toStdString());
+    _nLcfLines = ret.size();
+    return ret;
+}
+
+int BilSequenceAcquisitionData::BilAcquisitionData::getLcfNLines() const {
+    if (!_nLcfLines.has_value()) {
+        QFile lcf(lcfFilePath());
+        _nLcfLines = loadLcfData().size();
+    }
+
+    return _nLcfLines.value();
 }
 
 void BilSequenceAcquisitionData::setBilSequence(QList<QString> const& bilFiles) {
@@ -97,12 +117,8 @@ QList<QString> BilSequenceAcquisitionData::getBilFiles() const {
     return ret;
 }
 
-QList<BilSequenceAcquisitionData::BilAcquisitionData> BilSequenceAcquisitionData::getBilInfos() const {
-    return _bilSequence;
-}
 
-
-bool BilSequenceAcquisitionData::loadLcfData(const QList<QString> &files) const {
+bool BilSequenceAcquisitionData::loadLcfData() const {
 
     _localTrajectory.clear();
 
@@ -111,8 +127,8 @@ bool BilSequenceAcquisitionData::loadLcfData(const QList<QString> &files) const 
 
     double minAlt = -1;
 
-    for (QString const& file : files) {
-        std::vector<EnviBilLcfLine> lines = read_envi_bil_lcf_data(file.toStdString());
+    for (BilAcquisitionData const& bil : _bilSequence) {
+        std::vector<EnviBilLcfLine> lines = bil.loadLcfData();
 
         _localTrajectory.reserve(_localTrajectory.size() + lines.size());
 

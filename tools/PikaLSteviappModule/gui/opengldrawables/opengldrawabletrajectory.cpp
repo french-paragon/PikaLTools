@@ -2,12 +2,16 @@
 
 #include <QOpenGLContext>
 #include <QOpenGLFunctions>
+#include <QOpenGLExtraFunctions>
 #include <QOpenGLShaderProgram>
 
 namespace PikaLTools {
 
 OpenGlDrawableTrajectory::OpenGlDrawableTrajectory(StereoVisionApp::OpenGl3DSceneViewWidget* parent) :
-    StereoVisionApp::OpenGlDrawable(parent)
+    StereoVisionApp::OpenGlDrawable(parent),
+    _has_data(false),
+    _segment_start(0),
+    _segment_end(1000)
 {
 
 }
@@ -19,6 +23,9 @@ void OpenGlDrawableTrajectory::initializeGL() {
     _traj_buffer.create();
     _traj_buffer.setUsagePattern(QOpenGLBuffer::DynamicDraw);
 
+    _idx_buffer.create();
+    _idx_buffer.setUsagePattern(QOpenGLBuffer::DynamicDraw);
+
     _trajectoryProgram = new QOpenGLShaderProgram();
     _trajectoryProgram->addShaderFromSourceFile(QOpenGLShader::Vertex, ":/glShaders/trajectoryViewerLine.vert");
     _trajectoryProgram->addShaderFromSourceFile(QOpenGLShader::Fragment, ":/glShaders/trajectoryViewerLine.frag");
@@ -29,30 +36,50 @@ void OpenGlDrawableTrajectory::initializeGL() {
 void OpenGlDrawableTrajectory::paintGL(QMatrix4x4 const& modelView, QMatrix4x4 const& projectionView) {
 
     QOpenGLFunctions *f = QOpenGLContext::currentContext()->functions();
+    QOpenGLExtraFunctions * ef = QOpenGLContext::currentContext()->extraFunctions();
 
     if (_has_data) {
 
         int vertexLocation;
+        int idxsLocation;
 
         if (!_traj_pos.empty()) {
+
+            vertexLocation = _trajectoryProgram->attributeLocation("in_location");
+            idxsLocation = _trajectoryProgram->attributeLocation("in_id");
 
             _trajectoryProgram->bind();
             _scene_vao.bind();
             _traj_buffer.bind();
 
+            bool hasToReload = _has_to_reset_gl_buffers;
+
             if (_has_to_reset_gl_buffers) {
                 _traj_buffer.allocate(_traj_pos.data(), _traj_pos.size()*sizeof (GLfloat));
+
                 _has_to_reset_gl_buffers = false;
             }
 
-            vertexLocation = _trajectoryProgram->attributeLocation("in_location");
-            _trajectoryProgram->enableAttributeArray(vertexLocation);
             _trajectoryProgram->setAttributeBuffer(vertexLocation, GL_FLOAT, 0, 3);
+            _trajectoryProgram->enableAttributeArray(vertexLocation);
+
+            _idx_buffer.bind();
+
+            if (hasToReload) {
+                _idx_buffer.allocate(_traj_idxs.data(), _traj_idxs.size()*sizeof (GLint));
+            }
+
+            ef->glVertexAttribIPointer(idxsLocation, 1, GL_INT, 0, 0);
+            //_trajectoryProgram->setAttributeBuffer(idxsLocation, GL_FLOAT, 0, 1);
+            _trajectoryProgram->enableAttributeArray(idxsLocation);
 
             _trajectoryProgram->setUniformValue("matrixViewProjection", projectionView*modelView);
             _trajectoryProgram->setUniformValue("sceneScale", _sceneScale);
 
-            f->glDrawArrays(GL_LINE_STRIP, 0, _traj_pos.size()/3);
+            _trajectoryProgram->setUniformValue("segmentStart", _segment_start);
+            _trajectoryProgram->setUniformValue("segmentEnd", _segment_end);
+
+            f->glDrawArrays(GL_LINE_STRIP, 0, _traj_idxs.size());
 
             _scene_vao.release();
             _traj_buffer.release();
@@ -84,11 +111,18 @@ void OpenGlDrawableTrajectory::setTrajectory(std::vector<StereoVision::Geometry:
     _traj_pos.clear();
     _traj_pos.resize(trajectory.size()*3);
 
+    _traj_idxs.clear();
+    _traj_idxs.resize(trajectory.size());
+
     int i = 0;
+    int j = 0;
     for (StereoVision::Geometry::ShapePreservingTransform<float> pose : trajectory) {
         _traj_pos[i++] = pose.t[0];
         _traj_pos[i++] = pose.t[1];
         _traj_pos[i++] = pose.t[2];
+
+        _traj_idxs[j] = j;
+        j++;
     }
 
     _has_data = true;
@@ -99,6 +133,7 @@ void OpenGlDrawableTrajectory::setTrajectory(std::vector<StereoVision::Geometry:
 
 void OpenGlDrawableTrajectory::clearTrajectory() {
     _traj_pos.clear();
+    _traj_idxs.clear();
 
     _has_data = false;
     _has_to_reset_gl_buffers = true;
@@ -108,6 +143,22 @@ void OpenGlDrawableTrajectory::clearTrajectory() {
 
 void OpenGlDrawableTrajectory::setSceneScale(float newSceneScale) {
     _sceneScale = newSceneScale;
+}
+
+void OpenGlDrawableTrajectory::setSegmentStart(float newSegment_start)
+{
+    if (newSegment_start != _segment_start) {
+        _segment_start = newSegment_start;
+        updateRequested();
+    }
+}
+
+void OpenGlDrawableTrajectory::setSegmentEnd(float newSegment_end)
+{
+    if (newSegment_end != _segment_end) {
+        _segment_end = newSegment_end;
+        updateRequested();
+    }
 }
 
 } // namespace PikaLTools

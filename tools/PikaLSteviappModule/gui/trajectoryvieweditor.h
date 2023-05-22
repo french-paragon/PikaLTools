@@ -5,6 +5,10 @@
 
 #include "LibStevi/geometry/rotations.h"
 
+#include <QMap>
+
+class QSpinBox;
+
 namespace StereoVisionApp {
 
 class OpenGl3DSceneViewWidget;
@@ -15,6 +19,7 @@ class OpenGlDrawableSceneGrid;
 namespace PikaLTools {
 
 class OpenGlDrawableTrajectory;
+class BilSequenceAcquisitionData;
 
 class TrajectoryViewEditor : public StereoVisionApp::Editor
 {
@@ -22,15 +27,62 @@ class TrajectoryViewEditor : public StereoVisionApp::Editor
 public:
     TrajectoryViewEditor(QWidget* parent = nullptr);
 
-    void setTrajectory(std::vector<StereoVision::Geometry::ShapePreservingTransform<float>> const& trajectory);
+    void setTrajectory(BilSequenceAcquisitionData const& bilSequence);
     void clearTrajectory();
 
+    void setStartLine(int bilLine);
+    void setEndLine(int bilLine);
+
 protected:
+
+    inline float bil2lcfLineId(int bilId) const {
+        QList<int> splitLines = _bil2lcfLines.keys();
+        int minAbove = bilId;
+        int maxBelow = bilId;
+
+        for (int l : splitLines) {
+
+            if (l > bilId) {
+                if (minAbove == bilId) {
+                    minAbove = l;
+                }
+            } else if (l < minAbove and l > bilId) {
+                minAbove = l;
+            }
+
+            if (l < bilId) {
+                if (maxBelow == bilId) {
+                    maxBelow = l;
+                }
+            } else if (l > maxBelow and l < bilId) {
+                maxBelow = l;
+            }
+        }
+
+        if (bilId == maxBelow) {
+            return _bil2lcfLines.value(maxBelow, 0);
+        }
+
+        if (bilId == minAbove) {
+            return _bil2lcfLines.value(maxBelow, 0);
+        }
+
+        float lcfLBelow = _bil2lcfLines.value(maxBelow, 0);
+        float lcfLAbove = _bil2lcfLines.value(minAbove, 0);
+
+        float weight = float(bilId - maxBelow)/float(minAbove - maxBelow);
+        return (1-weight)*lcfLBelow + weight*lcfLAbove;
+    }
 
     StereoVisionApp::OpenGl3DSceneViewWidget* _viewScene;
 
     StereoVisionApp::OpenGlDrawableSceneGrid* _grid;
     OpenGlDrawableTrajectory* _drawableTrajectory;
+
+    QMap<int, int> _bil2lcfLines;
+
+    QSpinBox* _startLineSpinBox;
+    QSpinBox* _endLineSpinBox;
 };
 
 class TrajectoryViewEditorFactory : public StereoVisionApp::EditorFactory

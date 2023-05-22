@@ -123,10 +123,10 @@ bool showLcfTrajectory(BilSequenceAcquisitionData* bilSequence) {
         return false;
     }
 
-    trjve->setTrajectory(bilSequence->localTrajectory());
+    trjve->setTrajectory(*bilSequence);
 
     QObject::connect(bilSequence, &BilSequenceAcquisitionData::bilSequenceChanged, trjve, [trjve, bilSequence] () {
-        trjve->setTrajectory(bilSequence->localTrajectory());
+        trjve->setTrajectory(*bilSequence);
     });
 
     return true;

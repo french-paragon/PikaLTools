@@ -1,6 +1,7 @@
 #include "bilcubevieweditor.h"
 
 #include <steviapp/gui/imagewidget.h>
+#include <steviapp/control/mainwindow.h>
 
 #include <QLabel>
 #include <QSpinBox>
@@ -13,6 +14,7 @@
 #include <QInputDialog>
 
 #include "../datablocks/bilacquisitiondata.h"
+#include "./trajectoryvieweditor.h"
 
 #include "./imageOverlays/bilsequencelandmarksoverlay.h"
 
@@ -351,6 +353,18 @@ void BilCubeViewEditor::commit_lines_changes() {
     _displayOverlay->setInitialLine(sLine);
     _displayOverlay->setFinalLine(eLine);
     _displayOverlay->setBilWidth(_bil_data.shape()[SamplesAxis]);
+
+    StereoVisionApp::MainWindow* mw = StereoVisionApp::MainWindow::getActiveMainWindow();
+
+    if (mw != nullptr) {
+        StereoVisionApp::Editor* e = mw->openedEditor(TrajectoryViewEditor::staticMetaObject.className());
+        TrajectoryViewEditor* trjve = qobject_cast<TrajectoryViewEditor*>(e);
+
+        if (trjve != nullptr) {
+            trjve->setStartLine(sLine);
+            trjve->setEndLine(eLine);
+        }
+    }
 
 }
 void BilCubeViewEditor::commit_channels_changes() {

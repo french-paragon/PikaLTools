@@ -14,6 +14,8 @@
 #include <QPoint>
 #include <QPointF>
 
+#include <optional>
+
 #include "LibStevi/geometry/rotations.h"
 
 #include "../../libs/io/read_envi_bil.h"
@@ -41,20 +43,44 @@ public:
 
         QMap<QString, QString> headerData() const;
 
+        /*!
+         * \brief loadLcfData load the lcf data and cache a few additional data along the way
+         * \return the lcf data
+         */
+        std::vector<EnviBilLcfLine> loadLcfData() const;
+
+        inline int getNLines() const {
+            if (!_nLines.has_value()) {
+                _nLines = headerData().value("lines", "0").toInt();
+            }
+
+            return _nLines.value();
+        }
+
+        int getLcfNLines() const;
+
     protected:
         QString _bil_file_path;
+        mutable std::optional<int> _nLines;
+        mutable std::optional<int> _nLcfLines;
     };
 
     void setBilSequence(const QList<QString> &bilFiles);
     QList<QString> getBilFiles() const;
-    QList<BilAcquisitionData> getBilInfos() const;
+    inline QList<BilAcquisitionData> & getBilInfos() {
+        return _bilSequence;
+    }
+
+    inline QList<BilAcquisitionData> const& getBilInfos() const {
+        return _bilSequence;
+    }
 
     void clearOptimized() override;
     bool hasOptimizedParameters() const override;
 
     inline StereoVision::Geometry::AffineTransform<float> const& ecef2local() const {
         if (!_lcfDataLoaded) {
-            loadLcfData(getBilFiles());
+            loadLcfData();
         }
 
         return _ecef2local;
@@ -62,7 +88,7 @@ public:
 
     inline std::vector<StereoVision::Geometry::ShapePreservingTransform<float>> const& localTrajectory() const {
         if (!_lcfDataLoaded) {
-            loadLcfData(getBilFiles());
+            loadLcfData();
         }
 
         return _localTrajectory;
@@ -129,7 +155,7 @@ protected:
      * \param files the bil files
      * \return bool on success
      */
-    bool loadLcfData(QList<QString> const& files) const;
+    bool loadLcfData() const;
 
     QList<BilAcquisitionData> _bilSequence;
 
