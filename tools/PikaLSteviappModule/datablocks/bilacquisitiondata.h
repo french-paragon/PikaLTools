@@ -105,11 +105,30 @@ public:
 
         QStringList qfiles = getBilFiles();
 
-        for (QString f : qfiles) {
-            files.push_back(f.toStdString());
+        int sLine = startLine;
+        int lLine = lastLine;
+
+        int nTotalLines = 0;
+
+        for (BilAcquisitionData const& bil : _bilSequence) {
+            if  (nTotalLines + bil.getNLines() < startLine) {
+                sLine -= bil.getNLines();
+                lLine -= bil.getNLines();
+
+                nTotalLines += bil.getNLines();
+
+                continue;
+            }
+
+            if (nTotalLines > lastLine) {
+                break;
+            }
+
+            files.push_back(bil.bilFilePath().toStdString());
+            nTotalLines += bil.getNLines();
         }
 
-        return read_bil_sequence<T>(files, startLine, lastLine);
+        return read_bil_sequence<T>(files, sLine, lLine);
 
     }
 
