@@ -17,6 +17,8 @@ bool showLcfTrajectory(BilSequenceAcquisitionData *bilSequence);
 
 bool showBilImage(BilSequenceAcquisitionData *bilSequence);
 
+bool exportBilLandmarks(BilSequenceAcquisitionData *bilSequence, QString const& outFile = "");
+
 } // namespace PikaLTools
 
 #endif // BILSEQUENCEACTIONS_H

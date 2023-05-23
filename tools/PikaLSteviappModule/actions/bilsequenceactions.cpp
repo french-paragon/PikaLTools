@@ -158,4 +158,60 @@ bool showBilImage(BilSequenceAcquisitionData *bilSequence) {
 
 }
 
+
+
+bool exportBilLandmarks(BilSequenceAcquisitionData *bilSequence, QString const& pOutFile) {
+
+
+    QString outFile = pOutFile;
+
+    StereoVisionApp::MainWindow* mw = StereoVisionApp::MainWindow::getActiveMainWindow();
+
+    if (mw != nullptr and outFile.isEmpty()) {
+        if (mw->isVisible()) {
+            //in case we have a gui
+            outFile = QFileDialog::getSaveFileName(mw, QObject::tr("Export landmarks to"), QString(), QObject::tr("csv Files (*.csv)"));
+
+            if (outFile.isEmpty()) {
+                return false;
+            }
+        }
+    }
+
+    QVector<BilSequenceLandmark*> landmarks;
+
+    for (qint64 id : bilSequence->listTypedSubDataBlocks(BilSequenceLandmark::staticMetaObject.className())) {
+        BilSequenceLandmark* lm = bilSequence->getBilSequenceLandmark(id);
+
+        if (lm == nullptr) {
+            continue;
+        }
+
+        landmarks.push_back(lm);
+    }
+
+    QFile fout(outFile);
+
+    if (!fout.open(QFile::WriteOnly)) {
+        return false;
+    }
+
+    QTextStream out(&fout);
+
+    out << "Landmark name" << "," << "X coord" << "," << "Y coord" << Qt::endl;
+
+    for (BilSequenceLandmark* lm : landmarks) {
+        StereoVisionApp::Landmark* alm = lm->attachedLandmark();
+
+        if (alm == nullptr) {
+            continue;
+        }
+
+        out << alm->objectName() << "," << lm->x().value() << "," << lm->y().value() << Qt::endl;
+    }
+
+    fout.close();
+    return true;
+}
+
 } // namespace PikaLTools

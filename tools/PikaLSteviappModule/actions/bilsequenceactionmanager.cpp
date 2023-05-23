@@ -52,7 +52,13 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
         showBilImage(bilSeq);
     });
 
-    return {view_trajectory, view_bil_cube};
+    QAction* export_landmarks = new QAction(tr("Export landmarks to csv"), parent);
+
+    connect(export_landmarks, &QAction::triggered, [bilSeq] () {
+        exportBilLandmarks(bilSeq);
+    });
+
+    return {view_trajectory, view_bil_cube, export_landmarks};
 }
 
 QList<QAction*> BilSequenceActionManager::factorizeMultiItemsContextActions(QObject* parent, StereoVisionApp::Project* p, QModelIndexList const& projectIndex) const {
