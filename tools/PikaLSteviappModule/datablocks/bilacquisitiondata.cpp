@@ -422,6 +422,15 @@ QJsonObject BilSequenceAcquisitionData::encodeJson() const {
     }
     obj.insert("bilFiles", bilFiles);
 
+    QJsonArray arr;
+
+    auto ids = listTypedSubDataBlocks(BilSequenceLandmark::staticMetaObject.className());
+    for(qint64 id : qAsConst(ids)) {
+        arr.push_back(getBilSequenceLandmark(id)->toJson());
+    }
+
+    obj.insert("Landmarks", arr);
+
     return obj;
 }
 
@@ -443,6 +452,21 @@ void BilSequenceAcquisitionData::configureFromJson(QJsonObject const& data) {
     }
 
     setBilSequence(bilFiles);
+
+    if (data.contains("Landmarks")) {
+        QJsonArray arr = data.value("Landmarks").toArray();
+
+        for (QJsonValue const& v : arr) {
+            QJsonObject o = v.toObject();
+
+            BilSequenceLandmark* lm = new BilSequenceLandmark(this);
+            lm->setFromJson(o);
+
+            if (lm->internalId() >= 0) {
+                insertSubItem(lm);
+            }
+        }
+    }
 }
 
 void BilSequenceAcquisitionData::extendDataModel() {
