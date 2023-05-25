@@ -8,15 +8,17 @@
 
 #include <QFile>
 
+#include <proj.h>
+
 namespace PikaLTools {
 
 BilSequenceAcquisitionData::BilSequenceAcquisitionData(StereoVisionApp::Project *parent) :
     StereoVisionApp::DataBlock(parent),
-    _lcfDataLoaded(false)
+    _ecefTrajectoryCached(false)
 
 {
     connect(this, &BilSequenceAcquisitionData::bilSequenceChanged, this, [this] () {
-        _lcfDataLoaded = false;
+        _ecefTrajectoryCached = false;
     });
 }
 BilSequenceAcquisitionData::BilAcquisitionData::BilAcquisitionData(QString path) :
@@ -120,58 +122,62 @@ QList<QString> BilSequenceAcquisitionData::getBilFiles() const {
 
 bool BilSequenceAcquisitionData::loadLcfData() const {
 
-    _localTrajectory.clear();
+    _ecefTrajectory.clear();
 
-    double meanLat = 0;
-    double meanLon = 0;
+    PJ_CONTEXT* ctx = proj_context_create();
 
-    double minAlt = -1;
+    PJ* converter = proj_create_crs_to_crs(ctx, "EPSG:4326", "EPSG:4978", nullptr);
+
+    if (converter == 0) { //in case of error
+        return false;
+    }
+
+    bool ecef2LocalEstimated = false;
+    double lat0;
+    double lon0;
+
+    StereoVision::Geometry::AffineTransform<double> ecef2localAlt0;
 
     for (BilAcquisitionData const& bil : _bilSequence) {
         std::vector<EnviBilLcfLine> lines = bil.loadLcfData();
 
-        _localTrajectory.reserve(_localTrajectory.size() + lines.size());
+        _ecefTrajectory.reserve(_ecefTrajectory.size() + lines.size());
 
-        for (EnviBilLcfLine const& line : lines) {
+        for (EnviBilLcfLine line : lines) {
 
-            double lat= line.lat;
-            double lon = line.lon;
-            double alt = line.height;
+            if (!ecef2LocalEstimated) {
+                lat0 = line.lat;
+                lon0 = line.lon;
 
-            meanLat += lat;
-            meanLon += lon;
+                ecef2localAlt0 = getLocalFrameAtPos<double>(lat0, lon0, WGS84_Ellipsoid);
 
-            if (alt < minAlt or minAlt < 0) {
-                minAlt = alt;
+                ecef2LocalEstimated = true;
             }
 
-            CartesianCoord<double> pos = convertLatLonToECEF<double>(lat, lon, alt, WGS84_Ellipsoid);
+            double vx = line.lat;
+            double vy = line.lon;
+            double vz = line.height;
 
-            Eigen::Vector3f t(pos.x, pos.y, pos.z);
+            Eigen::Vector3f pos;
+
+            proj_trans_generic(converter, PJ_FWD, &vx, 0, 1, &vy, 0, 1, &vz, 0, 1, nullptr, 0, 1);
+
+            Eigen::Vector3f t(vx, vy, vz);
 
             Eigen::Matrix3f rot = StereoVision::Geometry::eulerDegXYZToRotation<float>(line.roll, line.pitch, line.yaw);
-            Eigen::Vector3f r = StereoVision::Geometry::inverseRodriguezFormula(rot);
 
-            _localTrajectory.push_back(StereoVision::Geometry::ShapePreservingTransform<float>(r,t,1));
+            _ecefTrajectory.push_back(StereoVision::Geometry::AffineTransform<float>(ecef2localAlt0.R.transpose().cast<float>()*rot,t));
         }
     }
 
-    meanLat /= _localTrajectory.size();
-    meanLon /= _localTrajectory.size();
-
-    StereoVision::Geometry::AffineTransform<double> ecef2localAlt0 = getLocalFrameAtPos<double>(meanLat, meanLon, WGS84_Ellipsoid);
-    StereoVision::Geometry::AffineTransform<float> localAlt0ToLocal(Eigen::Matrix3f::Identity(), Eigen::Vector3f(0,0,-minAlt));
-
-    _ecef2local = localAlt0ToLocal*StereoVision::Geometry::AffineTransform<float>(ecef2localAlt0.R.cast<float>(), ecef2localAlt0.t.cast<float>());
-
-    for (StereoVision::Geometry::ShapePreservingTransform<float> & pos : _localTrajectory) {
-
-        Eigen::Matrix3f R = _ecef2local.R*StereoVision::Geometry::rodriguezFormula(pos.r);
-        pos.r = StereoVision::Geometry::inverseRodriguezFormula(R);
-        pos.t = _ecef2local*pos.t;
+    if (_ecefTrajectory.empty()) {
+        return false;
     }
 
-    _lcfDataLoaded = true;
+    proj_destroy(converter);
+    proj_context_destroy(ctx);
+
+    _ecefTrajectoryCached = true;
     return true;
 }
 
@@ -409,6 +415,35 @@ int BilSequenceAcquisitionData::countPointsRefered(QVector<qint64> const& exclud
     QSet<qint64> s(excluded.begin(), excluded.end());
     return countPointsRefered(s);
 
+}
+
+bool BilSequenceAcquisitionData::geoReferenceSupportActive() const {
+    return true;
+}
+Eigen::Array<float,3, Eigen::Dynamic> BilSequenceAcquisitionData::getLocalPointsEcef() const {
+
+    bool ok = true;
+
+    if (!_ecefTrajectoryCached) {
+        ok = loadLcfData();
+    }
+
+    Eigen::Array<float,3, Eigen::Dynamic> ret;
+
+    if (!ok) {
+        ret.resize(3,0);
+        return ret;
+    }
+
+    ret.resize(3,1);
+    ret.col(0) = _ecefTrajectory[0].t;
+
+    return ret;
+
+}
+QString BilSequenceAcquisitionData::getCoordinateReferenceSystemDescr(int CRSRole) const {
+    Q_UNUSED(CRSRole)
+    return "EPSG:4978";
 }
 
 QJsonObject BilSequenceAcquisitionData::encodeJson() const {

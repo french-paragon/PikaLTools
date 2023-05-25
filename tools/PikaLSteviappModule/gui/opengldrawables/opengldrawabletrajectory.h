@@ -17,7 +17,7 @@ public:
     void paintGL(QMatrix4x4 const& modelView, QMatrix4x4 const& projectionView);
     void clearViewRessources();
 
-    void setTrajectory(std::vector<StereoVision::Geometry::ShapePreservingTransform<float>> const& trajectory);
+    void setTrajectory(const std::vector<StereoVision::Geometry::AffineTransform<float> > &trajectory);
     void clearTrajectory();
 
     void setSceneScale(float newSceneScale);

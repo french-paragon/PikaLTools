@@ -12,6 +12,7 @@
 
 #include <QLabel>
 #include <QSpinBox>
+#include <QMessageBox>
 
 namespace PikaLTools {
 
@@ -93,13 +94,31 @@ void TrajectoryViewEditor::setEndLine(int bilLine) {
 
 void TrajectoryViewEditor::setTrajectory(const BilSequenceAcquisitionData &bilSequence) {
 
-    std::vector<StereoVision::Geometry::ShapePreservingTransform<float>> trajectory = bilSequence.localTrajectory();
+    std::vector<StereoVision::Geometry::AffineTransform<float>> trajectory = bilSequence.ecefTrajectory();
+
+    StereoVisionApp::Project* project = bilSequence.getProject();
+
+    if (project == nullptr) {
+        return;
+    }
+
+    if (!project->hasLocalCoordinateFrame()) {
+        QMessageBox::warning(this,
+                             tr("Project does not have a local frame of reference"),
+                             tr("Setup a local frame of reference before showing the lcf trajectory!"));
+        return;
+    }
+
+    StereoVision::Geometry::AffineTransform<float> transformation = project->ecef2local();
+
+    std::vector<StereoVision::Geometry::AffineTransform<float>> localTrajectory;
+    localTrajectory.reserve(trajectory.size());
 
     float minXy = -1;
     float maxXy = 1;
 
     for (int i = 0; i < trajectory.size(); i++) {
-        Eigen::Vector3f pos = trajectory[i].t;
+        Eigen::Vector3f pos = transformation*trajectory[i].t;
 
         if (pos.x() < minXy) {
             minXy = pos.x();
@@ -116,12 +135,14 @@ void TrajectoryViewEditor::setTrajectory(const BilSequenceAcquisitionData &bilSe
         if (pos.y() > maxXy) {
             maxXy = pos.x();
         }
+
+        localTrajectory.push_back(StereoVision::Geometry::AffineTransform<float>(transformation.R*trajectory[i].R, pos));
     }
 
     float maxDist = std::max(std::abs(minXy), maxXy);
     _drawableTrajectory->setSceneScale(12./maxDist);
 
-    _drawableTrajectory->setTrajectory(trajectory);
+    _drawableTrajectory->setTrajectory(localTrajectory);
 
     _bil2lcfLines.clear();
 

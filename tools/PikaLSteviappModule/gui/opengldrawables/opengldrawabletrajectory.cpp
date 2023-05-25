@@ -107,7 +107,7 @@ void OpenGlDrawableTrajectory::clearViewRessources() {
  * \brief OpenGlDrawableTrajectory::setTrajectory set the trajectory that is displayed
  * \param trajectory the trajectory, as a series of body to world transforms
  */
-void OpenGlDrawableTrajectory::setTrajectory(std::vector<StereoVision::Geometry::ShapePreservingTransform<float>> const& trajectory) {
+void OpenGlDrawableTrajectory::setTrajectory(std::vector<StereoVision::Geometry::AffineTransform<float>> const& trajectory) {
     _traj_pos.clear();
     _traj_pos.resize(trajectory.size()*3);
 
@@ -116,7 +116,7 @@ void OpenGlDrawableTrajectory::setTrajectory(std::vector<StereoVision::Geometry:
 
     int i = 0;
     int j = 0;
-    for (StereoVision::Geometry::ShapePreservingTransform<float> pose : trajectory) {
+    for (StereoVision::Geometry::AffineTransform<float> pose : trajectory) {
         _traj_pos[i++] = pose.t[0];
         _traj_pos[i++] = pose.t[1];
         _traj_pos[i++] = pose.t[2];

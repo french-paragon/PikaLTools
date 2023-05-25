@@ -4,6 +4,7 @@
 #include <steviapp/datablocks/project.h>
 #include <steviapp/datablocks/landmark.h>
 #include <steviapp/datablocks/floatparameter.h>
+#include <steviapp/datablocks/georeferenceddatablockinterface.h>
 
 #include <MultidimArrays/MultidimArrays.h>
 
@@ -24,9 +25,11 @@ namespace PikaLTools {
 
 class BilSequenceLandmark;
 
-class BilSequenceAcquisitionData : public StereoVisionApp::DataBlock
+class BilSequenceAcquisitionData : public StereoVisionApp::DataBlock, public StereoVisionApp::GeoReferencedDataBlockInterface
 {
     Q_OBJECT
+    Q_INTERFACES(StereoVisionApp::GeoReferencedDataBlockInterface)
+
 public:
     BilSequenceAcquisitionData(StereoVisionApp::Project *parent = nullptr);
 
@@ -78,20 +81,12 @@ public:
     void clearOptimized() override;
     bool hasOptimizedParameters() const override;
 
-    inline StereoVision::Geometry::AffineTransform<float> const& ecef2local() const {
-        if (!_lcfDataLoaded) {
+    inline std::vector<StereoVision::Geometry::AffineTransform<float>> const& ecefTrajectory() const {
+        if (!_ecefTrajectoryCached) {
             loadLcfData();
         }
 
-        return _ecef2local;
-    }
-
-    inline std::vector<StereoVision::Geometry::ShapePreservingTransform<float>> const& localTrajectory() const {
-        if (!_lcfDataLoaded) {
-            loadLcfData();
-        }
-
-        return _localTrajectory;
+        return _ecefTrajectory;
     }
 
     template<typename T>
@@ -155,6 +150,10 @@ public:
     int countPointsRefered(QSet<qint64> const& excluded = {}) const;
     int countPointsRefered(QVector<qint64> const& excluded) const;
 
+    bool geoReferenceSupportActive() const override;
+    Eigen::Array<float,3, Eigen::Dynamic> getLocalPointsEcef() const override;
+    QString getCoordinateReferenceSystemDescr(int CRSRole = DefaultCRSRole) const override;
+
 Q_SIGNALS:
 
     void pointAdded(qint64 pt);
@@ -178,9 +177,8 @@ protected:
 
     QList<BilAcquisitionData> _bilSequence;
 
-    mutable bool _lcfDataLoaded;
-    mutable StereoVision::Geometry::AffineTransform<float> _ecef2local;
-    mutable std::vector<StereoVision::Geometry::ShapePreservingTransform<float>> _localTrajectory;
+    mutable bool _ecefTrajectoryCached;
+    mutable std::vector<StereoVision::Geometry::AffineTransform<float>> _ecefTrajectory; //trajectory, as a sequence of body to ecef poses
 };
 
 class BilSequenceAcquisitionDataFactory : public StereoVisionApp::DataBlockFactory
