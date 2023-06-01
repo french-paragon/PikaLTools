@@ -127,7 +127,7 @@ bool showLcfTrajectory(BilSequenceAcquisitionData* bilSequence) {
 
     QObject::connect(bilSequence, &BilSequenceAcquisitionData::bilSequenceChanged, trjve, [trjve, bilSequence] () {
         trjve->setTrajectory(*bilSequence);
-    });
+    }); //TODO: ensure this connection can be destroyed later
 
     return true;
 }
