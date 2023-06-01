@@ -13,5 +13,5 @@ void main(void)
     }
 
     float light = max(dot(lightDirection, normal), 0.1f);
-    gl_FragColor = light*color;
+    gl_FragColor = 0.5*light*color + 0.5*color;
 }

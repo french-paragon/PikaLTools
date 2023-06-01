@@ -22,6 +22,7 @@ class OpenGlDrawableDtm;
 class OpenGlDrawableTrajectory;
 
 class BilSequenceAcquisitionData;
+class ComparisonTrajectory;
 class InputDtm;
 
 class TrajectoryViewEditor : public StereoVisionApp::Editor
@@ -32,6 +33,9 @@ public:
 
     void setTrajectory(BilSequenceAcquisitionData const& bilSequence);
     void clearTrajectory();
+
+    void setComparisonTrajectory(ComparisonTrajectory const& comparisonTrajectory);
+    void clearComparisonTrajectory();
 
     void setDtm(InputDtm *bilSequence);
     void clearDtm();
@@ -87,6 +91,7 @@ protected:
     StereoVisionApp::OpenGlDrawableSceneGrid* _grid;
     OpenGlDrawableDtm* _drawableDtm;
     OpenGlDrawableTrajectory* _drawableTrajectory;
+    OpenGlDrawableTrajectory* _comparisonTrajectory;
 
     QMap<int, int> _bil2lcfLines;
 

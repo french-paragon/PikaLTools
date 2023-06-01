@@ -18,12 +18,19 @@ public:
     void clearViewRessources();
 
     void setTrajectory(const std::vector<StereoVision::Geometry::AffineTransform<float> > &trajectory);
+    void setTrajectory(const std::vector<Eigen::Vector3f> &trajectory);
     void clearTrajectory();
 
     void setSceneScale(float newSceneScale);
 
     void setSegmentStart(float newSegment_start);
     void setSegmentEnd(float newSegment_end);
+
+    const QColor &baseColor() const;
+    void setBaseColor(const QColor &newBaseColor);
+
+    const QColor &highlightSegmentColor() const;
+    void setHighlightSegmentColor(const QColor &newHighlightSegmentColor);
 
 protected:
 
@@ -40,6 +47,9 @@ protected:
 
     QOpenGLBuffer _traj_buffer;
     QOpenGLBuffer _idx_buffer;
+
+    QColor _baseColor;
+    QColor _highlightSegmentColor;
 
     QOpenGLShaderProgram* _trajectoryProgram;
 

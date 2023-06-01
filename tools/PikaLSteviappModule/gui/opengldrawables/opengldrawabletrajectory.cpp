@@ -79,6 +79,9 @@ void OpenGlDrawableTrajectory::paintGL(QMatrix4x4 const& modelView, QMatrix4x4 c
             _trajectoryProgram->setUniformValue("segmentStart", _segment_start);
             _trajectoryProgram->setUniformValue("segmentEnd", _segment_end);
 
+            _trajectoryProgram->setUniformValue("baseColor", _baseColor);
+            _trajectoryProgram->setUniformValue("segmentColor", _highlightSegmentColor);
+
             f->glDrawArrays(GL_LINE_STRIP, 0, _traj_idxs.size());
 
             _scene_vao.release();
@@ -131,6 +134,34 @@ void OpenGlDrawableTrajectory::setTrajectory(std::vector<StereoVision::Geometry:
     Q_EMIT updateRequested();
 }
 
+/*!
+ * \brief OpenGlDrawableTrajectory::setTrajectory set the trajectory that is displayed
+ * \param trajectory the trajectory, as a series of positions
+ */
+void OpenGlDrawableTrajectory::setTrajectory(const std::vector<Eigen::Vector3f> &trajectory) {
+    _traj_pos.clear();
+    _traj_pos.resize(trajectory.size()*3);
+
+    _traj_idxs.clear();
+    _traj_idxs.resize(trajectory.size());
+
+    int i = 0;
+    int j = 0;
+    for (Eigen::Vector3f pos : trajectory) {
+        _traj_pos[i++] = pos[0];
+        _traj_pos[i++] = pos[1];
+        _traj_pos[i++] = pos[2];
+
+        _traj_idxs[j] = j;
+        j++;
+    }
+
+    _has_data = true;
+    _has_to_reset_gl_buffers = true;
+
+    Q_EMIT updateRequested();
+}
+
 void OpenGlDrawableTrajectory::clearTrajectory() {
     _traj_pos.clear();
     _traj_idxs.clear();
@@ -159,6 +190,26 @@ void OpenGlDrawableTrajectory::setSegmentEnd(float newSegment_end)
         _segment_end = newSegment_end;
         updateRequested();
     }
+}
+
+const QColor &OpenGlDrawableTrajectory::baseColor() const
+{
+    return _baseColor;
+}
+
+void OpenGlDrawableTrajectory::setBaseColor(const QColor &newBaseColor)
+{
+    _baseColor = newBaseColor;
+}
+
+const QColor &OpenGlDrawableTrajectory::highlightSegmentColor() const
+{
+    return _highlightSegmentColor;
+}
+
+void OpenGlDrawableTrajectory::setHighlightSegmentColor(const QColor &newHighlightSegmentColor)
+{
+    _highlightSegmentColor = newHighlightSegmentColor;
 }
 
 } // namespace PikaLTools

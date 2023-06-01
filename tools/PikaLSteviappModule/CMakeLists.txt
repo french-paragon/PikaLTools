@@ -7,6 +7,8 @@ set(MODULE_SRC
     datablocks/bilacquisitiondata.cpp
     datablocks/inputdtm.h
     datablocks/inputdtm.cpp
+    datablocks/comparisontrajectory.h
+    datablocks/comparisontrajectory.cpp
     actions/bilsequenceactionmanager.h
     actions/bilsequenceactionmanager.cpp
     actions/bilsequenceactions.h
@@ -15,6 +17,10 @@ set(MODULE_SRC
     actions/inputdtmactionmanager.cpp
     actions/inputdtmactions.h
     actions/inputdtmactions.cpp
+    actions/comparisonsequenceactionmanager.h
+    actions/comparisonsequenceactionmanager.cpp
+    actions/comparisonsequenceactions.h
+    actions/comparisonsequenceactions.cpp
     gui/opengldrawables/opengldrawabletrajectory.h
     gui/opengldrawables/opengldrawabletrajectory.cpp
     gui/opengldrawables/opengldrawabledtm.h

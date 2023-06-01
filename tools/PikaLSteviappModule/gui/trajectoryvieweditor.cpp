@@ -3,6 +3,7 @@
 #include "geo/georasterreader.h"
 
 #include "datablocks/bilacquisitiondata.h"
+#include "datablocks/comparisontrajectory.h"
 #include "datablocks/inputdtm.h"
 
 #include <steviapp/gui/opengl3dsceneviewwidget.h>
@@ -76,11 +77,19 @@ TrajectoryViewEditor::TrajectoryViewEditor(QWidget *parent) :
     _viewScene->addDrawable(_grid);
 
     _drawableDtm = new OpenGlDrawableDtm(_viewScene);
+
     _drawableTrajectory = new OpenGlDrawableTrajectory(_viewScene);
+    _drawableTrajectory->setBaseColor(QColor(210, 0, 0, 255));
+    _drawableTrajectory->setHighlightSegmentColor(QColor(240, 190, 0, 255));
+
+    _comparisonTrajectory = new OpenGlDrawableTrajectory(_viewScene);
+    _comparisonTrajectory->setBaseColor(QColor(0, 210, 0, 255));
+    _comparisonTrajectory->setHighlightSegmentColor(QColor(150, 240, 210, 255));
 
     setDrawableScale(0.1);
 
     _viewScene->addDrawable(_drawableTrajectory);
+    _viewScene->addDrawable(_comparisonTrajectory);
     _viewScene->addDrawable(_drawableDtm);
 
     setLayout(layout);
@@ -105,6 +114,7 @@ void TrajectoryViewEditor::setEndLine(int bilLine) {
 
 void TrajectoryViewEditor::setDrawableScale(float scale) {
     _drawableTrajectory->setSceneScale(scale);
+    _comparisonTrajectory->setSceneScale(scale);
     _drawableDtm->setSceneScale(scale);
 }
 
@@ -189,6 +199,39 @@ void TrajectoryViewEditor::clearTrajectory() {
     _startLineSpinBox->setValue(0);
     _endLineSpinBox->setMaximum(1000);
     _endLineSpinBox->setValue(1000);
+}
+
+void TrajectoryViewEditor::setComparisonTrajectory(const ComparisonTrajectory &comparisonTrajectory) {
+
+    std::vector<Eigen::Vector3f> trajectory = comparisonTrajectory.ecefTrajectory();
+
+    StereoVisionApp::Project* project = comparisonTrajectory.getProject();
+
+    if (project == nullptr) {
+        return;
+    }
+
+    if (!project->hasLocalCoordinateFrame()) {
+        QMessageBox::warning(this,
+                             tr("Project does not have a local frame of reference"),
+                             tr("Setup a local frame of reference before showing the comparison trajectory!"));
+        return;
+    }
+
+    StereoVision::Geometry::AffineTransform<float> transformation = project->ecef2local();
+
+    std::vector<Eigen::Vector3f> localTrajectory;
+    localTrajectory.reserve(trajectory.size());
+
+    for (int i = 0; i < trajectory.size(); i++) {
+        localTrajectory.push_back(transformation*trajectory[i]);
+    }
+
+    _comparisonTrajectory->setTrajectory(localTrajectory);
+
+}
+void TrajectoryViewEditor::clearComparisonTrajectory() {
+    _comparisonTrajectory->clearTrajectory();
 }
 
 void TrajectoryViewEditor::setDtm(InputDtm* bilSequence) {
@@ -305,11 +348,14 @@ void TrajectoryViewEditor::setDtm(InputDtm* bilSequence) {
         }
     }
 
+    proj_destroy(reprojector);
+    proj_context_destroy(ctx);
+
     _drawableDtm->setDtm(vertices_local_pos, &vertices_valid);
 
 }
-void clearDtm() {
-
+void TrajectoryViewEditor::clearDtm() {
+    _drawableDtm->clearDtm();
 }
 
 TrajectoryViewEditorFactory::TrajectoryViewEditorFactory(QObject *parent) :
