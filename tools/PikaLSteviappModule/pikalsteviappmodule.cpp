@@ -9,11 +9,13 @@
 #include <steviapp/datablocks/project.h>
 
 #include "datablocks/bilacquisitiondata.h"
+#include "datablocks/inputdtm.h"
 
 #include "./gui/trajectoryvieweditor.h"
 #include "./gui/bilcubevieweditor.h"
 
 #include "actions/bilsequenceactionmanager.h"
+#include "actions/inputdtmactionmanager.h"
 
 namespace PikaLTools {
 
@@ -34,8 +36,10 @@ int PikaLSteviappModule::loadModule(StereoVisionApp::StereoVisionApplication* ap
     StereoVisionApp::ActionManagersLibrary& aml = StereoVisionApp::ActionManagersLibrary::defaultActionManagersLibrary();
 
     pF.addType(new BilSequenceAcquisitionDataFactory(app));
+    pF.addType(new InputDtmFactory(app));
 
     aml.registerDatablockActionManager(new BilSequenceActionManager(&pF));
+    aml.registerDatablockActionManager(new InputDtmActionManager(&pF));
 
     StereoVisionApp::MainWindow* w = app->mainWindow();
 

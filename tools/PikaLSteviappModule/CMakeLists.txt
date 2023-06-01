@@ -5,12 +5,20 @@ set(MODULE_SRC
     pikalsteviappmodule.cpp
     datablocks/bilacquisitiondata.h
     datablocks/bilacquisitiondata.cpp
+    datablocks/inputdtm.h
+    datablocks/inputdtm.cpp
     actions/bilsequenceactionmanager.h
     actions/bilsequenceactionmanager.cpp
     actions/bilsequenceactions.h
     actions/bilsequenceactions.cpp
+    actions/inputdtmactionmanager.h
+    actions/inputdtmactionmanager.cpp
+    actions/inputdtmactions.h
+    actions/inputdtmactions.cpp
     gui/opengldrawables/opengldrawabletrajectory.h
     gui/opengldrawables/opengldrawabletrajectory.cpp
+    gui/opengldrawables/opengldrawabledtm.h
+    gui/opengldrawables/opengldrawabledtm.cpp
     gui/trajectoryvieweditor.h
     gui/trajectoryvieweditor.cpp
     gui/bilcubevieweditor.h

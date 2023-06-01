@@ -26,6 +26,11 @@ if (NOT QCUSTOMPLOT_LIBRARY)
     message(SEND_ERROR "QCustomPlot not found")
 endif()
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GDAL REQUIRED IMPORTED_TARGET gdal)
+add_library(GDAL::GDAL ALIAS PkgConfig::GDAL)
+#TODO: check when the ubuntu repos include the proper cmake configuration files in their repos
+
 find_package(Eigen3 3.3 REQUIRED)
 include_directories(${EIGEN3_INCLUDE_DIR})
 

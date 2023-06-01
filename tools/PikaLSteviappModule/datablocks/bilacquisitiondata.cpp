@@ -126,7 +126,9 @@ bool BilSequenceAcquisitionData::loadLcfData() const {
 
     PJ_CONTEXT* ctx = proj_context_create();
 
-    PJ* converter = proj_create_crs_to_crs(ctx, "EPSG:4326", "EPSG:4978", nullptr);
+    const char* wgs84_latlonalt = "EPSG:4326";
+    const char* wgs84_ecef = "EPSG:4978";
+    PJ* converter = proj_create_crs_to_crs(ctx, wgs84_latlonalt, wgs84_ecef, nullptr);
 
     if (converter == 0) { //in case of error
         return false;

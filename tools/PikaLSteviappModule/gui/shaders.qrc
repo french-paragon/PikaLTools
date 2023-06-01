@@ -2,5 +2,7 @@
     <qresource prefix="/">
         <file>glShaders/trajectoryViewerLine.vert</file>
         <file>glShaders/trajectoryViewerLine.frag</file>
+        <file>glShaders/dtmViewer.vert</file>
+        <file>glShaders/dtmViewer.frag</file>
     </qresource>
 </RCC>

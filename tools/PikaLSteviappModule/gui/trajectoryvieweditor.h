@@ -18,8 +18,11 @@ class OpenGlDrawableSceneGrid;
 
 namespace PikaLTools {
 
+class OpenGlDrawableDtm;
 class OpenGlDrawableTrajectory;
+
 class BilSequenceAcquisitionData;
+class InputDtm;
 
 class TrajectoryViewEditor : public StereoVisionApp::Editor
 {
@@ -30,10 +33,15 @@ public:
     void setTrajectory(BilSequenceAcquisitionData const& bilSequence);
     void clearTrajectory();
 
+    void setDtm(InputDtm *bilSequence);
+    void clearDtm();
+
     void setStartLine(int bilLine);
     void setEndLine(int bilLine);
 
 protected:
+
+    void setDrawableScale(float scale);
 
     inline float bil2lcfLineId(int bilId) const {
         QList<int> splitLines = _bil2lcfLines.keys();
@@ -77,6 +85,7 @@ protected:
     StereoVisionApp::OpenGl3DSceneViewWidget* _viewScene;
 
     StereoVisionApp::OpenGlDrawableSceneGrid* _grid;
+    OpenGlDrawableDtm* _drawableDtm;
     OpenGlDrawableTrajectory* _drawableTrajectory;
 
     QMap<int, int> _bil2lcfLines;
