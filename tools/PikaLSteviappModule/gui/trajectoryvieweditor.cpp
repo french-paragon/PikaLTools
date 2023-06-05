@@ -24,7 +24,9 @@
 namespace PikaLTools {
 
 TrajectoryViewEditor::TrajectoryViewEditor(QWidget *parent) :
-    StereoVisionApp::Editor(parent)
+    StereoVisionApp::Editor(parent),
+    _baseTrajectoryTimes(),
+    _compareTrajectoryTimes()
 {
     _viewScene = new StereoVisionApp::OpenGl3DSceneViewWidget(this);
 
@@ -85,6 +87,8 @@ TrajectoryViewEditor::TrajectoryViewEditor(QWidget *parent) :
     _comparisonTrajectory = new OpenGlDrawableTrajectory(_viewScene);
     _comparisonTrajectory->setBaseColor(QColor(0, 210, 0, 255));
     _comparisonTrajectory->setHighlightSegmentColor(QColor(150, 240, 210, 255));
+    _comparisonTrajectory->setSegmentStart(-1);
+    _comparisonTrajectory->setSegmentEnd(-1);
 
     setDrawableScale(0.1);
 
@@ -101,7 +105,26 @@ void TrajectoryViewEditor::setStartLine(int bilLine) {
         _startLineSpinBox->setValue(bilLine);
     }
 
-    _drawableTrajectory->setSegmentStart(bil2lcfLineId(bilLine));
+    int lcfLineId = bil2lcfLineId(bilLine);
+    _drawableTrajectory->setSegmentStart(lcfLineId);
+
+    if (!_baseTrajectoryTimes.empty() and !_compareTrajectoryTimes.empty()) {
+        float lcfTime = _baseTrajectoryTimes[std::min<int>(lcfLineId, _baseTrajectoryTimes.size()-1)];
+
+        int compareLineId = _compareTrajectoryTimes.size();
+
+        for (int i = 0; i < _compareTrajectoryTimes.size(); i++) {
+            if (_compareTrajectoryTimes[i] > lcfTime) {
+                compareLineId = i-1;
+                break;
+            }
+        }
+
+        _comparisonTrajectory->setSegmentStart(compareLineId);
+    } else {
+        _comparisonTrajectory->setSegmentStart(-1);
+        _comparisonTrajectory->setSegmentEnd(-1);
+    }
 }
 void TrajectoryViewEditor::setEndLine(int bilLine) {
 
@@ -109,7 +132,26 @@ void TrajectoryViewEditor::setEndLine(int bilLine) {
         _endLineSpinBox->setValue(bilLine);
     }
 
-    _drawableTrajectory->setSegmentEnd(bil2lcfLineId(bilLine));
+    int lcfLineId = bil2lcfLineId(bilLine);
+    _drawableTrajectory->setSegmentEnd(lcfLineId);
+
+    if (!_baseTrajectoryTimes.empty() and !_compareTrajectoryTimes.empty()) {
+        float lcfTime = _baseTrajectoryTimes[std::min<int>(lcfLineId, _baseTrajectoryTimes.size()-1)];
+
+        int compareLineId = _compareTrajectoryTimes.size();
+
+        for (int i = 0; i < _compareTrajectoryTimes.size(); i++) {
+            if (_compareTrajectoryTimes[i] > lcfTime) {
+                compareLineId = i;
+                break;
+            }
+        }
+
+        _comparisonTrajectory->setSegmentEnd(compareLineId);
+    } else {
+        _comparisonTrajectory->setSegmentStart(-1);
+        _comparisonTrajectory->setSegmentEnd(-1);
+    }
 }
 
 void TrajectoryViewEditor::setDrawableScale(float scale) {
@@ -185,6 +227,8 @@ void TrajectoryViewEditor::setTrajectory(const BilSequenceAcquisitionData &bilSe
         _bil2lcfLines.insert(nLines, nLcfLines);
     }
 
+    _baseTrajectoryTimes = bilSequence.ecefTimes();
+
     _startLineSpinBox->setMaximum(trajectory.size());
     _endLineSpinBox->setMaximum(trajectory.size());
 
@@ -228,6 +272,8 @@ void TrajectoryViewEditor::setComparisonTrajectory(const ComparisonTrajectory &c
     }
 
     _comparisonTrajectory->setTrajectory(localTrajectory);
+
+    _compareTrajectoryTimes = comparisonTrajectory.ecefTimes();
 
 }
 void TrajectoryViewEditor::clearComparisonTrajectory() {

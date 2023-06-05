@@ -123,6 +123,7 @@ QList<QString> BilSequenceAcquisitionData::getBilFiles() const {
 bool BilSequenceAcquisitionData::loadLcfData() const {
 
     _ecefTrajectory.clear();
+    _ecefTimes.clear();
 
     PJ_CONTEXT* ctx = proj_context_create();
 
@@ -144,6 +145,7 @@ bool BilSequenceAcquisitionData::loadLcfData() const {
         std::vector<EnviBilLcfLine> lines = bil.loadLcfData();
 
         _ecefTrajectory.reserve(_ecefTrajectory.size() + lines.size());
+        _ecefTimes.reserve(_ecefTimes.size() + lines.size());
 
         for (EnviBilLcfLine line : lines) {
 
@@ -169,6 +171,7 @@ bool BilSequenceAcquisitionData::loadLcfData() const {
             Eigen::Matrix3f rot = StereoVision::Geometry::eulerDegXYZToRotation<float>(line.roll, line.pitch, line.yaw);
 
             _ecefTrajectory.push_back(StereoVision::Geometry::AffineTransform<float>(ecef2localAlt0.R.transpose().cast<float>()*rot,t));
+            _ecefTimes.push_back(line.timeStamp);
         }
     }
 

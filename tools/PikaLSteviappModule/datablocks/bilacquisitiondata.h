@@ -89,6 +89,14 @@ public:
         return _ecefTrajectory;
     }
 
+    inline std::vector<float> const& ecefTimes() const {
+        if (!_ecefTrajectoryCached) {
+            loadLcfData();
+        }
+
+        return _ecefTimes;
+    }
+
     template<typename T>
     Multidim::Array<T, 3> getBilData(int startLine, int lastLine) const {
 
@@ -179,6 +187,7 @@ protected:
 
     mutable bool _ecefTrajectoryCached;
     mutable std::vector<StereoVision::Geometry::AffineTransform<float>> _ecefTrajectory; //trajectory, as a sequence of body to ecef poses
+    mutable std::vector<float> _ecefTimes;
 };
 
 class BilSequenceAcquisitionDataFactory : public StereoVisionApp::DataBlockFactory

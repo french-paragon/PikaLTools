@@ -25,6 +25,14 @@ public:
         return _ecefTrajectory;
     }
 
+    inline std::vector<float> const& ecefTimes() const {
+        if (!_ecefTrajectoryCached) {
+            loadCsvData();
+        }
+
+        return _ecefTimings;
+    }
+
     bool geoReferenceSupportActive() const override;
     Eigen::Array<float,3, Eigen::Dynamic> getLocalPointsEcef() const override;
     QString getCoordinateReferenceSystemDescr(int role = DefaultCRSRole) const override;
@@ -45,6 +53,7 @@ protected:
 
     mutable bool _ecefTrajectoryCached;
     mutable std::vector<Eigen::Vector3f> _ecefTrajectory;
+    mutable std::vector<float> _ecefTimings;
 };
 
 class ComparisonTrajectoryFactory : public StereoVisionApp::DataBlockFactory

@@ -97,6 +97,9 @@ protected:
 
     QSpinBox* _startLineSpinBox;
     QSpinBox* _endLineSpinBox;
+
+    std::vector<float> _baseTrajectoryTimes;
+    std::vector<float> _compareTrajectoryTimes;
 };
 
 class TrajectoryViewEditorFactory : public StereoVisionApp::EditorFactory

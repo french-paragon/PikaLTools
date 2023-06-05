@@ -73,6 +73,7 @@ void ComparisonTrajectory::configureFromJson(QJsonObject const& data) {
 bool ComparisonTrajectory::loadCsvData() const {
 
     _ecefTrajectory.clear();
+    _ecefTimings.clear();
 
     PJ_CONTEXT* ctx = proj_context_create();
 
@@ -146,6 +147,7 @@ bool ComparisonTrajectory::loadCsvData() const {
         Eigen::Vector3f t(vx, vy, vz);
 
         _ecefTrajectory.push_back(t);
+        _ecefTimings.push_back(time);
     }
 
     if (_ecefTrajectory.empty()) {
