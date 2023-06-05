@@ -6,7 +6,7 @@ namespace PikaLTools {
 
 InputDtm::InputDtm(StereoVisionApp::Project *parent) :
     StereoVisionApp::DataBlock(parent),
-    _minHeight(std::nullopt),
+    _minHeight(0),
     _maxHeight(std::nullopt)
 {
     extendDataModel();
