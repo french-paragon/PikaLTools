@@ -86,7 +86,7 @@ TrajectoryViewEditor::TrajectoryViewEditor(QWidget *parent) :
 
     _comparisonTrajectory = new OpenGlDrawableTrajectory(_viewScene);
     _comparisonTrajectory->setBaseColor(QColor(0, 210, 0, 255));
-    _comparisonTrajectory->setHighlightSegmentColor(QColor(150, 240, 210, 255));
+    _comparisonTrajectory->setHighlightSegmentColor(QColor(10, 10, 210, 255));
     _comparisonTrajectory->setSegmentStart(-1);
     _comparisonTrajectory->setSegmentEnd(-1);
 
@@ -109,7 +109,7 @@ void TrajectoryViewEditor::setStartLine(int bilLine) {
     _drawableTrajectory->setSegmentStart(lcfLineId);
 
     if (!_baseTrajectoryTimes.empty() and !_compareTrajectoryTimes.empty()) {
-        float lcfTime = _baseTrajectoryTimes[std::min<int>(lcfLineId, _baseTrajectoryTimes.size()-1)];
+        double lcfTime = _baseTrajectoryTimes[std::min<int>(lcfLineId, _baseTrajectoryTimes.size()-1)];
 
         int compareLineId = _compareTrajectoryTimes.size();
 
@@ -136,7 +136,7 @@ void TrajectoryViewEditor::setEndLine(int bilLine) {
     _drawableTrajectory->setSegmentEnd(lcfLineId);
 
     if (!_baseTrajectoryTimes.empty() and !_compareTrajectoryTimes.empty()) {
-        float lcfTime = _baseTrajectoryTimes[std::min<int>(lcfLineId, _baseTrajectoryTimes.size()-1)];
+        double lcfTime = _baseTrajectoryTimes[std::min<int>(lcfLineId, _baseTrajectoryTimes.size()-1)];
 
         int compareLineId = _compareTrajectoryTimes.size();
 

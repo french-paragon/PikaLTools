@@ -25,7 +25,7 @@ public:
         return _ecefTrajectory;
     }
 
-    inline std::vector<float> const& ecefTimes() const {
+    inline std::vector<double> const& ecefTimes() const {
         if (!_ecefTrajectoryCached) {
             loadCsvData();
         }
@@ -53,7 +53,7 @@ protected:
 
     mutable bool _ecefTrajectoryCached;
     mutable std::vector<Eigen::Vector3f> _ecefTrajectory;
-    mutable std::vector<float> _ecefTimings;
+    mutable std::vector<double> _ecefTimings;
 };
 
 class ComparisonTrajectoryFactory : public StereoVisionApp::DataBlockFactory
