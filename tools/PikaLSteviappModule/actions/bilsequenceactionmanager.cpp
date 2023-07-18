@@ -58,7 +58,13 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
         exportBilLandmarks(bilSeq);
     });
 
-    return {view_trajectory, view_bil_cube, export_landmarks};
+    QAction* compute_orthophoto = new QAction(tr("Compute orthophoto"), parent);
+
+    connect(compute_orthophoto, &QAction::triggered, [bilSeq] () {
+        computeOrthophoto(bilSeq);
+    });
+
+    return {view_trajectory, view_bil_cube, export_landmarks, compute_orthophoto};
 }
 
 QList<QAction*> BilSequenceActionManager::factorizeMultiItemsContextActions(QObject* parent, StereoVisionApp::Project* p, QModelIndexList const& projectIndex) const {

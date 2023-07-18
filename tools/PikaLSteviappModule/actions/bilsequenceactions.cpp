@@ -1,18 +1,36 @@
 #include "bilsequenceactions.h"
 
 #include <steviapp/datablocks/project.h>
+#include <steviapp/control/application.h>
 #include <steviapp/control/mainwindow.h>
+#include <steviapp/gui/stepprocessmonitorbox.h>
+
+#include "LibStevi/geometry/core.h"
+#include "LibStevi/geometry/rotations.h"
+#include "LibStevi/io/image_io.h"
 
 #include "../datablocks/bilacquisitiondata.h"
+#include "../datablocks/inputdtm.h"
+
 #include "../gui/trajectoryvieweditor.h"
 #include "../gui/bilcubevieweditor.h"
+#include "../gui/exportorthophotooptionsdialog.h"
+
+#include "../processing/rectifybilseqtoorthosteppedprocess.h"
+
+#include "io/read_envi_bil.h"
+
+#include "geo/georasterreader.h"
 
 #include <QList>
 #include <QDir>
+#include <QThread>
 
 #include <QFileDialog>
 
 #include <algorithm>
+
+#include <proj.h>
 
 namespace PikaLTools {
 
@@ -211,6 +229,93 @@ bool exportBilLandmarks(BilSequenceAcquisitionData *bilSequence, QString const& 
     }
 
     fout.close();
+    return true;
+}
+
+
+bool computeOrthophoto(BilSequenceAcquisitionData *bilSequence, InputDtm* pInputDtm, QString const& pOutFile) {
+
+    if (bilSequence == nullptr) {
+        return false;
+    }
+
+    //get options
+    StereoVisionApp::StereoVisionApplication* app = StereoVisionApp::StereoVisionApplication::GetAppInstance();
+
+    if (app == nullptr) {
+        return false;
+    }
+
+    StereoVisionApp::MainWindow* mw = StereoVisionApp::MainWindow::getActiveMainWindow();
+    StereoVisionApp::Project* proj = bilSequence->getProject();
+
+    if (proj == nullptr) {
+        return false;
+    }
+
+    InputDtm* inputDtm = pInputDtm;
+    QString outFile = pOutFile;
+
+    int minBilLine = -1;
+    int maxBilLine = -1;
+
+    if (mw != nullptr) {
+        ExportOrthoPhotoOptionsDialog dialog(mw);
+
+        dialog.setMaxFileId(bilSequence->getBilInfos().size());
+
+        int code = dialog.exec();
+
+        if (code == QDialog::Rejected) {
+            return false;
+        }
+
+        inputDtm = proj->getDataBlock<InputDtm>(dialog.selectedDtmIdx());
+        outFile = dialog.outFile();
+
+        minBilLine = dialog.minFileId();
+        maxBilLine = dialog.maxFileId();
+    }
+
+    if (inputDtm == nullptr) {
+        return false;
+    }
+
+    if (outFile.isEmpty()) {
+        return false;
+    }
+
+    RectifyBilSeqToOrthoSteppedProcess* processor = new RectifyBilSeqToOrthoSteppedProcess();
+    processor->configure(bilSequence, inputDtm, outFile);
+    processor->setMinAndMaxFileId(minBilLine, maxBilLine);
+
+    QThread* t = new QThread();
+
+    processor->moveToThread(t);
+    QObject::connect(processor, &QObject::destroyed, t, &QThread::quit);
+    QObject::connect(t, &QThread::finished, t, &QObject::deleteLater);
+
+    if (mw != nullptr) {
+
+        StereoVisionApp::StepProcessMonitorBox* box = new StereoVisionApp::StepProcessMonitorBox(mw);
+        box->setWindowFlag(Qt::Dialog);
+        box->setWindowModality(Qt::WindowModal);
+        box->setWindowTitle(QObject::tr("Sparse optimization"));
+
+        box->setProcess(processor);
+
+        QObject::connect(box, &QObject::destroyed, processor, &QObject::deleteLater);
+
+        box->show();
+
+    } else {
+
+        processor->deleteWhenDone(true);
+    }
+
+    t->start();
+    processor->run();
+
     return true;
 }
 

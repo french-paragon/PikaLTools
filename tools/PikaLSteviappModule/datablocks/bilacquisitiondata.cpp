@@ -168,7 +168,7 @@ bool BilSequenceAcquisitionData::loadLcfData() const {
 
             Eigen::Vector3f t(vx, vy, vz);
 
-            Eigen::Matrix3f rot = StereoVision::Geometry::eulerDegXYZToRotation<float>(line.roll, line.pitch, line.yaw);
+            Eigen::Matrix3f rot = StereoVision::Geometry::eulerRadXYZToRotation<float>(-line.roll, -line.pitch, -line.yaw);
 
             _ecefTrajectory.push_back(StereoVision::Geometry::AffineTransform<float>(ecef2localAlt0.R.transpose().cast<float>()*rot,t));
             _ecefTimes.push_back(line.timeStamp);

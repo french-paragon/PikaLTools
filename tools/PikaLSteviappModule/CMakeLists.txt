@@ -21,6 +21,8 @@ set(MODULE_SRC
     actions/comparisonsequenceactionmanager.cpp
     actions/comparisonsequenceactions.h
     actions/comparisonsequenceactions.cpp
+    processing/rectifybilseqtoorthosteppedprocess.h
+    processing/rectifybilseqtoorthosteppedprocess.cpp
     gui/opengldrawables/opengldrawabletrajectory.h
     gui/opengldrawables/opengldrawabletrajectory.cpp
     gui/opengldrawables/opengldrawabledtm.h
@@ -31,6 +33,9 @@ set(MODULE_SRC
     gui/bilcubevieweditor.cpp
     gui/imageOverlays/bilsequencelandmarksoverlay.h
     gui/imageOverlays/bilsequencelandmarksoverlay.cpp
+    gui/exportorthophotooptionsdialog.h
+    gui/exportorthophotooptionsdialog.cpp
+    gui/exportorthophotooptionsdialog.ui
     gui/shaders.qrc)
 
 
