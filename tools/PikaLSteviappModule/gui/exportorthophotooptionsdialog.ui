@@ -27,9 +27,9 @@
     </widget>
    </item>
    <item>
-    <widget class="QGroupBox" name="fileLimitGroupBox">
+    <widget class="QGroupBox" name="lineLimitGroupBox">
      <property name="title">
-      <string>File limit</string>
+      <string>Lines limit</string>
      </property>
      <property name="checkable">
       <bool>true</bool>
@@ -41,12 +41,12 @@
       <item>
        <widget class="QLabel" name="label">
         <property name="text">
-         <string>Treate file from:</string>
+         <string>Treate lines from:</string>
         </property>
        </widget>
       </item>
       <item>
-       <widget class="QSpinBox" name="minFileSpinBox">
+       <widget class="QSpinBox" name="minLineSpinBox">
         <property name="sizePolicy">
          <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
           <horstretch>0</horstretch>
@@ -69,7 +69,7 @@
        </widget>
       </item>
       <item>
-       <widget class="QSpinBox" name="maxFileSpinBox">
+       <widget class="QSpinBox" name="maxLineSpinBox">
         <property name="sizePolicy">
          <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
           <horstretch>0</horstretch>

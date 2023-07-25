@@ -259,10 +259,12 @@ bool computeOrthophoto(BilSequenceAcquisitionData *bilSequence, InputDtm* pInput
     int minBilLine = -1;
     int maxBilLine = -1;
 
+    int nLines = bilSequence->nLinesInSequence();
+
     if (mw != nullptr) {
         ExportOrthoPhotoOptionsDialog dialog(mw);
 
-        dialog.setMaxFileId(bilSequence->getBilInfos().size());
+        dialog.setLineFileId(nLines);
 
         int code = dialog.exec();
 
@@ -273,8 +275,8 @@ bool computeOrthophoto(BilSequenceAcquisitionData *bilSequence, InputDtm* pInput
         inputDtm = proj->getDataBlock<InputDtm>(dialog.selectedDtmIdx());
         outFile = dialog.outFile();
 
-        minBilLine = dialog.minFileId();
-        maxBilLine = dialog.maxFileId();
+        minBilLine = dialog.minLineId();
+        maxBilLine = dialog.maxLineId();
     }
 
     if (inputDtm == nullptr) {
@@ -287,7 +289,7 @@ bool computeOrthophoto(BilSequenceAcquisitionData *bilSequence, InputDtm* pInput
 
     RectifyBilSeqToOrthoSteppedProcess* processor = new RectifyBilSeqToOrthoSteppedProcess();
     processor->configure(bilSequence, inputDtm, outFile);
-    processor->setMinAndMaxFileId(minBilLine, maxBilLine);
+    processor->setMinAndMaxLineId(minBilLine, maxBilLine);
 
     QThread* t = new QThread();
 

@@ -22,10 +22,10 @@ public:
 
     QString outFile() const;
 
-    int minFileId() const;
-    int maxFileId() const;
+    int minLineId() const;
+    int maxLineId() const;
 
-    void setMaxFileId(int nBilFiles);
+    void setLineFileId(int nLines);
 
 private:
 

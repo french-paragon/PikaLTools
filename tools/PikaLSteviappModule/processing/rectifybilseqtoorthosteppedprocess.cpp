@@ -16,8 +16,8 @@ namespace PikaLTools {
 RectifyBilSeqToOrthoSteppedProcess::RectifyBilSeqToOrthoSteppedProcess(QObject *parent) :
     StereoVisionApp::SteppedProcess(parent),
     _bilSequence(nullptr),
-    _minFileRow(-1),
-    _maxFileRow(-1)
+    _minBilLine(-1),
+    _maxBilLine(-1)
 {
 
 }
@@ -67,7 +67,9 @@ bool RectifyBilSeqToOrthoSteppedProcess::doNextStep() {
     int nLines = data.getNLines();
     int nLcfLines = data.getLcfNLines();
 
-    if (_minFileRow >= 0 and currentStep() < _minFileRow) {
+    if (_minBilLine >= 0 and _processedLines + nLines < _minBilLine) {
+
+        _processedLines += nLines;
 
         _bilStartIdx += nLines;
         _lcfStartIdx += nLcfLines;
@@ -75,7 +77,9 @@ bool RectifyBilSeqToOrthoSteppedProcess::doNextStep() {
         return true;
     }
 
-    if (_maxFileRow >= 0 and currentStep() > _maxFileRow) {
+    if (_maxBilLine >= 0 and _processedLines + nLines > _maxBilLine) {
+
+        _processedLines += nLines;
 
         return true;
     }
@@ -91,6 +95,17 @@ bool RectifyBilSeqToOrthoSteppedProcess::doNextStep() {
     Rcam2drone(2,2) = -1;
 
     for (int i = 0; i < nLines; i++) {
+
+        if (_minBilLine >= 0 and _processedLines < _minBilLine) {
+            _processedLines++;
+            continue;
+        }
+
+        if (_maxBilLine >= 0 and _processedLines > _maxBilLine) {
+            return true;
+        }
+
+        _processedLines++;
 
         float lcfIdx = _lcfStartIdx + i*nLcfLines/(nLines-1);
 
@@ -360,6 +375,8 @@ bool RectifyBilSeqToOrthoSteppedProcess::init() {
     _ecefTrajectory = _bilSequence->ecefTrajectory();
     _ecefTimes = _bilSequence->ecefTimes();
     _bilPaths = _bilSequence->getBilFiles();
+
+    _processedLines = 0;
 
     auto header = readHeaderData(_bilPaths.first().toStdString());
 

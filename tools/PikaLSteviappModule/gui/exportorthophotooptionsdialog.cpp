@@ -20,8 +20,8 @@ ExportOrthoPhotoOptionsDialog::ExportOrthoPhotoOptionsDialog(QWidget *parent) :
     ui->outFileLineEdit->setReadOnly(true);
     connect(ui->openOutFileButton, &QPushButton::clicked, this, &ExportOrthoPhotoOptionsDialog::selectOutFile);
 
-    ui->minFileSpinBox->setMinimum(-1);
-    ui->maxFileSpinBox->setMinimum(-1);
+    ui->minLineSpinBox->setMinimum(-1);
+    ui->maxLineSpinBox->setMinimum(-1);
 }
 
 ExportOrthoPhotoOptionsDialog::~ExportOrthoPhotoOptionsDialog()
@@ -37,22 +37,22 @@ QString ExportOrthoPhotoOptionsDialog::outFile() const {
     return ui->outFileLineEdit->text();
 }
 
-int ExportOrthoPhotoOptionsDialog::minFileId() const {
-    if (ui->fileLimitGroupBox->isChecked()) {
-        return ui->minFileSpinBox->value();
+int ExportOrthoPhotoOptionsDialog::minLineId() const {
+    if (ui->lineLimitGroupBox->isChecked()) {
+        return ui->minLineSpinBox->value();
     }
     return -1;
 }
-int ExportOrthoPhotoOptionsDialog::maxFileId() const {
-    if (ui->fileLimitGroupBox->isChecked()) {
-        return ui->maxFileSpinBox->value();
+int ExportOrthoPhotoOptionsDialog::maxLineId() const {
+    if (ui->lineLimitGroupBox->isChecked()) {
+        return ui->maxLineSpinBox->value();
     }
     return -1;
 }
 
-void ExportOrthoPhotoOptionsDialog::setMaxFileId(int nBilFiles) {
-    ui->minFileSpinBox->setMaximum(nBilFiles-1);
-    ui->maxFileSpinBox->setMaximum(nBilFiles);
+void ExportOrthoPhotoOptionsDialog::setLineFileId(int nLines) {
+    ui->minLineSpinBox->setMaximum(nLines-1);
+    ui->maxLineSpinBox->setMaximum(nLines);
 }
 
 void ExportOrthoPhotoOptionsDialog::configureDtmList() {

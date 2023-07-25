@@ -29,9 +29,9 @@ public:
         _outFile = outFile;
     }
 
-    inline void setMinAndMaxFileId(int min, int max) {
-        _minFileRow = min;
-        _maxFileRow = max;
+    inline void setMinAndMaxLineId(int min, int max) {
+        _minBilLine = min;
+        _maxBilLine = max;
     }
 
     /*!
@@ -101,8 +101,10 @@ protected:
 
     QString _outFile;
 
-    int _minFileRow;
-    int _maxFileRow;
+    int _minBilLine;
+    int _maxBilLine;
+
+    int _processedLines;
 };
 
 } // namespace PikaLTools
