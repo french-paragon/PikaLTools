@@ -4,6 +4,8 @@
 #include <steviapp/control/application.h>
 #include <steviapp/control/mainwindow.h>
 #include <steviapp/gui/stepprocessmonitorbox.h>
+#include <steviapp/gui/imageviewer.h>
+#include <steviapp/gui/imageadapters/imagedatadisplayadapter.h>
 
 #include "LibStevi/geometry/core.h"
 #include "LibStevi/geometry/rotations.h"
@@ -319,6 +321,213 @@ bool computeOrthophoto(BilSequenceAcquisitionData *bilSequence, InputDtm* pInput
     processor->run();
 
     return true;
+}
+
+bool showCovariance(BilSequenceAcquisitionData *bilSequence) {
+
+    QTextStream out(stdout);
+
+    if (bilSequence == nullptr) {
+        return false;
+    }
+
+    //get options
+    StereoVisionApp::StereoVisionApplication* app = StereoVisionApp::StereoVisionApplication::GetAppInstance();
+
+    if (app == nullptr) {
+        return false;
+    }
+
+    StereoVisionApp::MainWindow* mw = StereoVisionApp::MainWindow::getActiveMainWindow();
+    StereoVisionApp::Project* proj = bilSequence->getProject();
+
+    if (mw == nullptr or proj == nullptr) {
+        return false;
+    }
+
+    QVector<QString> files =  bilSequence->getBilFiles().toVector();
+
+    Eigen::MatrixXd XXt;
+    Eigen::VectorXd X;
+
+    Eigen::VectorXd meanEst;
+
+    int64_t nElems = 0;
+    int64_t nSamplesAdded = 0;
+
+    StereoVisionApp::Editor* editor = mw->openEditor(StereoVisionApp::ImageViewer::ImageViewerClassName);
+    StereoVisionApp::ImageViewer* imageViewer = qobject_cast<StereoVisionApp::ImageViewer*>(editor);
+
+    if (imageViewer == nullptr) {
+        return false;
+    }
+
+    int rFileIdx = files.size()/2;
+
+    //set a file from mid sequence as first, as it would be more representative of the spetrum in the flight
+    QString randomFile = files[rFileIdx];
+    files[rFileIdx] = files[0];
+    files[0] = randomFile;
+
+    for (int f = 0; f < files.size(); f += 10) {
+
+        QString & file = files[f];
+
+        out << "Reading bil file: " << file << Qt::endl;
+
+        Multidim::Array<float,3> spectral_data = read_envi_bil_to_float(file.toStdString());
+
+        if (spectral_data.empty()) {
+            out << "Image is empty, or could not read image data!" << Qt::endl;
+            return false;
+        }
+
+        out << "Data loaded" << Qt::endl;
+
+        int nLines = spectral_data.shape()[LineAxis];
+        int nSamples = spectral_data.shape()[SamplesAxis];
+        int nBands = spectral_data.shape()[BandsAxis];
+
+        out << "nLines: " << nLines << Qt::endl;
+        out << "nSamples: " << nSamples << Qt::endl;
+        out << "nBands: " << nBands << Qt::endl;
+
+        nElems += nLines*nSamples;
+
+        //first element
+        if (XXt.size() == 0) {
+
+            XXt.resize(nBands, nBands);
+            XXt.setConstant(0);
+
+            X.resize(nBands, 1);
+            X.setConstant(0);
+
+            meanEst.resize(nBands, 1);
+            meanEst.setConstant(0);
+
+            //compute a mean estimate for numerical stability of the algorithm
+
+            int n = 0;
+
+            for (int i = 0; i < nLines; i += 100) {
+                for (int j = 0; j < nSamples; j += 20) {
+
+                    Eigen::VectorXd Xtmp;
+
+                    Xtmp.resize(nBands, 1);
+
+                    for (int id1 = 0; id1 < nBands; id1++) {
+
+                        std::array<int,3> idx1;
+                        idx1[LineAxis] = i;
+                        idx1[SamplesAxis] = j;
+                        idx1[BandsAxis] = id1;
+
+                        float v1 = spectral_data.valueUnchecked(idx1);
+
+                        Xtmp[id1] = v1;
+                    }
+
+                    meanEst += Xtmp;
+                    n++;
+
+                }
+            }
+
+            meanEst /= n;
+        }
+
+        for (int i = 0; i < nLines; i += 500) {
+            for (int j = 0; j < nSamples; j += 100) {
+
+                Eigen::VectorXd Xtmp;
+
+                Xtmp.resize(nBands, 1);
+
+                for (int id1 = 0; id1 < nBands; id1++) {
+
+                    std::array<int,3> idx1;
+                    idx1[LineAxis] = i;
+                    idx1[SamplesAxis] = j;
+                    idx1[BandsAxis] = id1;
+
+                    float v1 = spectral_data.valueUnchecked(idx1);
+
+                    Xtmp[id1] = v1;
+                }
+
+                Xtmp -= meanEst; //numerical stability
+
+                X += Xtmp;
+                XXt += Xtmp*Xtmp.transpose();
+
+                nSamplesAdded += 1;
+
+            }
+        }
+
+    }
+
+    Eigen::MatrixXd cov = 1/(static_cast<double>(nSamplesAdded)-1)*(XXt - X*X.transpose()/static_cast<double>(nSamplesAdded));
+    int nBands = cov.rows();
+
+    Multidim::Array<double, 2> covImg(nBands, nBands);
+
+    double maxCov = 0;
+
+    for (int i = 0; i < nBands; i++) {
+        for (int j = 0; j < nBands; j++) {
+            covImg.atUnchecked(i,j) = cov(i,j)/(std::sqrt(cov(i,i))*std::sqrt(cov(j,j)));
+
+            if (cov(i,j) > maxCov) {
+                maxCov = cov(i,j);
+            }
+        }
+    }
+
+    StereoVisionApp::ImageDataDisplayAdapter* covDataDisplay = new StereoVisionApp::ImageDataDisplayAdapter(imageViewer);
+
+    std::function<QColor(float)> gradient = [] (float prop) -> QColor {
+
+        constexpr std::array<float, 3> color1 = {15,0,255};
+        constexpr std::array<float, 3> color2 = {0,255,0};
+        constexpr std::array<float, 3> color3 = {255,255,0};
+
+        std::array<float, 3> c1 = (prop < 0.5) ? color1 : color2;
+        std::array<float, 3> c2 = (prop < 0.5) ? color2 : color3;
+
+        float propLocal = 2*prop;
+
+        if (propLocal >= 1) {
+            propLocal -= 1;
+        }
+
+        if (propLocal < 0) {
+            propLocal = 0;
+        } if (propLocal > 1) {
+            propLocal = 1;
+        }
+
+        float p1 = 1 - propLocal;
+        float p2 = propLocal;
+
+        std::array<float, 3> colorOut = {p1*c1[0] + p2*c2[0],
+                                         p1*c1[1] + p2*c2[1],
+                                         p1*c1[2] + p2*c2[2]};
+
+        return QColor(colorOut[0], colorOut[1], colorOut[2]);
+    };
+
+    covDataDisplay->setGradient(gradient);
+
+    bool logConvert = false;
+    covDataDisplay->setImageFromArray(covImg, 1., -1., logConvert);
+
+    imageViewer->setImage(covDataDisplay, true);
+
+    return true;
+
 }
 
 } // namespace PikaLTools

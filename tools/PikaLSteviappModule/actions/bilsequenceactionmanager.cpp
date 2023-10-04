@@ -64,7 +64,13 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
         computeOrthophoto(bilSeq);
     });
 
-    return {view_trajectory, view_bil_cube, export_landmarks, compute_orthophoto};
+    QAction* compute_corrMat = new QAction(tr("Show data correlation"), parent);
+
+    connect(compute_corrMat, &QAction::triggered, [bilSeq] () {
+        showCovariance(bilSeq);
+    });
+
+    return {view_trajectory, view_bil_cube, export_landmarks, compute_orthophoto, compute_corrMat};
 }
 
 QList<QAction*> BilSequenceActionManager::factorizeMultiItemsContextActions(QObject* parent, StereoVisionApp::Project* p, QModelIndexList const& projectIndex) const {

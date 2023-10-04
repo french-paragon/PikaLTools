@@ -22,6 +22,8 @@ bool exportBilLandmarks(BilSequenceAcquisitionData *bilSequence, QString const& 
 
 bool computeOrthophoto(BilSequenceAcquisitionData *bilSequence, InputDtm* inputDtm = nullptr, const QString &outFile = "");
 
+bool showCovariance(BilSequenceAcquisitionData *bilSequence);
+
 } // namespace PikaLTools
 
 #endif // BILSEQUENCEACTIONS_H
