@@ -152,7 +152,7 @@ Multidim::Array<T, 3> read_envi_bil(std::string const& filename) {
         return Multidim::Array<T, 3>();
     }
 
-    if (n_bytes/sizeof (T) != lines*samples*bands) {
+    if (n_bytes/sizeof (T) != static_cast<size_t>(lines)*samples*bands) {
         //invalid file size
         return Multidim::Array<T, 3>();
     }

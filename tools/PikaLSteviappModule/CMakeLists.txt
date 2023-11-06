@@ -36,7 +36,19 @@ set(MODULE_SRC
     gui/exportorthophotooptionsdialog.h
     gui/exportorthophotooptionsdialog.cpp
     gui/exportorthophotooptionsdialog.ui
-    gui/shaders.qrc)
+    gui/shaders.qrc
+    gui/datacolumnsselectionwidget.h
+    gui/datacolumnsselectionwidget.cpp
+    gui/pushbroomoptimizationconfigdialog.h
+    gui/pushbroomoptimizationconfigdialog.cpp
+    gui/simulatepushbroomtiepointsoptiondialog.h
+    gui/simulatepushbroomtiepointsoptiondialog.cpp
+    solving/cerespushbroomsolver.h
+    solving/cerespushbroomsolver.cpp
+    solving/cost_functors/parametrizedxyz2pushbroom.h
+    solving/cost_functors/parametrizedxyz2pushbroom.cpp
+    solving/cost_functors/orientationspeedconsistency.h
+    solving/cost_functors/orientationspeedconsistency.cpp)
 
 
 add_library(
@@ -52,5 +64,6 @@ target_link_libraries(${MODULE_NAME}
     SteviappSdk::stevi #stereovision lib from the Steviapp SDK
     SteviappSdk::qImageWidget #qImageWidget lib from the Steviapp SDK
     ${IO_LIB}
+    ${PROCESSING_LIB}
     Qt${QT_VERSION_MAJOR}::Core
     Qt${QT_VERSION_MAJOR}::Widgets)

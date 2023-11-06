@@ -186,6 +186,20 @@ bool BilSequenceAcquisitionData::loadLcfData() const {
     return true;
 }
 
+bool BilSequenceAcquisitionData::isInfosOnly() const {
+    return _bilSequence.isEmpty();
+}
+
+const BilSequenceAcquisitionData::SequenceInfos &BilSequenceAcquisitionData::sequenceInfos() const
+{
+    return _sequenceInfos;
+}
+
+void BilSequenceAcquisitionData::setSequenceInfos(const SequenceInfos &newSequenceInfos)
+{
+    _sequenceInfos = newSequenceInfos;
+}
+
 void BilSequenceAcquisitionData::clearOptimized() {
     return;
 }
@@ -471,6 +485,16 @@ QJsonObject BilSequenceAcquisitionData::encodeJson() const {
 
     obj.insert("Landmarks", arr);
 
+    QJsonObject seqInfos;
+
+    seqInfos.insert("fLen", _sequenceInfos.fLen);
+    seqInfos.insert("initialTime", _sequenceInfos.initial_time);
+    seqInfos.insert("lineWidth", _sequenceInfos.lineWidth);
+    seqInfos.insert("nLines", _sequenceInfos.nLines);
+    seqInfos.insert("timePerLine", _sequenceInfos.time_per_line);
+
+    obj.insert("SeqInfos", seqInfos);
+
     return obj;
 }
 
@@ -506,6 +530,16 @@ void BilSequenceAcquisitionData::configureFromJson(QJsonObject const& data) {
                 insertSubItem(lm);
             }
         }
+    }
+
+    if (data.contains("SeqInfos")) {
+        QJsonObject seqInfos = data.value("SeqInfos").toObject();
+
+        _sequenceInfos.fLen = seqInfos.value("fLen").toDouble();
+        _sequenceInfos.initial_time = seqInfos.value("initialTime").toDouble();
+        _sequenceInfos.lineWidth = seqInfos.value("lineWidth").toInt();
+        _sequenceInfos.nLines = seqInfos.value("nLines").toInt();
+        _sequenceInfos.time_per_line = seqInfos.value("timePerLine").toDouble();
     }
 }
 

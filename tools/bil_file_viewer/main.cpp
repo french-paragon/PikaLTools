@@ -43,19 +43,35 @@ int displayBilImage(std::string const& filename, int argc, char** argv) {
     QApplication app(argc, argv);
 
     T blackLevel = 0;
-    T whiteLevel;
+    T whiteLevel = 0;
 
     if (headerData.count("ceiling") <= 0) {
         out << "Missing ceiling data in header!" << Qt::endl;
-        return 1;
+        whiteLevel = -1;
     }
 
-    try {
-        whiteLevel = std::stoi(headerData["ceiling"]);
-    }
-    catch(std::invalid_argument const& e) {
-        out << "Invalid ceiling value in header file!" << Qt::endl;
-        return 1;
+    if ( whiteLevel < 0) {
+        try {
+            whiteLevel = std::stoi(headerData["ceiling"]);
+        }
+        catch(std::invalid_argument const& e) {
+            out << "Invalid ceiling value in header file!" << Qt::endl;
+            return 1;
+        }
+    } else {
+        whiteLevel = spectral_data.valueUnchecked(0,0,0);
+
+        for (int i = 0; i < spectral_data.shape()[0]; i++) {
+            for (int j = 0; j < spectral_data.shape()[1]; j++) {
+                for (int k = 0; k < spectral_data.shape()[2]; k++) {
+                    T val = spectral_data.valueUnchecked(i,j,k);
+
+                    if (val > whiteLevel) {
+                        whiteLevel = val;
+                    }
+                }
+            }
+        }
     }
 
     QVector<float> waveLengths;
@@ -109,9 +125,9 @@ int displayBilImage(std::string const& filename, int argc, char** argv) {
     lineViewWindow.setWindowTitle(QString("BIL slice #%1 view").arg(lineViewAdapter.getChannel()));
     lineViewWindow.show();
 
-    std::array<int, 3> colorChannels = {spectral_data.shape()[SpectralAxis]/4,
+    std::array<int, 3> colorChannels = {spectral_data.shape()[SpectralAxis]*3/4,
                                         spectral_data.shape()[SpectralAxis]/2,
-                                        spectral_data.shape()[SpectralAxis]-spectral_data.shape()[SpectralAxis]/4};
+                                        spectral_data.shape()[SpectralAxis]/4};
 
     if (waveLengths.size() == spectral_data.shape()[SpectralAxis]) {
 

@@ -25,7 +25,22 @@ std::optional<std::map<std::string, std::string>> readHeaderData(std::string con
     std::ifstream headerFile(filename + ".hdr");
 
     if (headerFile.fail()) {
-        return std::nullopt;
+        std::string replaced = filename;
+
+        int s = filename.size();
+
+        if (s < 3) {
+            return std::nullopt;
+        }
+        replaced[s-3] = 'h';
+        replaced[s-2] = 'd';
+        replaced[s-1] = 'r';
+
+        headerFile.open(replaced);
+
+        if (headerFile.fail()) {
+            return std::nullopt;
+        }
     }
 
     std::string lineData;

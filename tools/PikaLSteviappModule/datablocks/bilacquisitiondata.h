@@ -20,6 +20,7 @@
 #include "LibStevi/geometry/rotations.h"
 
 #include "../../libs/io/read_envi_bil.h"
+#include "../../libs/processing/scanlinecleaner.h"
 
 namespace PikaLTools {
 
@@ -31,6 +32,15 @@ class BilSequenceAcquisitionData : public StereoVisionApp::DataBlock, public Ste
     Q_INTERFACES(StereoVisionApp::GeoReferencedDataBlockInterface)
 
 public:
+
+    struct SequenceInfos { //this allows to run the optimizer in simulation mode without a bil file
+        int lineWidth;
+        int nLines;
+        double initial_time;
+        double time_per_line;
+        double fLen;
+    };
+
     BilSequenceAcquisitionData(StereoVisionApp::Project *parent = nullptr);
 
     class BilAcquisitionData {
@@ -162,6 +172,10 @@ public:
     Eigen::Array<float,3, Eigen::Dynamic> getLocalPointsEcef() const override;
     QString getCoordinateReferenceSystemDescr(int CRSRole = DefaultCRSRole) const override;
 
+    bool isInfosOnly() const;
+    const SequenceInfos &sequenceInfos() const;
+    void setSequenceInfos(const SequenceInfos &newSequenceInfos);
+
 Q_SIGNALS:
 
     void pointAdded(qint64 pt);
@@ -185,9 +199,14 @@ protected:
 
     QList<BilAcquisitionData> _bilSequence;
 
+    SequenceInfos _sequenceInfos;
+
     mutable bool _ecefTrajectoryCached;
     mutable std::vector<StereoVision::Geometry::AffineTransform<float>> _ecefTrajectory; //trajectory, as a sequence of body to ecef poses
     mutable std::vector<double> _ecefTimes;
+
+
+    mutable std::vector<bool> _mask;
 };
 
 class BilSequenceAcquisitionDataFactory : public StereoVisionApp::DataBlockFactory

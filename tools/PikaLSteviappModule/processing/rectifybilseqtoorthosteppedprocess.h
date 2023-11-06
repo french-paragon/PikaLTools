@@ -59,20 +59,6 @@ protected:
     virtual bool init() override;
     virtual void cleanup() override;
 
-    struct PixReprojection{
-        float pixCoord; //the coordinate of the reprojected point in pixels
-        float verticalError; //the vertical error when reprojecting.
-    };
-
-    PixReprojection findPixCoordinateInLine(Eigen::Vector3f const& pointTarget,
-                                            StereoVision::Geometry::AffineTransform<float> ref2cam,
-                                            float camFlen,
-                                            float camPP);
-
-    Eigen::Vector2f findRayIntersection(Multidim::Array<float, 2> const& heightMap,
-                                        Eigen::Vector3f const& rayOrigin,
-                                        Eigen::Vector3f const& rayDirection);
-
     InputDtm* _inputDtm;
     GeoRasterData<float, 2> _rasterData;
     float _maxHeight;

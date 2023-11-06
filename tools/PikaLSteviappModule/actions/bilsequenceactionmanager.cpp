@@ -28,7 +28,12 @@ QList<QAction*> BilSequenceActionManager::factorizeClassContextActions(QObject* 
         loadBilSequenceFromFolder(p);
     });
 
-    return {add};
+    QAction* generateSimulated = new QAction(tr("Generate simulated bil sequence"), parent);
+    connect(generateSimulated, &QAction::triggered, [p] () {
+        simulatePseudoPushBroomData();
+    });
+
+    return {add, generateSimulated};
 
 }
 
@@ -70,7 +75,12 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
         showCovariance(bilSeq);
     });
 
-    return {view_trajectory, view_bil_cube, export_landmarks, compute_orthophoto, compute_corrMat};
+    QAction* optimizeSeq = new QAction(tr("Optimize bil sequence"), parent);
+    connect(optimizeSeq, &QAction::triggered, [bilSeq] () {
+        refineTrajectoryUsingDn(bilSeq);
+    });
+
+    return {view_trajectory, view_bil_cube, export_landmarks, compute_orthophoto, compute_corrMat, optimizeSeq};
 }
 
 QList<QAction*> BilSequenceActionManager::factorizeMultiItemsContextActions(QObject* parent, StereoVisionApp::Project* p, QModelIndexList const& projectIndex) const {

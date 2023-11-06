@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.5)
 
 project(PikaLTools LANGUAGES CXX)
 
+option(BUILD_TESTS "Build the test suite" ON)
+
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -31,6 +33,9 @@ pkg_check_modules(GDAL REQUIRED IMPORTED_TARGET gdal)
 add_library(GDAL::GDAL ALIAS PkgConfig::GDAL)
 #TODO: check when the ubuntu repos include the proper cmake configuration files in their repos
 
+find_package(Ceres REQUIRED)
+include_directories(${CERES_INCLUDE_DIRS})
+
 find_package(Eigen3 3.3 REQUIRED)
 include_directories(${EIGEN3_INCLUDE_DIR})
 
@@ -47,3 +52,7 @@ link_directories(${MODULES_LINK_DIRECTORIES})
 add_subdirectory(libs)
 
 add_subdirectory(tools)
+
+if (BUILD_TESTS)
+        add_subdirectory(tests)
+endif (BUILD_TESTS)
