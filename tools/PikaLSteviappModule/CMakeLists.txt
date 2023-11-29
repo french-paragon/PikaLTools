@@ -56,6 +56,10 @@ add_library(
     ${MODULE_SRC}
 )
 
+#ensure the path to the submodule libraries is set
+target_link_directories(${MODULE_NAME} PRIVATE ${CMAKE_BINARY_DIR}/submodules/LibStevi/)
+target_link_directories(${MODULE_NAME} PRIVATE ${CMAKE_BINARY_DIR}/submodules/LibStevi/submodules/qImageDisplayWidget/)
+
 set_target_properties(${MODULE_NAME} PROPERTIES PREFIX "")
 
 target_link_libraries(${MODULE_NAME}
