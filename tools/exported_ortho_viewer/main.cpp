@@ -76,15 +76,24 @@ int displayImage(std::string const& imageName, QMap<QString, QString> const& opt
 
     Multidim::Array<T, nDim> img(datacube.shape()[0], datacube.shape()[1], 3);
 
+    std::array<T,3> maxCol = {0,0,0};
+
     for (int i = 0; i < datacube.shape()[0]; i++) {
         for (int j = 0; j < datacube.shape()[1]; j++) {
 
             for (int c = 0; c < 3; c++) {
-                img.atUnchecked(i,j,c) = datacube.atUnchecked(i,j,selectedChannels[c]);
+                T val = datacube.atUnchecked(i,j,selectedChannels[c]);
+                img.atUnchecked(i,j,c) = val;
+
+                if (val > maxCol[c]) {
+                    maxCol[c] = val;
+                }
             }
 
         }
     }
+
+    outStream << "max colors: R = " << maxCol[0] << " G = " << maxCol[1] << " B = " << maxCol[2] << Qt::endl;
 
     StereoVision::Gui::ArrayDisplayAdapter<T> cimgAdapter(&img, blackLevel, whiteLevel);
 

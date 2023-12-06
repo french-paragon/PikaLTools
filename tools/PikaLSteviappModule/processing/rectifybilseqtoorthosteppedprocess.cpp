@@ -92,9 +92,9 @@ bool RectifyBilSeqToOrthoSteppedProcess::doNextStep() {
     double fLenPix = static_cast<double>(nPixels)/_normalizedSensorSize;
 
     Eigen::Matrix3f Rcam2drone = Eigen::Matrix3f::Zero();
-    Rcam2drone(0,0) = -1;
+    Rcam2drone(0,0) = 1;
     Rcam2drone(1,1) = 1;
-    Rcam2drone(2,2) = -1;
+    Rcam2drone(2,2) = 1;
 
     for (int i = 0; i < nLines; i++) {
 
@@ -109,7 +109,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::doNextStep() {
 
         _processedLines++;
 
-        float lcfIdx = _lcfStartIdx + i*nLcfLines/(nLines-1);
+        float lcfIdx = _lcfStartIdx + i*nLcfLines/(nLines-1); //TODO: try to use better time interpolation
 
         int lowIdx = static_cast<int>(std::floor(lcfIdx));
         int highIdx = static_cast<int>(std::ceil(lcfIdx));
@@ -464,6 +464,8 @@ void RectifyBilSeqToOrthoSteppedProcess::cleanup() {
 
     QFileInfo infos(_outFile);
     QDir dir = infos.dir();
+
+    std::cout << "Writing data to: " << dir.absolutePath().toStdString() << std::endl;
 
     StereoVision::IO::writeStevimg<float>(dir.absoluteFilePath(infos.fileName()).toStdString(), _patchBand);
     StereoVision::IO::writeStevimg<float>(dir.absoluteFilePath(infos.baseName() + "_min." + infos.suffix()).toStdString(), _minVal);

@@ -168,9 +168,34 @@ bool BilSequenceAcquisitionData::loadLcfData() const {
 
             Eigen::Vector3f t(vx, vy, vz);
 
-            Eigen::Matrix3f rot = StereoVision::Geometry::eulerRadXYZToRotation<float>(-line.roll, -line.pitch, -line.yaw);
+            StereoVision::Geometry::AffineTransform<double> ecef2ned = getLocalFrameAtPosNED<double>(line.lat, line.lon, WGS84_Ellipsoid, line.height);
 
-            _ecefTrajectory.push_back(StereoVision::Geometry::AffineTransform<float>(ecef2localAlt0.R.transpose().cast<float>()*rot,t));
+            line.pitch = line.pitch;
+            line.roll = -line.roll;
+
+            Eigen::Matrix3f yawRMat;
+            yawRMat << cos(line.yaw), -sin(line.yaw), 0,
+                       sin(line.yaw), cos(line.yaw), 0,
+                       0, 0, 1;
+
+            Eigen::Matrix3f pitchRMat;
+            pitchRMat << cos(line.pitch), 0, sin(line.pitch),
+                         0, 1, 0,
+                         -sin(line.pitch), 0, cos(line.pitch);
+
+            Eigen::Matrix3f rollRMat;
+            rollRMat << 1, 0, 0,
+                        0, cos(line.roll), -sin(line.roll),
+                        0, sin(line.roll), cos(line.roll);
+
+            Eigen::Matrix3f RIMU2NED = yawRMat*pitchRMat*rollRMat;
+
+            Eigen::Matrix3f cam2imu = Eigen::Matrix3f::Identity();
+            cam2imu << 0, 1, 0,
+                       -1, 0, 0,
+                       0, 0, 1;
+
+            _ecefTrajectory.push_back(StereoVision::Geometry::AffineTransform<float>(ecef2ned.R.transpose().cast<float>()*RIMU2NED*cam2imu,t));
             _ecefTimes.push_back(line.timeStamp);
         }
     }
