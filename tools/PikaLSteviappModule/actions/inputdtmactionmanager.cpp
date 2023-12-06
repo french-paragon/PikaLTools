@@ -46,7 +46,12 @@ QList<QAction*> InputDtmActionManager::factorizeItemContextActions(QObject* pare
         viewInputDtm(dtm);
     });
 
-    return {view};
+    QAction* view2d = new QAction(tr("View input dtm raster"), parent);
+    connect(view2d, &QAction::triggered, [dtm] () {
+        viewInputDtm2D(dtm);
+    });
+
+    return {view2d, view};
 
 }
 QList<QAction*> InputDtmActionManager::factorizeMultiItemsContextActions(QObject* parent,
