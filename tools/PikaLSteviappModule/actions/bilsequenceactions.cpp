@@ -915,7 +915,7 @@ bool refineTrajectoryUsingDn(BilSequenceAcquisitionData *bilSequence) {
         return false;
     }
 
-    int nSteps = 50;
+    int nSteps = 200;
 
     if (nSteps <= 0) {
         return false;
@@ -1163,9 +1163,9 @@ bool refineTrajectoryUsingDn(BilSequenceAcquisitionData *bilSequence) {
                                                             computeUncertainty,
                                                             sparse);
 
-    double gpsAccuracy = 0.1;
-    double gyroAccuracy = 0.5;
-    double accAccuracy = 0.5;
+    double gpsAccuracy = 0.02;
+    double gyroAccuracy = 0.1;
+    double accAccuracy = 0.2;
     double tiePointAccuracy = 0.5;
 
     solver->setGpsAccuracy(gpsAccuracy);
@@ -1186,7 +1186,7 @@ bool refineTrajectoryUsingDn(BilSequenceAcquisitionData *bilSequence) {
 
     solver->setResultsDataTable(resultsDataTable);
 
-    /*QThread* t = new QThread();
+    QThread* t = new QThread();
 
     solver->moveToThread(t);
     QObject::connect(solver, &QObject::destroyed, t, &QThread::quit);
@@ -1211,7 +1211,6 @@ bool refineTrajectoryUsingDn(BilSequenceAcquisitionData *bilSequence) {
     }
 
     t->start();
-    solver->run();*/
 
     solver->run();
 

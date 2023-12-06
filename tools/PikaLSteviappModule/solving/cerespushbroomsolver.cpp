@@ -11,6 +11,8 @@
 
 #include <ceres/normal_prior.h>
 
+#include <random>
+
 namespace PikaLTools {
 
 
@@ -62,7 +64,8 @@ CeresPushBroomSolver::CeresPushBroomSolver(StereoVisionApp::Project* p,
     _gyroMeasurements(imuMeasurements),
     _additionalPoints(additionalPoints),
     _additionalViews(additionalViews),
-    _resultsDataTable(nullptr)
+    _resultsDataTable(nullptr),
+    _random_seed(0)
 {
 
     Eigen::Vector3d rAxis = StereoVision::Geometry::inverseRodriguezFormula(initialLeverArm.R);
@@ -74,6 +77,26 @@ CeresPushBroomSolver::CeresPushBroomSolver(StereoVisionApp::Project* p,
     _initialLeverArm.t[0] = initialLeverArm.t[0];
     _initialLeverArm.t[1] = initialLeverArm.t[1];
     _initialLeverArm.t[2] = initialLeverArm.t[2];
+
+    if (push_broom_sequence != nullptr) {
+        if (push_broom_sequence->isInfosOnly()) {
+            _sensorWidth = push_broom_sequence->sequenceInfos().lineWidth;
+        } else {
+            auto bilsInfos = push_broom_sequence->getBilInfos();
+
+            if (bilsInfos.size() > 0) {
+                auto header = bilsInfos[0].headerData();
+                QString widthStr = header.value("samples", "-1");
+
+                bool ok;
+                _sensorWidth = widthStr.toDouble(&ok);
+
+                if (!ok) {
+                    _sensorWidth = -1;
+                }
+            }
+        }
+    }
 
 }
 
@@ -118,6 +141,10 @@ bool CeresPushBroomSolver::init() {
     std::cout << "Entering init function" << std::endl;
 
     if (_currentProject == nullptr) {
+        return false;
+    }
+
+    if (_sensorWidth < 0) {
         return false;
     }
 
@@ -215,6 +242,13 @@ bool CeresPushBroomSolver::init() {
     IndexedVec3TimeSeq AccMeasurements = _accMeasurements.compileSequence();
     IndexedVec3TimeSeq GyroMeasurements = _gyroMeasurements.compileSequence();
 
+    std::default_random_engine randomEngine;
+    randomEngine.seed(_random_seed+1237862); //get a unique random seed for this function
+
+    std::normal_distribution<double> gpsErrorDist(0,_gpsAccuracy);
+    std::normal_distribution<double> gyroErrorDist(0,_gyroAccuracy);
+    std::normal_distribution<double> accErrorDist(0,_accAccuracy);
+
     //init gravity, lever arm and other fix parameters
     _gravity.vec[0] = 0;
     _gravity.vec[1] = 0;
@@ -298,10 +332,13 @@ bool CeresPushBroomSolver::init() {
                 stiffness(2,2) = 1e6;
             }
 
-            ceres::NormalPrior* normalPrior = new ceres::NormalPrior(stiffness, m);
+           if (lm->xCoord().isUncertain() or lm->yCoord().isUncertain() or lm->zCoord().isUncertain()) {
+                ceres::NormalPrior* normalPrior = new ceres::NormalPrior(stiffness, m);
 
-            _problem.AddResidualBlock(normalPrior, nullptr, pos.position.data());
-
+                _problem.AddResidualBlock(normalPrior, nullptr, pos.position.data());
+            } else {
+                _problem.SetParameterBlockConstant(pos.position.data());
+            }
         }
 
         i++;
@@ -363,6 +400,17 @@ bool CeresPushBroomSolver::init() {
         pose.t[1] = pos.weigthLower*pos.valLower[1] + pos.weigthUpper*pos.valUpper[1];
         pose.t[2] = pos.weigthLower*pos.valLower[2] + pos.weigthUpper*pos.valUpper[2];
 
+        pose.tGt = pose.t;
+        pose.rAxisGt = pose.rAxis;
+
+        pose.t[0] += gpsErrorDist(randomEngine);
+        pose.t[1] += gpsErrorDist(randomEngine);
+        pose.t[2] += gpsErrorDist(randomEngine);
+
+        pose.rAxis[0] += gyroErrorDist(randomEngine);
+        pose.rAxis[1] += gyroErrorDist(randomEngine);
+        pose.rAxis[2] += gyroErrorDist(randomEngine);
+
         pose.v[0] = 0;
         pose.v[1] = 0;
         pose.v[2] = 0;
@@ -370,6 +418,9 @@ bool CeresPushBroomSolver::init() {
         pose.wAxis[0] = 0;
         pose.wAxis[1] = 0;
         pose.wAxis[2] = 0;
+
+        pose.tInitial = pose.t;
+        pose.rAxisInitial = pose.rAxis;
 
         _problem.AddParameterBlock(pose.rAxis.data(), pose.rAxis.size());
         _problem.AddParameterBlock(pose.wAxis.data(), pose.wAxis.size());
@@ -384,15 +435,24 @@ bool CeresPushBroomSolver::init() {
         m[1] = pose.t[1];
         m[2] = pose.t[2];
 
+        ceres::Vector mr;
+        mr.resize(3);
+
+        mr[0] = pose.rAxis[0];
+        mr[1] = pose.rAxis[1];
+        mr[2] = pose.rAxis[2];
+
         ceres::Matrix stiffness = Eigen::Matrix3d::Identity();
 
-        stiffness(0,0) = _gpsAccuracy;
-        stiffness(1,1) = _gpsAccuracy;
-        stiffness(2,2) = _gpsAccuracy;
+        stiffness(0,0) = 1./_gpsAccuracy;
+        stiffness(1,1) = 1./_gpsAccuracy;
+        stiffness(2,2) = 1./_gpsAccuracy;
 
-        ceres::NormalPrior* normalPrior = new ceres::NormalPrior(stiffness, m);
+        ceres::NormalPrior* positionNormalPrior = new ceres::NormalPrior(stiffness, m);
+        ceres::NormalPrior* attitudeNormalPrior = new ceres::NormalPrior(stiffness, mr);
 
-        _problem.AddResidualBlock(normalPrior, nullptr, pose.t.data());
+        _problem.AddResidualBlock(positionNormalPrior, nullptr, pose.t.data());
+        _problem.AddResidualBlock(attitudeNormalPrior, nullptr, pose.rAxis.data());
 
         //add eventual point measurements
 
@@ -437,10 +497,10 @@ bool CeresPushBroomSolver::init() {
 
             Eigen::Matrix<double,2,2> weigthMat = Eigen::Matrix<double,2,2>::Identity();
 
-            weigthMat(0,0) = _tiepointsAccuracy;
-            weigthMat(1,1) = _tiepointsAccuracy;
+            weigthMat(0,0) = 1./_tiepointsAccuracy;
+            weigthMat(1,1) = 1./_tiepointsAccuracy;
 
-            StereoVisionApp::WeightedCostFunction<2,3,3,3,3,3,3,3,1,1,6,6>* weigthedImuStepCost =
+            StereoVisionApp::WeightedCostFunction<2,3,3,3,3,3,3,3,1,1,6,6>* weigthedProjectionCost =
                     new StereoVisionApp::WeightedCostFunction<2,3,3,3,3,3,3,3,1,1,6,6>(projectionCostFunction, weigthMat);
 
             LandmarkPos& lmPos = _landmarksParameters[lm_idx];
@@ -465,7 +525,7 @@ bool CeresPushBroomSolver::init() {
             }
 #endif
 
-            _problem.AddResidualBlock(weigthedImuStepCost, nullptr,
+            _problem.AddResidualBlock(weigthedProjectionCost, nullptr,
                                       lmPos.position.data(),
                                       _leverArm.rAxis.data(),
                                       _leverArm.t.data(),
@@ -520,17 +580,17 @@ bool CeresPushBroomSolver::init() {
             double posUncertainty = _accAccuracy*dt*dt/2;
             double poseUncertainty = _gyroAccuracy*dt;
 
-            weigthMat(0,0) = poseUncertainty;
-            weigthMat(1,1) = poseUncertainty;
-            weigthMat(2,2) = poseUncertainty;
+            weigthMat(0,0) = 1/poseUncertainty;
+            weigthMat(1,1) = 1/poseUncertainty;
+            weigthMat(2,2) = 1/poseUncertainty;
 
-            weigthMat(3,3) = posUncertainty;
-            weigthMat(4,4) = posUncertainty;
-            weigthMat(5,5) = posUncertainty;
+            weigthMat(3,3) = 1/posUncertainty;
+            weigthMat(4,4) = 1/posUncertainty;
+            weigthMat(5,5) = 1/posUncertainty;
 
-            weigthMat(6,6) = speedUncertainty;
-            weigthMat(7,7) = speedUncertainty;
-            weigthMat(8,8) = speedUncertainty;
+            weigthMat(6,6) = 1/speedUncertainty;
+            weigthMat(7,7) = 1/speedUncertainty;
+            weigthMat(8,8) = 1/speedUncertainty;
 
             StereoVisionApp::WeightedCostFunction<9,3,3,3,3,3,3,3>* weigthedImuStepCost =
                     new StereoVisionApp::WeightedCostFunction<9,3,3,3,3,3,3,3>(imuStepCostFunction, weigthMat);
@@ -632,6 +692,14 @@ bool CeresPushBroomSolver::writeResults() {
 
     QVector<QVariant> finalTimes;
 
+    QVector<QVariant> initialTrajPosX;
+    QVector<QVariant> initialTrajPosY;
+    QVector<QVariant> initialTrajPosZ;
+
+    QVector<QVariant> initialTrajOrientX;
+    QVector<QVariant> initialTrajOrientY;
+    QVector<QVariant> initialTrajOrientZ;
+
     QVector<QVariant> finalTrajPosX;
     QVector<QVariant> finalTrajPosY;
     QVector<QVariant> finalTrajPosZ;
@@ -640,7 +708,23 @@ bool CeresPushBroomSolver::writeResults() {
     QVector<QVariant> finalTrajOrientY;
     QVector<QVariant> finalTrajOrientZ;
 
+    QVector<QVariant> gtTrajPosX;
+    QVector<QVariant> gtTrajPosY;
+    QVector<QVariant> gtTrajPosZ;
+
+    QVector<QVariant> gtTrajOrientX;
+    QVector<QVariant> gtTrajOrientY;
+    QVector<QVariant> gtTrajOrientZ;
+
     finalTimes.reserve(_frameParameters.size());
+
+    initialTrajPosX.reserve(_frameParameters.size());
+    initialTrajPosY.reserve(_frameParameters.size());
+    initialTrajPosZ.reserve(_frameParameters.size());
+
+    initialTrajOrientX.reserve(_frameParameters.size());
+    initialTrajOrientY.reserve(_frameParameters.size());
+    initialTrajOrientZ.reserve(_frameParameters.size());
 
     finalTrajPosX.reserve(_frameParameters.size());
     finalTrajPosY.reserve(_frameParameters.size());
@@ -650,9 +734,25 @@ bool CeresPushBroomSolver::writeResults() {
     finalTrajOrientY.reserve(_frameParameters.size());
     finalTrajOrientZ.reserve(_frameParameters.size());
 
+    gtTrajPosX.reserve(_frameParameters.size());
+    gtTrajPosY.reserve(_frameParameters.size());
+    gtTrajPosZ.reserve(_frameParameters.size());
+
+    gtTrajOrientX.reserve(_frameParameters.size());
+    gtTrajOrientY.reserve(_frameParameters.size());
+    gtTrajOrientZ.reserve(_frameParameters.size());
+
     for (FramePoseParameters const& pose : _frameParameters) {
 
         finalTimes.push_back(pose.time);
+
+        initialTrajPosX.push_back(pose.tInitial[0]);
+        initialTrajPosY.push_back(pose.tInitial[1]);
+        initialTrajPosZ.push_back(pose.tInitial[2]);
+
+        initialTrajOrientX.push_back(pose.rAxisInitial[0]);
+        initialTrajOrientY.push_back(pose.rAxisInitial[1]);
+        initialTrajOrientZ.push_back(pose.rAxisInitial[2]);
 
         finalTrajPosX.push_back(pose.t[0]);
         finalTrajPosY.push_back(pose.t[1]);
@@ -661,11 +761,39 @@ bool CeresPushBroomSolver::writeResults() {
         finalTrajOrientX.push_back(pose.rAxis[0]);
         finalTrajOrientY.push_back(pose.rAxis[1]);
         finalTrajOrientZ.push_back(pose.rAxis[2]);
+
+        if (pose.tGt.has_value()) {
+            gtTrajPosX.push_back(pose.tGt.value()[0]);
+            gtTrajPosY.push_back(pose.tGt.value()[1]);
+            gtTrajPosZ.push_back(pose.tGt.value()[2]);
+        } else {
+            gtTrajPosX.push_back(QVariant());
+            gtTrajPosY.push_back(QVariant());
+            gtTrajPosZ.push_back(QVariant());
+        }
+
+        if (pose.rAxisGt.has_value()) {
+            gtTrajOrientX.push_back(pose.rAxisGt.value()[0]);
+            gtTrajOrientY.push_back(pose.rAxisGt.value()[1]);
+            gtTrajOrientZ.push_back(pose.rAxisGt.value()[2]);
+        } else {
+            gtTrajOrientX.push_back(QVariant());
+            gtTrajOrientY.push_back(QVariant());
+            gtTrajOrientZ.push_back(QVariant());
+        }
     }
 
     QMap<QString, QVector<QVariant>> data;
 
     data.insert("Time", finalTimes);
+
+    data.insert("Initial trajectory X coordinate", initialTrajPosX);
+    data.insert("Initial trajectory Y coordinate", initialTrajPosY);
+    data.insert("Initial trajectory Z coordinate", initialTrajPosZ);
+
+    data.insert("Initial trajectory X orientation", initialTrajOrientX);
+    data.insert("Initial trajectory Y orientation", initialTrajOrientY);
+    data.insert("Initial trajectory Z orientation", initialTrajOrientZ);
 
     data.insert("Trajectory X coordinate", finalTrajPosX);
     data.insert("Trajectory Y coordinate", finalTrajPosY);
@@ -674,6 +802,14 @@ bool CeresPushBroomSolver::writeResults() {
     data.insert("Trajectory X orientation", finalTrajOrientX);
     data.insert("Trajectory Y orientation", finalTrajOrientY);
     data.insert("Trajectory Z orientation", finalTrajOrientZ);
+
+    data.insert("GT trajectory X coordinate", gtTrajPosX);
+    data.insert("GT trajectory Y coordinate", gtTrajPosY);
+    data.insert("GT trajectory Z coordinate", gtTrajPosZ);
+
+    data.insert("GT trajectory X orientation", gtTrajOrientX);
+    data.insert("GT trajectory Y orientation", gtTrajOrientY);
+    data.insert("GT trajectory Z orientation", gtTrajOrientZ);
 
     _resultsDataTable->setData(data);
 

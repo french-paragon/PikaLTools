@@ -7,6 +7,8 @@
 #include <LibStevi/geometry/rotations.h>
 #include <LibStevi/geometry/alignement.h>
 
+#include <ceres/jet.h>
+
 namespace PikaLTools {
 
 class ParametrizedXYZ2PushBroom
@@ -73,9 +75,9 @@ public:
         T dx = as[0] + as[1]*s + as[2]*s2 + as[3]*s3 + as[4]*s4 + as[5]*s5; //compute corrections backwards for numerical stability
         T dy = bs[0] + bs[1]*s + bs[2]*s2 + bs[3]*s3 + bs[4]*s4 + bs[5]*s5;
 
-        proj[0] += pp[0];
-
         proj *= f[0];
+
+        proj[0] += pp[0];
 
         V2T error = proj;
         error[0] -= _uv[0] + dx;
@@ -83,6 +85,12 @@ public:
 
         residual[0] = error[0];
         residual[1] = error[1];
+
+#ifndef NDEBUG
+        if (!ceres::IsFinite(residual[0]) or !ceres::IsFinite(residual[1])) {
+            std::cout << "Error in projection computation" << std::endl;
+        }
+#endif
 
         return true;
     }

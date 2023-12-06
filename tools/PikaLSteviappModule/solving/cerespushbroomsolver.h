@@ -229,6 +229,14 @@ protected:
         std::array<double, 3> wAxis; //rotation speed
         std::array<double, 3> t; //position
         std::array<double, 3> v; // speed
+
+        //initial parameters (not optimized)
+        std::array<double, 3> rAxisInitial; //rotation axis
+        std::array<double, 3> tInitial; //position
+
+        //initial parameters (if the optimizer needs to print out the error)
+        std::optional<std::array<double, 3>> rAxisGt; //rotation axis
+        std::optional<std::array<double, 3>> tGt; //position
     };
 
     std::vector<FramePoseParameters> _frameParameters;
@@ -268,6 +276,8 @@ protected:
     GyroMeasurementInfos _gyroMeasurements;
     AdditionalPointsInfos _additionalPoints;
     AdditionalViewsInfos _additionalViews; //allow to specify ties points from a data table rather than a bilsequence datablock.
+
+    int _random_seed;
 
     double _gpsAccuracy;
     double _gyroAccuracy;
