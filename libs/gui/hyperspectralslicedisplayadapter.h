@@ -1,11 +1,11 @@
 #ifndef HYPERSPECTRALSLICEDISPLAYADAPTER_H
 #define HYPERSPECTRALSLICEDISPLAYADAPTER_H
 
-#include <qImageDisplayWidget/imageadapter.h>
+#include <StereoVision/QImageDisplayWidget/imageadapter.h>
 
 #include <MultidimArrays/MultidimArrays.h>
 
-#include <LibStevi/utils/types_manipulations.h>
+#include <StereoVision/utils/types_manipulations.h>
 
 template<typename Array_T, Multidim::ArrayDataAccessConstness viewConstness = Multidim::NonConstView>
 class HyperspectralSliceDisplayAdapter : public QImageDisplay::ImageAdapter

@@ -11,10 +11,10 @@
 
 #include <steviapp/vision/indexed_timed_sequence.h>
 
-#include "LibStevi/geometry/core.h"
-#include "LibStevi/geometry/rotations.h"
-#include "LibStevi/io/image_io.h"
-#include "LibStevi/interpolation/interpolation.h"
+#include <StereoVision/geometry/core.h>
+#include <StereoVision/geometry/rotations.h>
+#include <StereoVision/io/image_io.h>
+#include <StereoVision/interpolation/interpolation.h>
 
 #include "../datablocks/bilacquisitiondata.h"
 #include "../datablocks/inputdtm.h"

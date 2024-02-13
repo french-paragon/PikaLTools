@@ -17,7 +17,7 @@
 
 #include <optional>
 
-#include "LibStevi/geometry/rotations.h"
+#include <StereoVision/geometry/rotations.h>
 
 #include "../../libs/io/read_envi_bil.h"
 #include "../../libs/processing/scanlinecleaner.h"

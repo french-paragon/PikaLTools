@@ -1,7 +1,7 @@
 #ifndef PIKALTOOLS_BILSEQUENCELANDMARKSOVERLAY_H
 #define PIKALTOOLS_BILSEQUENCELANDMARKSOVERLAY_H
 
-#include <qImageDisplayWidget/overlay.h>
+#include <StereoVision/QImageDisplayWidget/overlay.h>
 
 #include <QMap>
 

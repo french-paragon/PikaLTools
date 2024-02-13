@@ -4,7 +4,7 @@
 #include <Eigen/LU>
 #include <Eigen/SVD>
 
-#include "LibStevi/imageProcessing/pixelsLines.h"
+#include <StereoVision/imageProcessing/pixelsLines.h>
 
 #include <set>
 

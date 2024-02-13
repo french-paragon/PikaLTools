@@ -4,7 +4,7 @@
 
 #include <steviapp/gui/editor.h>
 
-#include "LibStevi/geometry/rotations.h"
+#include <StereoVision/geometry/rotations.h>
 
 #include "../../libs/gui/hyperspectralsimplepseudocolordisplayadapter.h"
 

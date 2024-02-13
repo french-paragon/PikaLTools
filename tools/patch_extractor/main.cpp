@@ -1,19 +1,19 @@
 #include "libs/io/read_envi_bil.h"
 #include "libs/geo/coordinate_conversions.h"
 
-#include <qImageDisplayWidget/imagewindow.h>
-#include <qImageDisplayWidget/imageadapter.h>
+#include <StereoVision/QImageDisplayWidget/imagewindow.h>
+#include <StereoVision/QImageDisplayWidget/imageadapter.h>
 
 #include <QApplication>
 #include <QTextStream>
 #include <QVector>
 
-#include <LibStevi/utils/types_manipulations.h>
+#include <StereoVision/utils/types_manipulations.h>
 
-#include "LibStevi/gui/arraydisplayadapter.h"
+#include <StereoVision/gui/arraydisplayadapter.h>
 #include "gui/hyperspectralsimplepseudocolordisplayadapter.h"
 
-#include <LibStevi/geometry/core.h>
+#include <StereoVision/geometry/core.h>
 
 #include <MultidimArrays/MultidimArrays.h>
 

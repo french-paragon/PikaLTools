@@ -1,13 +1,13 @@
 #include "libs/io/read_envi_bil.h"
 
-#include <qImageDisplayWidget/imagewindow.h>
-#include <qImageDisplayWidget/imageadapter.h>
+#include <StereoVision/QImageDisplayWidget/imagewindow.h>
+#include <StereoVision/QImageDisplayWidget/imageadapter.h>
 
 #include <QApplication>
 #include <QTextStream>
 #include <QVector>
 
-#include <LibStevi/utils/types_manipulations.h>
+#include <StereoVision/utils/types_manipulations.h>
 
 #define QCUSTOMPLOT_USE_LIBRARY
 #include "qcustomplot.h"

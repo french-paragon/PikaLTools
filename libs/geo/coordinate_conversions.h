@@ -7,7 +7,7 @@
 #include <Eigen/Core>
 #include <Eigen/Dense>
 
-#include <LibStevi/geometry/core.h>
+#include <StereoVision/geometry/core.h>
 
 struct EllipsoidDefinition {
     double equatorialRadius;

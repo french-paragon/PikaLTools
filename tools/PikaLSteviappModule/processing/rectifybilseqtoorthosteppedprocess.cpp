@@ -1,7 +1,7 @@
 #include "rectifybilseqtoorthosteppedprocess.h"
 
-#include <LibStevi/io/image_io.h>
-#include <LibStevi/imageProcessing/pixelsLines.h>
+#include <StereoVision/io/image_io.h>
+#include <StereoVision/imageProcessing/pixelsLines.h>
 
 #include "../datablocks/bilacquisitiondata.h"
 #include "../datablocks/inputdtm.h"

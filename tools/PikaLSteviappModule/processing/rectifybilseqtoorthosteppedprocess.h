@@ -5,7 +5,7 @@
 
 #include <MultidimArrays/MultidimArrays.h>
 
-#include <LibStevi/geometry/rotations.h>
+#include <StereoVision/geometry/rotations.h>
 
 #include "geo/georasterreader.h"
 

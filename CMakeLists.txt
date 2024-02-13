@@ -28,6 +28,8 @@ if (NOT QCUSTOMPLOT_LIBRARY)
     message(SEND_ERROR "QCustomPlot not found")
 endif()
 
+find_package(StereoVision REQUIRED)
+
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GDAL REQUIRED IMPORTED_TARGET gdal)
 add_library(GDAL::GDAL ALIAS PkgConfig::GDAL)
@@ -44,10 +46,6 @@ find_package(SteviappSdk)
 if(${SteviappSdk_FOUND})
     message("Found steviapp sdk")
 endif()
-
-add_subdirectory(submodules)
-include_directories(${MODULES_INCLUDE_DIRECTORIES})
-link_directories(${MODULES_LINK_DIRECTORIES})
 
 add_subdirectory(libs)
 

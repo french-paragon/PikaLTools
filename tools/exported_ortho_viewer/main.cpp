@@ -1,10 +1,10 @@
-#include "LibStevi/io/image_io.h"
-#include "LibStevi/utils/types_manipulations.h"
+#include <StereoVision/io/image_io.h>
+#include <StereoVision/utils/types_manipulations.h>
 
 #include <QApplication>
 
-#include <qImageDisplayWidget/imagewindow.h>
-#include "LibStevi/gui/arraydisplayadapter.h"
+#include <StereoVision/QImageDisplayWidget/imagewindow.h>
+#include <StereoVision/gui/arraydisplayadapter.h>
 
 
 #include <QTextStream>

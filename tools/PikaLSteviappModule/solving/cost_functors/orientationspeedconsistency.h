@@ -3,9 +3,9 @@
 
 #include <Eigen/Core>
 
-#include <LibStevi/geometry/core.h>
-#include <LibStevi/geometry/rotations.h>
-#include <LibStevi/geometry/alignement.h>
+#include <StereoVision/geometry/core.h>
+#include <StereoVision/geometry/rotations.h>
+#include <StereoVision/geometry/alignement.h>
 
 
 namespace PikaLTools {

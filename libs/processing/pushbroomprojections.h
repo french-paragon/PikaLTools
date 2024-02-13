@@ -4,7 +4,7 @@
 #include <Eigen/Core>
 #include <MultidimArrays/MultidimArrays.h>
 
-#include "LibStevi/geometry/core.h"
+#include <StereoVision/geometry/core.h>
 
 #include <optional>
 

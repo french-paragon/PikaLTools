@@ -3,7 +3,7 @@
 
 #include <steviapp/gui/opengl3dsceneviewwidget.h>
 
-#include "LibStevi/geometry/rotations.h"
+#include <StereoVision/geometry/rotations.h>
 
 namespace PikaLTools {
 

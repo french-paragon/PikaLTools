@@ -2,7 +2,7 @@
 
 #include "processing/pushbroomprojections.h"
 
-#include <LibStevi/geometry/rotations.h>
+#include <StereoVision/geometry/rotations.h>
 
 #include <set>
 

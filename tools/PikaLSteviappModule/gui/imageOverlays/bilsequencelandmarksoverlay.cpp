@@ -2,7 +2,7 @@
 
 #include "../../datablocks/bilacquisitiondata.h"
 
-#include "qImageDisplayWidget/imagewidget.h"
+#include <StereoVision/QImageDisplayWidget/imagewidget.h>
 
 #include <QEvent>
 #include <QMouseEvent>
