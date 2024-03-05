@@ -65,8 +65,8 @@ set_target_properties(${MODULE_NAME} PROPERTIES PREFIX "")
 target_link_libraries(${MODULE_NAME}
     SteviappSdk::StereoVisionAppControl
     SteviappSdk::StereoVisionAppData
-    SteviappSdk::stevi #stereovision lib from the Steviapp SDK
-    SteviappSdk::qImageWidget #qImageWidget lib from the Steviapp SDK
+    StereoVision::stevi #stereovision lib from the Steviapp SDK
+    StereoVision::qImageWidget #qImageWidget lib from the Steviapp SDK
     ${IO_LIB}
     ${PROCESSING_LIB}
     Qt${QT_VERSION_MAJOR}::Core

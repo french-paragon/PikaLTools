@@ -87,7 +87,7 @@ void InputDtm::setMaxHeight(QVariant max) {
     }
 }
 
-std::optional<GeoRasterData<float, 2>> InputDtm::dtmData() const {
+std::optional<StereoVisionApp::Geo::GeoRasterData<float, 2>> InputDtm::dtmData() const {
     if (_dtmDataCache.has_value()) {
         return _dtmDataCache;
     }

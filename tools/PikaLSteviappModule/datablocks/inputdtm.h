@@ -28,7 +28,7 @@ public:
     QVariant maxHeight() const;
     void setMaxHeight(QVariant minHeight);
 
-    std::optional<GeoRasterData<float, 2>> dtmData() const;
+    std::optional<StereoVisionApp::Geo::GeoRasterData<float, 2>> dtmData() const;
 
 Q_SIGNALS:
 
@@ -48,7 +48,7 @@ protected:
     std::optional<float> _minHeight;
     std::optional<float> _maxHeight;
 
-    mutable std::optional<GeoRasterData<float, 2>> _dtmDataCache;
+    mutable std::optional<StereoVisionApp::Geo::GeoRasterData<float, 2>> _dtmDataCache;
 };
 
 class InputDtmFactory : public StereoVisionApp::DataBlockFactory

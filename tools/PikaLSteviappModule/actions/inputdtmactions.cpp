@@ -107,7 +107,7 @@ bool viewInputDtm2D(InputDtm* inputDtm) {
         return false;
     }
 
-    std::optional<GeoRasterData<float, 2>> dtmData = inputDtm->dtmData();
+    std::optional<StereoVisionApp::Geo::GeoRasterData<float, 2>> dtmData = inputDtm->dtmData();
 
     if (!dtmData.has_value()) {
         out << "Missing dtm data" << Qt::endl;

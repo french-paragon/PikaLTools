@@ -395,4 +395,38 @@ std::vector<std::array<int, 2>> terrainPixelsSeenByScannerLine(Multidim::Array<f
     return discretPoints;
 }
 
+Multidim::Array<bool, 2> terrainPixelsSeenForTrajectory(Multidim::Array<float, 2> const& terrain,
+                                                        std::vector<StereoVision::Geometry::AffineTransform<float>> const& trajectory,
+                                                        float camFLen,
+                                                        float camPP,
+                                                        int nSensorPixels,
+                                                        std::optional<float> maxHeight) {
+
+    auto shape = terrain.shape();
+
+    Multidim::Array<bool, 2> ret(shape);
+
+    for (int i = 0; i < shape[0]; i++) {
+        for (int j = 0; j < shape[1]; j++) {
+
+            ret.atUnchecked(i,j) = false;
+
+        }
+    }
+
+
+    for (StereoVision::Geometry::AffineTransform<float> const& cam2terrain : trajectory) {
+        std::vector<std::array<int, 2>> pixels = terrainPixelsSeenByScannerLine(terrain, cam2terrain, camFLen, camPP, nSensorPixels, maxHeight);
+
+        for (std::array<int, 2> const& pix : pixels) {
+            if (pix[0] >= 0 and pix[0] < shape[0] and pix[1] >= 0 and pix[1] < shape[1]) {
+                ret.atUnchecked(pix) = true;
+            }
+        }
+    }
+
+    return ret;
+
+}
+
 } // namespace PikaLTools

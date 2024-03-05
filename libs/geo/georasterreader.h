@@ -8,18 +8,9 @@
 
 #include <gdal/gdal_priv.h>
 
+#include <steviapp/geo/geoRaster.h>
+
 namespace PikaLTools {
-
-template <typename T, int nDim>
-struct GeoRasterData {
-
-    static_assert (nDim == 2 or nDim == 3, "a georaster can only have 2 or three dimensions");
-
-    Multidim::Array<T, nDim> raster;
-    Eigen::Matrix<double, 2,3> geoTransform;
-    std::string crsInfos;
-
-};
 
 template <typename T>
 constexpr GDALDataType gdalRasterTypeCode() {
@@ -71,7 +62,7 @@ constexpr GDALDataType gdalRasterTypeCode() {
 }
 
 template <typename T, int nDim>
-std::optional<GeoRasterData<T, nDim>> readGeoRasterData(std::string const& filename, bool strictType = false) {
+std::optional<StereoVisionApp::Geo::GeoRasterData<T, nDim>> readGeoRasterData(std::string const& filename, bool strictType = false) {
 
     static_assert (nDim == 2 or nDim == 3, "a georaster can only have 2 or three dimensions");
 
@@ -85,9 +76,12 @@ std::optional<GeoRasterData<T, nDim>> readGeoRasterData(std::string const& filen
         return std::nullopt;
     }
 
-    GeoRasterData<T,nDim> ret;
+    StereoVisionApp::Geo::GeoRasterData<T,nDim> ret;
 
     ret.crsInfos = dataset->GetProjectionRef();
+    OGRSpatialReference ogrSpatialRef(ret.crsInfos.c_str());
+
+    bool invertXY = ogrSpatialRef.EPSGTreatsAsLatLong();
 
     if (ret.crsInfos.empty()) {
         return std::nullopt;
@@ -143,6 +137,12 @@ std::optional<GeoRasterData<T, nDim>> readGeoRasterData(std::string const& filen
 
     ret.geoTransform << geoTransform[1], geoTransform[2], geoTransform[0],
             geoTransform[4], geoTransform[5], geoTransform[3];
+
+    if (invertXY) {
+        Eigen::Matrix<double, 1,3> tmp = ret.geoTransform.template block<1,3>(0,0);
+        ret.geoTransform.template block<1,3>(0,0) = ret.geoTransform.template block<1,3>(1,0);
+        ret.geoTransform.template block<1,3>(1,0) = tmp;
+    }
 
     ret.raster = Multidim::Array<T, nDim>(shape, strides);
 

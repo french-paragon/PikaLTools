@@ -35,6 +35,13 @@ std::vector<std::array<int, 2>> terrainPixelsSeenByScannerLine(Multidim::Array<f
                                                                int nSensorPixels,
                                                                std::optional<float> maxHeight = std::nullopt);
 
+Multidim::Array<bool, 2> terrainPixelsSeenForTrajectory(Multidim::Array<float, 2> const& terrain,
+                                                        std::vector<StereoVision::Geometry::AffineTransform<float>> const& trajectory,
+                                                        float camFLen,
+                                                        float camPP,
+                                                        int nSensorPixels,
+                                                        std::optional<float> maxHeight = std::nullopt);
+
 } // namespace PikaLTools
 
 #endif // PIKALTOOLS_PUSHBROOMPROJECTIONS_H

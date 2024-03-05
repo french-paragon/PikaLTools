@@ -15,7 +15,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fopenmp -march=native -
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/libs)
 
-find_package(QT NAMES Qt6 Qt5 COMPONENTS Core Test Widgets REQUIRED)
+find_package(QT NAMES Qt5 COMPONENTS Core Test Widgets REQUIRED)
 find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Core Test Widgets REQUIRED)
 
 set(CMAKE_AUTOUIC ON)
@@ -31,6 +31,10 @@ endif()
 find_package(StereoVision REQUIRED)
 
 find_package(PkgConfig REQUIRED)
+
+pkg_check_modules(PROJ REQUIRED IMPORTED_TARGET proj)
+add_library(PROJ::proj ALIAS PkgConfig::PROJ)
+
 pkg_check_modules(GDAL REQUIRED IMPORTED_TARGET gdal)
 add_library(GDAL::GDAL ALIAS PkgConfig::GDAL)
 #TODO: check when the ubuntu repos include the proper cmake configuration files in their repos
@@ -41,6 +45,7 @@ include_directories(${CERES_INCLUDE_DIRS})
 find_package(Eigen3 3.3 REQUIRED)
 include_directories(${EIGEN3_INCLUDE_DIR})
 
+find_package(StereoVision REQUIRED)
 find_package(SteviappSdk)
 
 if(${SteviappSdk_FOUND})

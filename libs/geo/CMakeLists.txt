@@ -10,4 +10,4 @@ add_library(
     ${LIB_SRC}
 )
 
-target_link_libraries(${GEO_LIB} GDAL::GDAL)
+target_link_libraries(${GEO_LIB} GDAL::GDAL SteviappSdk::StereoVisionAppGeo)

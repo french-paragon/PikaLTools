@@ -60,7 +60,7 @@ protected:
     virtual void cleanup() override;
 
     InputDtm* _inputDtm;
-    GeoRasterData<float, 2> _rasterData;
+    StereoVisionApp::Geo::GeoRasterData<float, 2> _rasterData;
     float _maxHeight;
     float _minHeight;
 

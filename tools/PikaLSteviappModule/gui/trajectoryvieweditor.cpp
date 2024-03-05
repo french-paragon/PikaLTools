@@ -301,7 +301,7 @@ void TrajectoryViewEditor::setDtm(InputDtm* bilSequence) {
         return;
     }
 
-    GeoRasterData<float,2>& rasterData = rasterDataOpt.value();
+    StereoVisionApp::Geo::GeoRasterData<float,2>& rasterData = rasterDataOpt.value();
 
     int nPoints = rasterData.raster.flatLenght();
 
