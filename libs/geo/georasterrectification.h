@@ -1,7 +1,7 @@
 #ifndef GEORASTERRECTIFICATION_H
 #define GEORASTERRECTIFICATION_H
 
-#include "./georasterreader.h"
+#include "../io/georasterreader.h"
 #include <StereoVision/geometry/core.h>
 
 #include <proj.h>
@@ -27,7 +27,7 @@ struct RectifiedGeoRasterData {
  * \return a RectifiedGeoRasterData struct containing the rectified dtm and the transform from the ecef frame to the local frame
  */
 template <typename T>
-RectifiedGeoRasterData<T, 2> rectifyDtm(GeoRasterData<T, 2> const& rawDtm) {
+RectifiedGeoRasterData<T, 2> rectifyDtm(StereoVisionApp::Geo::GeoRasterData<T, 2> const& rawDtm) {
 
     OGRSpatialReference ogrSpatialRef(rawDtm.crsInfos.c_str());
     bool invertXY = ogrSpatialRef.EPSGTreatsAsLatLong(); //ogr will always treat coordinates as lon then lat, but proj will stick to the epsg order definition. This mean we might need to invert the order.

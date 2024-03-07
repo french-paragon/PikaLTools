@@ -31,7 +31,7 @@
 
 #include "io/read_envi_bil.h"
 
-#include "geo/georasterreader.h"
+#include "io/georasterreader.h"
 
 #include "processing/texturegeneration.h"
 #include "processing/pushbroomprojections.h"

@@ -1,7 +1,3 @@
-#ifndef GEORASTERREADER_H
-#define GEORASTERREADER_H
-
-
 #ifndef PIKALTOOLS_GEORASTERREADER_H
 #define PIKALTOOLS_GEORASTERREADER_H
 
@@ -10,59 +6,63 @@
 #include <MultidimArrays/MultidimArrays.h>
 #include <Eigen/Core>
 
-#include <gdal/gdal_priv.h>
-
 #include <steviapp/geo/geoRaster.h>
 
 namespace PikaLTools {
 
+enum class DataTypeCode {
+    Unknown = 0,
+    UInt8 = 1,
+    Int8 = 2,
+    UInt16 = 3,
+    Int16 = 4,
+    UInt32 = 5,
+    Int32 = 6,
+    UInt64 = 7,
+    Int64 = 8,
+    Double = 9,
+    Float = 10
+};
+
 template <typename T>
-constexpr GDALDataType gdalRasterTypeCode() {
+constexpr DataTypeCode getDataTypeCode() {
+
     if (std::is_same_v<T, uint8_t>) {
-        return GDT_Byte;
+        return DataTypeCode::UInt8;
+    }
+    if (std::is_same_v<T, int8_t>) {
+        return DataTypeCode::Int8;
     }
 
     if (std::is_same_v<T, uint16_t>) {
-        return GDT_UInt16;
+        return DataTypeCode::UInt16;
+    }
+    if (std::is_same_v<T, int16_t>) {
+        return DataTypeCode::Int16;
     }
 
     if (std::is_same_v<T, uint32_t>) {
-        return GDT_UInt32;
+        return DataTypeCode::UInt32;
     }
-
-    if (std::is_same_v<T, int16_t>) {
-        return GDT_Int16;
-    }
-
     if (std::is_same_v<T, int32_t>) {
-        return GDT_Int32;
+        return DataTypeCode::Int32;
+    }
+
+    if (std::is_same_v<T, uint64_t>) {
+        return DataTypeCode::UInt64;
+    }
+    if (std::is_same_v<T, int64_t>) {
+        return DataTypeCode::Int64;
     }
 
     if (std::is_same_v<T, float>) {
-        return GDT_Float32;
+        return DataTypeCode::Float;
     }
-
     if (std::is_same_v<T, double>) {
-        return GDT_Float64;
+        return DataTypeCode::Double;
     }
 
-    if (std::is_same_v<T, std::complex<int16_t>>) {
-        return GDT_CInt16;
-    }
-
-    if (std::is_same_v<T, std::complex<int32_t>>) {
-        return GDT_CInt32;
-    }
-
-    if (std::is_same_v<T, std::complex<float>>) {
-        return GDT_CFloat32;
-    }
-
-    if (std::is_same_v<T, std::complex<double>>) {
-        return GDT_CFloat64;
-    }
-
-    return GDT_Unknown;
+    return DataTypeCode::Unknown;
 }
 
 template <typename T, int nDim>
@@ -71,6 +71,3 @@ std::optional<StereoVisionApp::Geo::GeoRasterData<T, nDim>> readGeoRasterData(st
 } // namespace PikaLTools
 
 #endif // PIKALTOOLS_GEORASTERREADER_H
-
-
-#endif // GEORASTERREADER_H

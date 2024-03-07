@@ -77,6 +77,13 @@ bool envi_bil_img_match_type(std::string const& filename) {
     return false;
 }
 
+/*!
+ * \brief get_bil_sequence_files gives the list of bil files in a folder containing a sequence
+ * \param main_folder the folder containing the sequence (each file along with metadata in its own folder)
+ * \return the list of files
+ */
+std::vector<std::string> get_bil_sequence_files(std::string const& main_folder);
+
 template<typename T>
 Multidim::Array<T, 3> read_envi_bil(std::string const& filename) {
 

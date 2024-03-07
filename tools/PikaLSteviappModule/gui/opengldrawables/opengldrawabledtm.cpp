@@ -1,6 +1,6 @@
 #include "opengldrawabledtm.h"
 
-#include "geo/georasterreader.h"
+#include "io/georasterreader.h"
 
 #include <steviapp/datablocks/project.h>
 

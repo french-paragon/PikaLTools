@@ -8,7 +8,7 @@
 
 #include <optional>
 
-#include "geo/georasterreader.h"
+#include "io/georasterreader.h"
 
 namespace PikaLTools {
 

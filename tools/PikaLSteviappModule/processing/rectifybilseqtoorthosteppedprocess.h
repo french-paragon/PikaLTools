@@ -7,7 +7,7 @@
 
 #include <StereoVision/geometry/rotations.h>
 
-#include "geo/georasterreader.h"
+#include "io/georasterreader.h"
 
 namespace PikaLTools {
 

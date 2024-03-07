@@ -1,6 +1,48 @@
 #include "georasterreader.h"
 
+#include <geotiff/geotiff.h>
+#include <geotiff/geo_normalize.h>
+#include <geotiff/geotiffio.h>
+#include <geotiff/xtiffio.h>
+
+#include <StereoVision/io/image_io.h>
+
 namespace PikaLTools {
+
+/*!
+ * \brief The GeoTiff class is a small encapsulator for libgeotiff data structs to leverage RAII
+ */
+class GeoTiff {
+public:
+    GeoTiff(std::string const& filename):
+        tiffFile(nullptr),
+        geoInfos(nullptr)
+    {
+
+        tiffFile = XTIFFOpen(filename.c_str(),"r");
+
+        if (tiffFile == nullptr) {
+            return;
+        }
+
+        geoInfos = GTIFNew(tiffFile);
+
+    }
+
+    ~GeoTiff() {
+        if (tiffFile != nullptr) {
+            TIFFClose(tiffFile);
+            GTIFFree(geoInfos);
+        }
+    }
+
+    bool isValid() const {
+        return tiffFile != nullptr and geoInfos != nullptr;
+    }
+
+    TIFF* tiffFile;
+    GTIF* geoInfos;
+};
 
 template <typename T, int nDim>
 std::optional<StereoVisionApp::Geo::GeoRasterData<T, nDim>> readGeoRasterData(std::string const& filename, bool strictType) {
@@ -9,102 +51,104 @@ std::optional<StereoVisionApp::Geo::GeoRasterData<T, nDim>> readGeoRasterData(st
 
     using IdxArray = std::array<int, nDim>;
 
-    constexpr GDALAccess access = GA_ReadOnly;
+    GeoTiff geoTiffHandles(filename);
 
-    GDALDatasetUniquePtr dataset = GDALDatasetUniquePtr(GDALDataset::FromHandle(GDALOpen( filename.c_str(), access )));
+    if (!geoTiffHandles.isValid()) {
+        return std::nullopt;
+    }
 
-    if (!dataset) {
+    GTIFDefn def;
+
+    int code = GTIFGetDefn(geoTiffHandles.geoInfos, &def);
+
+    if (!code) {
+        return std::nullopt;
+    }
+
+    int epsg = def.GCS;
+    std::stringstream sstream;
+    sstream << "EPSG:" << epsg;
+    std::string epsgCode = sstream.str();
+
+    //Proj respect the CRS axis ordering, but geotiff will always set X axis a longitude.
+    bool invertXY = (def.Model == ModelTypeGeographic); //this detect if the CRS use latlon, thus the coordinates needs to be inverted.
+
+    constexpr double coordScale = 100;
+
+    double x0 = 0;
+    double y0 = 0;
+
+    double x1 = coordScale;
+    double y1 = coordScale;
+
+    code = GTIFImageToPCS(geoTiffHandles.geoInfos, &x0, &y0);
+
+    if (!code) {
+        return std::nullopt;
+    }
+
+    code = GTIFImageToPCS(geoTiffHandles.geoInfos, &x1, &y1);
+
+    if (!code) {
+        return std::nullopt;
+    }
+
+    double sX = (x1 - x0)/coordScale;
+    double sY = (y1 - y0)/coordScale;
+
+    double oX = x0;
+    double oY = y0;
+
+    Eigen::Matrix<double, 2,3> geoTransform = Eigen::Matrix<double, 2,3>::Zero();
+
+    if (invertXY) {
+
+        geoTransform(0,1) = sY;
+        geoTransform(1,0) = sX;
+
+        geoTransform(0,2) = oY;
+        geoTransform(1,2) = oX;
+
+    } else {
+
+        geoTransform(0,0) = sX;
+        geoTransform(1,1) = sY;
+
+        geoTransform(0,2) = oX;
+        geoTransform(1,2) = oY;
+    }
+
+    Multidim::Array<T, 3> imgData = StereoVision::IO::readImage<T>(filename);
+
+    if (imgData.empty()) {
+        return std::nullopt;
+    }
+
+    if (nDim == 2 and imgData.shape()[2] != 1) {
         return std::nullopt;
     }
 
     StereoVisionApp::Geo::GeoRasterData<T,nDim> ret;
 
-    ret.crsInfos = dataset->GetProjectionRef();
-    OGRSpatialReference ogrSpatialRef(ret.crsInfos.c_str());
+    std::array<int, nDim> shape;
+    std::array<int, nDim> strides;
 
-    bool invertXY = ogrSpatialRef.EPSGTreatsAsLatLong();
+    for (int i = 0; i < nDim; i++) {
+        shape[i] = imgData.shape()[i];
+        strides[i] = imgData.strides()[i];
+    }
+
+    bool managePtr = true;
+
+    ret.raster = Multidim::Array<T, nDim>(imgData.takePointer(), shape, strides, managePtr); //move the data to an image of the correct dimension
+
+    ret.crsInfos = epsgCode;
 
     if (ret.crsInfos.empty()) {
         return std::nullopt;
     }
 
-    double geoTransform[6];
-    CPLErr err = dataset->GetGeoTransform( geoTransform );
-
-    if (err != CE_None) {
-        return std::nullopt;
-    }
-
-    int sX = dataset->GetRasterXSize();
-    int sY = dataset->GetRasterYSize();
-    int sC = dataset->GetRasterCount();
-
-    if (nDim == 2 and sC != 1) {
-        return std::nullopt;
-    }
-
-    IdxArray shape;
-    IdxArray strides;
-
-    shape[0] = sY;
-    shape[1] = sX;
-
-    if (nDim == 3) {
-        shape[2] = sC;
-    }
-
-    if (nDim == 2) {
-        strides[0] = sX;
-        strides[1] = 1;
-    }
-
-    if (nDim == 3) {
-        strides[0] = sX*sC;
-        strides[1] = sC;
-        strides[2] = 1;
-    }
-
-    auto bands = dataset->GetBands();
-
-    if (bands.size() == 0) {
-        return std::nullopt;
-    }
-
-    if (strictType) {
-        if (bands[0]->GetRasterDataType() != gdalRasterTypeCode<T>()) {
-            return std::nullopt;
-        }
-    }
-
-    ret.geoTransform << geoTransform[1], geoTransform[2], geoTransform[0],
-            geoTransform[4], geoTransform[5], geoTransform[3];
-
-    if (invertXY) {
-        Eigen::Matrix<double, 1,3> tmp = ret.geoTransform.template block<1,3>(0,0);
-        ret.geoTransform.template block<1,3>(0,0) = ret.geoTransform.template block<1,3>(1,0);
-        ret.geoTransform.template block<1,3>(1,0) = tmp;
-    }
-
-    ret.raster = Multidim::Array<T, nDim>(shape, strides);
-
-    for (int r = 0; r < sY; r++) {
-        for (int c = 0; c < sC; c++) {
-
-            IdxArray idx;
-            idx[0] = r;
-            idx[1] = 0;
-
-            if (nDim == 3) {
-                idx[2] = c;
-            }
-
-            CPLErr e = bands[c]->RasterIO(GF_Read,0,r,sX,1,&ret.raster.atUnchecked(idx),sX,1,gdalRasterTypeCode<T>(),0,0);
-
-            if(!(e == 0)) {
-                return std::nullopt;
-            }
-        }
-    }
+    ret.geoTransform = geoTransform;
 
     return ret;
 }
@@ -138,6 +182,9 @@ template std::optional<StereoVisionApp::Geo::GeoRasterData<int64_t, 3>> readGeoR
 
 
 template std::optional<StereoVisionApp::Geo::GeoRasterData<float, 2>> readGeoRasterData(std::string const& filename, bool strictType);
+template std::optional<StereoVisionApp::Geo::GeoRasterData<float, 3>> readGeoRasterData(std::string const& filename, bool strictType);
+
+template std::optional<StereoVisionApp::Geo::GeoRasterData<double, 2>> readGeoRasterData(std::string const& filename, bool strictType);
 template std::optional<StereoVisionApp::Geo::GeoRasterData<double, 3>> readGeoRasterData(std::string const& filename, bool strictType);
 
 } // namespace PikaLTools

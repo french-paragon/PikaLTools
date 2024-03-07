@@ -17,4 +17,4 @@ get_target_property(SteviAppGeoIncludeDirs SteviappSdk::StereoVisionAppGeo INTER
 #But we still need the includes.
 target_include_directories(${IO_LIB} PUBLIC ${SteviAppGeoIncludeDirs})
 
-target_link_libraries(${IO_LIB} PRIVATE GDAL::GDAL)
+target_link_libraries(${IO_LIB} PRIVATE Qt5::Core StereoVision::stevi geotiff)

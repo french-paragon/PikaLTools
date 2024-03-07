@@ -3,11 +3,14 @@
 
 #include <cmath>
 #include <vector>
+#include <optional>
 
 #include <Eigen/Core>
 #include <Eigen/Dense>
 
 #include <StereoVision/geometry/core.h>
+
+#include "../io/read_envi_bil.h"
 
 struct EllipsoidDefinition {
     double equatorialRadius;
@@ -195,5 +198,18 @@ inline StereoVision::Geometry::AffineTransform<CT> getLocalFrameAtPosNED(CT lat,
 
     return ret;
 }
+
+template<typename CT>
+struct Trajectory {
+    std::vector<StereoVision::Geometry::AffineTransform<CT>> poses;
+    std::vector<CT> times;
+};
+
+/*!
+ * \brief convertLcfSequenceToTrajectory convert an input lcf sequence to a series of ecef poses
+ * \param lines the input lines from the lcf file
+ * \return a trajectory with the times and poses as body 2 ecef transforms, or std::nullopt in case of error
+ */
+std::optional<Trajectory<double> > convertLcfSequenceToTrajectory(std::vector<EnviBilLcfLine> const& lines);
 
 #endif // COORDINATE_CONVERSIONS_H

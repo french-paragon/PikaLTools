@@ -1,6 +1,6 @@
 #include "trajectoryvieweditor.h"
 
-#include "geo/georasterreader.h"
+#include "io/georasterreader.h"
 
 #include "datablocks/bilacquisitiondata.h"
 #include "datablocks/comparisontrajectory.h"
@@ -307,9 +307,6 @@ void TrajectoryViewEditor::setDtm(InputDtm* bilSequence) {
 
     auto inShape = rasterData.raster.shape();
 
-    OGRSpatialReference ogrSpatialRef(rasterData.crsInfos.c_str());
-    bool invertXY = ogrSpatialRef.EPSGTreatsAsLatLong(); //ogr will always treat coordinates as lon then lat, but proj will stick to the epsg order definition. This mean we might need to invert the order.
-
     Multidim::Array<double,3> vertices_pos({inShape[0], inShape[1], 3}, {3*inShape[1],3,1});
     Multidim::Array<bool,2> vertices_valid(inShape);
 
@@ -336,13 +333,8 @@ void TrajectoryViewEditor::setDtm(InputDtm* bilSequence) {
             Eigen::Vector3d homogeneousImgCoord(j,i,1);
             Eigen::Vector2d geoCoord = rasterData.geoTransform*homogeneousImgCoord;
 
-            if (invertXY) {
-                vertices_pos.atUnchecked(i,j,0) = geoCoord.y();
-                vertices_pos.atUnchecked(i,j,1) = geoCoord.x();
-            } else {
-                vertices_pos.atUnchecked(i,j,0) = geoCoord.x();
-                vertices_pos.atUnchecked(i,j,1) = geoCoord.y();
-            }
+            vertices_pos.atUnchecked(i,j,0) = geoCoord.x();
+            vertices_pos.atUnchecked(i,j,1) = geoCoord.y();
 
             vertices_pos.atUnchecked(i,j,2) = h;
 

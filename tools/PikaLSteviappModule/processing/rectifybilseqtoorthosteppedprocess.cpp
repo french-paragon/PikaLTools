@@ -288,9 +288,6 @@ bool RectifyBilSeqToOrthoSteppedProcess::init() {
         }
     }
 
-    OGRSpatialReference ogrSpatialRef(_rasterData.crsInfos.c_str());
-    bool invertXY = ogrSpatialRef.EPSGTreatsAsLatLong(); //ogr will always treat coordinates as lon then lat, but proj will stick to the epsg order definition. This mean we might need to invert the order.
-
     Multidim::Array<double,2> corner_vecs({3, 3}, {3,1});
 
     for (int c = 0; c < 3; c++) {
@@ -309,13 +306,8 @@ bool RectifyBilSeqToOrthoSteppedProcess::init() {
         Eigen::Vector3d homogeneousImgCoord(j,i,1);
         Eigen::Vector2d geoCoord = _rasterData.geoTransform*homogeneousImgCoord;
 
-        if (invertXY) {
-            corner_vecs.atUnchecked(c,0) = geoCoord.y();
-            corner_vecs.atUnchecked(c,1) = geoCoord.x();
-        } else {
-            corner_vecs.atUnchecked(c,0) = geoCoord.x();
-            corner_vecs.atUnchecked(c,1) = geoCoord.y();
-        }
+        corner_vecs.atUnchecked(c,0) = geoCoord.x();
+        corner_vecs.atUnchecked(c,1) = geoCoord.y();
 
         corner_vecs.atUnchecked(c,2) = 0;
     }

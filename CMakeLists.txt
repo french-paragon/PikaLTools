@@ -28,6 +28,10 @@ if (NOT QCUSTOMPLOT_LIBRARY)
     message(SEND_ERROR "QCustomPlot not found")
 endif()
 
+find_package(JPEG REQUIRED)
+find_package(PNG REQUIRED)
+find_package(TIFF REQUIRED)
+
 find_package(StereoVision REQUIRED)
 
 find_package(PkgConfig REQUIRED)
@@ -45,7 +49,6 @@ include_directories(${CERES_INCLUDE_DIRS})
 find_package(Eigen3 3.3 REQUIRED)
 include_directories(${EIGEN3_INCLUDE_DIR})
 
-find_package(StereoVision REQUIRED)
 find_package(SteviappSdk)
 
 if(${SteviappSdk_FOUND})

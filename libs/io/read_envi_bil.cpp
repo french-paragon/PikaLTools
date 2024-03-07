@@ -2,6 +2,10 @@
 
 #include <algorithm>
 
+#include <QString>
+#include <QDir>
+#include <QFile>
+
 const std::string WHITESPACE = " \n\r\t\f\v";
 
 std::string ltrim(const std::string &s)
@@ -18,6 +22,67 @@ std::string rtrim(const std::string &s)
 
 std::string trim(const std::string &s) {
     return rtrim(ltrim(s));
+}
+
+std::vector<std::string> get_bil_sequence_files(std::string const& main_folder) {
+
+    QString folder = QString::fromStdString(main_folder);
+    QList<QString> bilFiles;
+
+    QDir mainFolder(folder);
+
+    //List the folders within the main folder
+    QStringList subFolders = mainFolder.entryList();
+    std::sort(subFolders.begin(), subFolders.end(), [] (QString str1, QString str2) {
+        QString n1 = str1.split("-").last();
+        QString n2 = str2.split("-").last();
+
+        bool ok;
+        int i1 = n1.toInt(&ok);
+
+        if (!ok) {
+            return false;
+        }
+
+        int i2 = n2.toInt(&ok);
+
+        if (!ok) {
+            return true;
+        }
+
+        return i1 < i2;
+    });
+
+    for (QString subFolder : subFolders) {
+
+        if (subFolder == "." or subFolder == "..") {
+            continue;
+        }
+
+        QString fullPath = mainFolder.absoluteFilePath(subFolder);
+
+        QFileInfo dirInfos(fullPath);
+
+        if (!dirInfos.isDir()) {
+            continue;
+        }
+
+        QDir subDir(fullPath);
+
+        QStringList entries = subDir.entryList({"*.bil"});
+
+        if (entries.size() == 1) {
+            bilFiles.push_back(subDir.absoluteFilePath(entries[0]));
+        }
+    }
+
+    std::vector<std::string> ret(bilFiles.size());
+
+    for (int i = 0; i < bilFiles.size(); i++) {
+        ret[i] = bilFiles[i].toStdString();
+    }
+
+    return ret;
 }
 
 std::optional<std::map<std::string, std::string>> readHeaderData(std::string const& filename) {
