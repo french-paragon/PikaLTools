@@ -196,20 +196,24 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
             for (int j = 0; j < results.projectedPoints.size(); j++) {
                 std::array<float,2> proj = results.projectedPoints[j];
 
-                if (proj[0] < min_x) {
-                    min_x = proj[0];
-                }
+                if (std::isfinite(proj[0]) or std::isfinite(proj[1])) {
 
-                if (proj[0] > min_x) {
-                    max_x = proj[0];
-                }
+                    if (proj[0] < min_x) {
+                        min_x = proj[0];
+                    }
 
-                if (proj[1] < min_y) {
-                    min_y = proj[1];
-                }
+                    if (proj[0] > min_x) {
+                        max_x = proj[0];
+                    }
 
-                if (proj[1] > min_y) {
-                    max_y = proj[1];
+                    if (proj[1] < min_y) {
+                        min_y = proj[1];
+                    }
+
+                    if (proj[1] > min_y) {
+                        max_y = proj[1];
+                    }
+
                 }
 
                 projectedCoordinates.atUnchecked(j,i,0) = proj[0];
