@@ -1,8 +1,12 @@
 define_pikaltools_lib(IO io)
 
 set(LIB_SRC io_globals.h
+    read_trajectory_data.h
+    read_trajectory_data.cpp
     read_envi_bil.h
     read_envi_bil.cpp
+    read_aviris4_bin.h
+    read_aviris4_bin.cpp
     georasterreader.h
     georasterreader.cpp)
 
