@@ -1,7 +1,8 @@
 #ifndef PIKALTOOLS_READ_ENVI_BIL_H
 #define PIKALTOOLS_READ_ENVI_BIL_H
 
-#include "io_globals.h"
+#include "./io_globals.h"
+#include "./read_trajectory_data.h"
 
 #include <MultidimArrays/MultidimArrays.h>
 
@@ -393,17 +394,13 @@ Multidim::Array<float, 3> read_bil_sequence_to_float(std::vector<std::string> co
 
 std::vector<double> read_envi_bil_times(std::string const& filename);
 
-struct EnviBilLcfLine {
-    int nLine;
-    double timeStamp;
-    double roll;
-    double pitch;
-    double yaw;
-    double lat;
-    double lon;
-    double height;
-};
+using EnviBilLcfLine = RawTrajectoryLine;
 
+/*!
+ * \brief read_envi_bil_lcf_data read the trajectory data from the lcf associated with a bil file
+ * \param filename the path to the bil file
+ * \return the trajectory
+ */
 std::vector<EnviBilLcfLine> read_envi_bil_lcf_data(std::string const& filename);
 
 #endif // PIKALTOOLS_READ_ENVI_BIL_H

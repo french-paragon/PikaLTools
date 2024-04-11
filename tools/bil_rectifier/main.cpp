@@ -11,9 +11,10 @@
 #include <QTextStream>
 #include <QVector>
 #include <QRectF>
+#include <QFileInfo>
 
 QTextStream& usage(QTextStream & out) {
-    out <<  "bil_rectifier bil_sequence_folder input_dtm [output_folder = ./rectified]" << Qt::endl;
+    out <<  "bil_rectifier bil_sequence_folder input_dtm [mapScale = 1] [maxTilePixels = 2000] [useCached] [output_folder = ./rectified]" << Qt::endl;
     return out;
 }
 
@@ -38,10 +39,41 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
 
     std::string dtm_filepath(argv[2]);
 
+    float mapScale = 1;
+
+    if (argc >= 4) {
+        mapScale = atoi(argv[3]);
+    }
+
+    if (mapScale < 1) {
+        out << "Invalid map scale!" << Qt::endl;
+        return 1;
+    }
+
+    int maxTilePixels = 2000;
+
+    if (argc >= 5) {
+        maxTilePixels = atoi(argv[4]);
+    }
+
+    if (maxTilePixels <= 0) {
+        out << "max tile size smaller or equal 0 is invalid!" << Qt::endl;
+        return 1;
+    }
+
+    bool usedCached = false;
+
+    if (argc >= 6) {
+        QString option(argv[5]);
+        if (option == "useCached") {
+            usedCached = true;
+        }
+    }
+
     std::string output_folder;
 
-    if (argc == 4) {
-        output_folder = argv[3];
+    if (argc >= 7) {
+        output_folder = argv[6];
     } else {
         output_folder = bil_folderpath;
     }
@@ -68,6 +100,8 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
 
     QVector<QRectF> bilFilesROI(filesList.size()); //keep track of the regions of the terrain (in pixels coordinates) which have already been covered
 
+    int nBands = 0;
+
     for (int fileId = 0; fileId < filesList.size(); fileId++) {
 
         double min_x = std::numeric_limits<double>::infinity();
@@ -93,7 +127,8 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
         if (header.count("field of view") <= 0 or
                 header.count("samples") <= 0 or
                 header.count("lines") <= 0 or
-                header.count("framerate") <= 0) {
+                header.count("framerate") <= 0 or
+                header.count("bands") <= 0) {
             out << "Failed to extract field of view and samples for file \"" << QString::fromStdString(file) << "\"" << Qt::endl;
             continue;
         }
@@ -104,6 +139,55 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
         int nLines = stoi(header["lines"]);
         double frameRate = stod(header["framerate"]);
         double frameTime = 1/frameRate;
+
+        nBands = std::max(nBands, stoi(header["bands"])); //needs to load that data at least
+
+        if (usedCached) {
+            QFileInfo infos(QString::fromStdString(file + "_projected_coords.stevimg"));
+
+            if (infos.exists()) {
+
+                Multidim::Array<float, 3> projectedCoordinates = StereoVision::IO::readStevimg<float, 3>(file + "_projected_coords.stevimg");
+
+                float min_x = std::numeric_limits<float>::infinity();
+                float max_x = -std::numeric_limits<float>::infinity();
+
+                float min_y = std::numeric_limits<float>::infinity();
+                float max_y = -std::numeric_limits<float>::infinity();
+
+                for (int i = 0; i < projectedCoordinates.shape()[0]; i++) {
+                    for (int j = 0; j < projectedCoordinates.shape()[1]; j++) {
+                        float p_x = projectedCoordinates.valueUnchecked(i,j,0);
+                        float p_y = projectedCoordinates.valueUnchecked(i,j,1);
+
+                        if (std::isfinite(p_x) or std::isfinite(p_y)) {
+
+                            if (p_x < min_x) {
+                                min_x = p_x;
+                            }
+
+                            if (p_x > min_x) {
+                                max_x = p_x;
+                            }
+
+                            if (p_y < min_y) {
+                                min_y = p_y;
+                            }
+
+                            if (p_y > min_y) {
+                                max_y = p_y;
+                            }
+
+                        }
+                    }
+                }
+
+                bilFilesROI[fileId] = QRectF(QPointF(min_x, min_y), QPointF(max_x, max_y));
+
+                out << "Coordinates already processed for \"" << QString::fromStdString(file) << "\"" << Qt::endl;
+                continue;
+            }
+        }
 
         double midPoint = static_cast<double>(nSamples-1)/2;
         double fLenPix = static_cast<double>(nSamples-1)/2 * std::tan(M_PI_2 - fieldOfViewRad/2);
@@ -229,7 +313,162 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
         StereoVision::IO::writeStevimg<float>(file + "_projected_coords.stevimg", projectedCoordinates);
     }
 
-    out << "Processing done!" << Qt::endl;
+    out << "Reprojection done, starting rendering!" << Qt::endl;
+
+    //export reprojected mosaïc
+    int newGridHeight = mapScale*terrain.raster.shape()[0];
+    int newGridWidth = mapScale*terrain.raster.shape()[1];
+
+    int gridVSplits = std::ceil(float(newGridHeight)/maxTilePixels);
+    int vPixsPerSplit = maxTilePixels;
+
+    if (vPixsPerSplit*gridVSplits != newGridHeight) {
+        vPixsPerSplit -= (maxTilePixels - newGridHeight%maxTilePixels)/(gridVSplits-1);
+    }
+
+    int gridHSplits = std::ceil(float(newGridWidth)/maxTilePixels);
+    int hPixsPerSplit = maxTilePixels;
+
+    if (hPixsPerSplit*gridHSplits != newGridWidth) {
+        hPixsPerSplit -= (maxTilePixels - newGridWidth%maxTilePixels)/(gridHSplits-1);
+    }
+
+    for (int v = 0; v < gridVSplits; v++) {
+        for (int h = 0; h < gridHSplits; h++) {
+
+            out << "\t" << "processing tile " << (v+1) << "-" << (h+1) << " over " << gridVSplits << "-" << gridHSplits << Qt::endl;
+
+            int i0 = v*vPixsPerSplit;
+            int j0 = h*hPixsPerSplit;
+
+            int split_height = (v == gridVSplits-1) ? newGridHeight - i0 : vPixsPerSplit;
+            int split_width = (h == gridHSplits-1) ? newGridWidth - j0 : hPixsPerSplit;
+
+            QRectF currentAOI(float(j0)/mapScale,
+                              float(i0)/mapScale,
+                              float(split_width)/mapScale,
+                              float(split_height)/mapScale);
+
+            Multidim::Array<float,2> nSamples(split_height, split_width);
+            std::fill(&nSamples.at(0,0), &nSamples.at(split_height-1,split_width-1), 0);
+
+            Multidim::Array<float,3> samples(split_height, split_width, nBands);
+            std::fill(&samples.at(0,0,0), &samples.at(split_height-1,split_width-1, nBands-1), 0);
+
+            bool anyWritten = false;
+
+            for (int f = 0; f < bilFilesROI.size(); f++) {
+
+                if (!bilFilesROI[f].intersects(currentAOI)) {
+                    continue;
+                }
+
+                std::string const& file = filesList[f];
+
+                Multidim::Array<float, 3> projectedCoordinates = StereoVision::IO::readStevimg<float, 3>(file + "_projected_coords.stevimg");
+                Multidim::Array<float, 3> billFile = read_envi_bil_to_float(file);
+
+                for (int i = 0; i < billFile.shape()[0]; i++) { //lines
+                    for (int j = 0; j < billFile.shape()[1]; j++) { //samples
+
+                        float pi = mapScale*projectedCoordinates.valueUnchecked(j,i,0) - i0;
+                        float pj = mapScale*projectedCoordinates.valueUnchecked(j,i,1) - j0;
+
+                        int pIfloor = std::floor(pi);
+                        int pIceil = std::ceil(pi);
+
+                        int pJfloor = std::floor(pj);
+                        int pJceil = std::ceil(pj);
+
+                        float wI = pIceil - pi;
+                        float wJ = pJceil - pj;
+
+                        if (pIfloor >= samples.shape()[0] or pIceil < 0) {
+                            continue;
+                        }
+
+                        if (pJfloor >= samples.shape()[1] or pJceil < 0) {
+                            continue;
+                        }
+
+                        if (pIceil >= samples.shape()[0]) {
+                            pIceil = pIfloor;
+                            wI = 1;
+                        }
+
+                        if (pIfloor < 0) {
+                            pIfloor = pIceil;
+                            wI = 1;
+                        }
+
+                        if (pJceil >= samples.shape()[1]) {
+                            pJceil = pJfloor;
+                            wJ = 1;
+                        }
+
+                        if (pJfloor < 0) {
+                            pJfloor = pJceil;
+                            wJ = 1;
+                        }
+
+                        for (int c = 0; c < billFile.shape()[2]; c++) {
+
+                            float val = billFile.valueUnchecked(i,j,c);
+
+                            samples.atUnchecked(pIfloor, pJfloor, c) += wI*wJ*val;
+                            samples.atUnchecked(pIfloor, pJceil, c) += wI*(1-wJ)*val;
+                            samples.atUnchecked(pIceil, pJfloor, c) += (1-wI)*wJ*val;
+                            samples.atUnchecked(pIceil, pJceil, c) += (1-wI)*(1-wJ)*val;
+                        }
+
+                        nSamples.atUnchecked(pIfloor, pJfloor) += wI*wJ;
+                        nSamples.atUnchecked(pIfloor, pJceil) += wI*(1-wJ);
+                        nSamples.atUnchecked(pIceil, pJfloor) += (1-wI)*wJ;
+                        nSamples.atUnchecked(pIceil, pJceil) += (1-wI)*(1-wJ);
+
+                        anyWritten = true;
+
+                    }
+                }
+
+
+            }
+
+            //write the projected split, if anything was written to it
+
+            if (!anyWritten) {
+                out << "\t" << "Skipped" << Qt::endl;
+                continue;
+            }
+
+            for (int i = 0; i < samples.shape()[0]; i++) {
+                for (int j = 0; j < samples.shape()[1]; j++) {
+
+                    float weight = nSamples.valueUnchecked(i,j);
+
+                    if (weight <= 0) {
+                        continue;
+                    }
+
+                    for (int c = 0; c < samples.shape()[2]; c++) {
+                        samples.atUnchecked(i,j,c) /= weight;
+                    }
+
+                }
+            }
+
+            std::stringstream ss;
+            ss << "tile_" << v << "_" << h << ".stevimg";
+
+            bool ok = StereoVision::IO::writeStevimg<float>(output_folder + ss.str(), samples);
+            if (ok) {
+                out << "\t" << "Written" << Qt::endl;
+            } else {
+                out << "\t" << "Failed to write" << Qt::endl;
+            }
+
+        }
+    }
 
     Multidim::Array<bool,2> const& coverMask = projector.cover();
     Multidim::Array<uint8_t,2> coverImg(coverMask.shape());
