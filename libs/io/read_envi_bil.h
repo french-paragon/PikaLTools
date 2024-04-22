@@ -392,7 +392,23 @@ Multidim::Array<T, 3> read_bil_sequence(std::vector<std::string> const& filename
 Multidim::Array<float, 3> read_envi_bil_to_float(std::string const& filename);
 Multidim::Array<float, 3> read_bil_sequence_to_float(std::vector<std::string> const& filenames);
 
+/*!
+ * \brief read_envi_bil_times read the times infos
+ * \param filename the bil filename
+ * \return the list of times
+ *
+ * This function load the times only if a time file exist. It tries to load in priority the .timings file, if not present loads the .times file.
+ */
 std::vector<double> read_envi_bil_times(std::string const& filename);
+
+/*!
+ * \brief get_envi_bil_lines_times get the times for the lines
+ * \param filename the bil filename
+ * \return the list of times
+ *
+ * this function tries to load the times from the .timings file, if it exists. if not, it compute the times from the headers and lcf files.
+ */
+std::vector<double> get_envi_bil_lines_times(std::string const& filename);
 
 using EnviBilLcfLine = RawTrajectoryLine;
 

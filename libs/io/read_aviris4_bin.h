@@ -28,7 +28,7 @@ struct Aviris4FrameData {
  * \param frameFilePath the path to the frame file.
  * \return the frame data with gps time of the individual lines
  */
-Aviris4FrameData loadFrame(std::string const& frameFilePath);
+Multidim::Array<data_t, 3> loadFrame(std::string const& frameFilePath);
 
 /*!
  * \brief loadFrameTime load the gps time from a single aviris4 frame
@@ -37,7 +37,7 @@ Aviris4FrameData loadFrame(std::string const& frameFilePath);
  *
  * This function load only the times from the frame, not any other data.
  */
-std::vector<double> loadFrameTimes(std::string const& frameFilePath);
+std::vector<int64_t> loadFrameTimes(std::string const& frameFilePath);
 
 /*!
  * \brief loadSequenceTimes load all times from a sequence of aviris4 frames
@@ -46,7 +46,7 @@ std::vector<double> loadFrameTimes(std::string const& frameFilePath);
  *
  * This function load only the times from the frame, not any other data.
  */
-std::vector<double> loadSequenceTimes(std::string const& sequenceFolderPath, const std::string &filter);
+std::vector<int64_t> loadSequenceTimes(std::string const& sequenceFolderPath, const std::string &filter);
 
 /*!
  * \brief getFilesInSequence list the files in a sequence

@@ -19,23 +19,25 @@ int displayAviris4Image(std::string const& filename, int argc, char** argv) {
 
     QTextStream out(stdout);
 
-    aviris4io::Aviris4FrameData spectral_data = aviris4io::loadFrame(filename);
+    Multidim::Array<aviris4io::data_t, 3> spectral_data = aviris4io::loadFrame(filename);
 
-    if (spectral_data.frame.empty()) {
+    if (spectral_data.empty()) {
         out << "Image is empty, or could not read image data!" << Qt::endl;
         return 1;
     }
 
     QApplication app(argc, argv);
 
-    aviris4io::data_t blackLevel = 0;
-    aviris4io::data_t whiteLevel = 0xffff;
+    aviris4io::data_t blackLevel = 35000;
+    aviris4io::data_t whiteLevel = 55000;
+
+    out << "White level: " << whiteLevel << " Black level: " << blackLevel << Qt::endl;
 
     constexpr float min = 380;
     constexpr float max = 2490;
     constexpr float delta = max - min;
 
-    int nBands = spectral_data.frame.shape()[2];
+    int nBands = spectral_data.shape()[2];
 
     QVector<float> waveLengths(nBands);
 
@@ -58,7 +60,7 @@ int displayAviris4Image(std::string const& filename, int argc, char** argv) {
 
     int selectedChannel = 0;
 
-    HyperspectralSliceDisplayAdapter<aviris4io::data_t> lineViewAdapter(&spectral_data.frame,
+    HyperspectralSliceDisplayAdapter<aviris4io::data_t> lineViewAdapter(&spectral_data,
                                                                blackLevel,
                                                                whiteLevel,
                                                                line_viewer_xAxis,
@@ -83,11 +85,11 @@ int displayAviris4Image(std::string const& filename, int argc, char** argv) {
     lineViewWindow.setWindowTitle(QString("BIL slice #%1 view").arg(lineViewAdapter.getChannel()));
     lineViewWindow.show();
 
-    std::array<int, 3> colorChannels = {spectral_data.frame.shape()[SpectralAxis]*3/4,
-                                        spectral_data.frame.shape()[SpectralAxis]/2,
-                                        spectral_data.frame.shape()[SpectralAxis]/4};
+    std::array<int, 3> colorChannels = {spectral_data.shape()[SpectralAxis]*3/4,
+                                        spectral_data.shape()[SpectralAxis]/2,
+                                        spectral_data.shape()[SpectralAxis]/4};
 
-    if (waveLengths.size() == spectral_data.frame.shape()[SpectralAxis]) {
+    if (waveLengths.size() == spectral_data.shape()[SpectralAxis]) {
 
         std::array<float, 3> referenceWl = {630, 532, 465};
         std::array<float, 3> currentWl = {waveLengths[colorChannels[0]], waveLengths[colorChannels[1]], waveLengths[colorChannels[2]]};
@@ -108,13 +110,19 @@ int displayAviris4Image(std::string const& filename, int argc, char** argv) {
 
     }
 
-    HyperspectralSimplePseudocolorDisplayAdapter<aviris4io::data_t> imageViewAdapter(&spectral_data.frame,
+    HyperspectralSimplePseudocolorDisplayAdapter<aviris4io::data_t> imageViewAdapter(&spectral_data,
                                                                             blackLevel,
                                                                             whiteLevel,
                                                                             image_viewer_xAxis,
                                                                             image_viewer_yAxis,
                                                                             image_viewer_channelAxis,
                                                                             colorChannels);
+
+    imageViewAdapter.configureOriginalChannelDisplay(
+                QString("Band %1").arg(colorChannels[0]),
+            QString("Band %1").arg(colorChannels[1]),
+            QString("Band %1").arg(colorChannels[2]));
+
     QImageDisplay::ImageWindow imageViewWindow;
     imageViewWindow.setImage(&imageViewAdapter);
 

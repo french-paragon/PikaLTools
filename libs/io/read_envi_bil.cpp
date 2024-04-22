@@ -255,10 +255,90 @@ std::vector<double> read_envi_bil_times(std::string const& filename) {
     }
 
 
-    std::ifstream timesFile(filename + ".times");
+    std::ifstream timesFile(filename + ".timing");
 
     if (timesFile.fail()) {
+
+        timesFile.open((filename + ".times"));
+        if (timesFile.fail()) {
+            return std::vector<double>();
+        }
+    }
+
+    std::string lineData;
+
+    std::vector<double> ret;
+    ret.reserve(nLines);
+
+    while (std::getline(timesFile, lineData)) {
+
+        float tVal;
+
+        try {
+            tVal = std::stod(lineData);
+        } catch(std::invalid_argument const& e) {
+            return std::vector<double>();
+        }
+
+        ret.push_back(tVal);
+    }
+
+    return ret;
+}
+std::vector<double> get_envi_bil_lines_times(std::string const& filename) {
+
+    auto header = readHeaderData(filename);
+
+    if (!header.has_value()) {
         return std::vector<double>();
+    }
+
+    std::map<std::string, std::string>& headerData = header.value();
+
+    int nLines = 0;
+
+    if (headerData.count("lines") <= 0) {
+        return std::vector<double>();
+    }
+
+    try {
+        nLines = std::stoi(headerData["lines"]);
+    } catch(std::invalid_argument const& e) {
+        return std::vector<double>();
+    }
+
+
+    std::ifstream timesFile(filename + ".timing");
+
+    if (timesFile.fail()) {
+
+        auto lcfData = read_envi_bil_lcf_data(filename);
+
+        if (lcfData.empty()) {
+            return std::vector<double>();
+        }
+
+        double t0 = lcfData[0].timeStamp;
+
+        if (headerData.count("framerate") <= 0) {
+            return std::vector<double>();
+        }
+
+        double frameRate;
+        try {
+         frameRate = stod(headerData["framerate"]);
+        } catch(std::invalid_argument const& e) {
+            return std::vector<double>();
+        }
+        double frameTime = 1/frameRate;
+
+        std::vector<double> ret(nLines);
+
+        for (int i = 0; i < nLines; i++) {
+            ret[i] = t0 + i*frameTime;
+        }
+
+        return ret;
     }
 
     std::string lineData;

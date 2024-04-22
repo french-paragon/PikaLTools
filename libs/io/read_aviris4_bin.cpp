@@ -3,19 +3,19 @@
 #include <QDir>
 #include <QFileInfo>
 
-constexpr int aviris4img_channels = 327; //this does not include the band with time tags
-constexpr int aviris4img_resolution = 1280;
-constexpr int aviris4img_headerlinelen = aviris4img_resolution*sizeof (aviris4io::data_t);
-constexpr int aviris4img_linelen = aviris4img_resolution*(aviris4img_channels+1)*sizeof (aviris4io::data_t);
-constexpr int aviris4img_linedatalen = aviris4img_resolution*aviris4img_channels*sizeof (aviris4io::data_t);
+constexpr int64_t aviris4img_channels = 327; //this does not include the band with time tags
+constexpr int64_t aviris4img_resolution = 1280;
+constexpr int64_t aviris4img_headerlinelen = aviris4img_resolution*sizeof (aviris4io::data_t);
+constexpr int64_t aviris4img_linelen = aviris4img_resolution*(aviris4img_channels+1)*sizeof (aviris4io::data_t);
+constexpr int64_t aviris4img_linedatalen = aviris4img_resolution*aviris4img_channels*sizeof (aviris4io::data_t);
 
-constexpr int sysTimeOffset = 0;
-constexpr int statusFlagOffset = 80;
-constexpr int statusFlagExpected = 0xBABE;
-constexpr int utcTowOffset = 103;
-constexpr int sysTimePPSOffset = 164;
+constexpr int64_t sysTimeOffset = 0;
+constexpr int64_t statusFlagOffset = 80;
+constexpr int64_t statusFlagExpected = 0xBABE;
+constexpr int64_t utcTowOffset = 116;
+constexpr int64_t sysTimePPSOffset = 164;
 
-aviris4io::Aviris4FrameData aviris4io::loadFrame(std::string const& frameFilePath) {
+Multidim::Array<aviris4io::data_t, 3> aviris4io::loadFrame(std::string const& frameFilePath) {
 
     QFile file(QString::fromStdString(frameFilePath));
 
@@ -34,50 +34,20 @@ aviris4io::Aviris4FrameData aviris4io::loadFrame(std::string const& frameFilePat
     std::array<int,3> shape{nLines, aviris4img_resolution, aviris4img_channels};
     std::array<int,3> strides{aviris4img_resolution*aviris4img_channels, 1, aviris4img_resolution};
 
-    aviris4io::Aviris4FrameData ret {std::vector<double>(nLines), Multidim::Array<data_t, 3>(shape, strides)};
+    Multidim::Array<data_t, 3> ret(shape, strides);
 
     for (int i = 0; i < nLines; i++) {
 
-        file.seek(i*aviris4img_linelen);
-        QByteArray headerData = file.read(aviris4img_headerlinelen); //first 4 bytes are the time
+        file.seek(i*aviris4img_linelen + aviris4img_headerlinelen);
 
-        if (headerData.size() < aviris4img_headerlinelen) {
-            std::fill_n(&ret.frame.at(i,0,0), aviris4img_linedatalen, 0);
-            ret.gpsTime[i] = -1;
-            continue; //skip faulty line
-        }
-
-        uint32_t lineInternalTime;
-        std::memcpy(&lineInternalTime, &(headerData.data()[sysTimeOffset]), 4);
-        lineInternalTime = lineInternalTime ^ (1 << 15);
-        lineInternalTime = lineInternalTime ^ (1 << 31);
-
-        uint32_t flag = 0;
-        std::memcpy(&flag, &(headerData.data()[statusFlagOffset]), 4);
-
-        if ((flag ^ 0xBABE) != 0) {
-            std::cout << "Formatting error in the data at line " << i << std::endl;
-        }
-
-        uint32_t gpsValidityTime;
-        std::memcpy(&gpsValidityTime, &(headerData.data()[utcTowOffset]), 4);
-
-        uint32_t ppsInternalTime;
-        std::memcpy(&ppsInternalTime, &(headerData.data()[sysTimePPSOffset]), 4);
-
-        int32_t timeDelta = lineInternalTime - ppsInternalTime;
-
-        ret.gpsTime[i] = static_cast<double>(gpsValidityTime + timeDelta)/10000;
-
-        data_t* dataptr = &ret.frame.at(i,0,0);
+        data_t* dataptr = &ret.at(i,0,0);
         void* voidptr = static_cast<void*>(dataptr);
         char* charptr = static_cast<char*>(voidptr);
 
         qint64 written = file.read(charptr, aviris4img_linedatalen);
 
         if (written != aviris4img_linedatalen) {
-            std::fill_n(&ret.frame.at(i,0,0), aviris4img_linedatalen, 0);
-            ret.gpsTime[i] = -1;
+            std::fill_n(&ret.at(i,0,0), aviris4img_linedatalen, 0);
             continue; //skip faulty line
         }
 
@@ -87,7 +57,7 @@ aviris4io::Aviris4FrameData aviris4io::loadFrame(std::string const& frameFilePat
 
 }
 
-std::vector<double> aviris4io::loadFrameTimes(std::string const& frameFilePath) {
+std::vector<int64_t> aviris4io::loadFrameTimes(std::string const& frameFilePath) {
 
     QFile file(QString::fromStdString(frameFilePath));
 
@@ -103,7 +73,15 @@ std::vector<double> aviris4io::loadFrameTimes(std::string const& frameFilePath) 
 
     int nLines = fileSize/aviris4img_linelen;
 
-    std::vector<double> ret(nLines);
+    struct lineTimingInfos {
+        int64_t internalTime;
+        int64_t gpsTimeLastPPS;
+        int64_t internalTimeLastPPS;
+        bool isBabe;
+    };
+
+    std::vector<lineTimingInfos> infos(nLines);
+    std::vector<int64_t> ret(nLines);
 
     for (int i = 0; i < nLines; i++) {
 
@@ -114,28 +92,77 @@ std::vector<double> aviris4io::loadFrameTimes(std::string const& frameFilePath) 
             continue;
         }
 
-        uint32_t lineInternalTime;
-        std::memcpy(&lineInternalTime, &(headerData.data()[sysTimeOffset]), 4);
-        lineInternalTime = lineInternalTime ^ (1 << 15);
-        lineInternalTime = lineInternalTime ^ (1 << 31);
+        uint8_t bytesBuffer[4];
 
-        uint32_t flag = 0;
-        std::memcpy(&flag, &(headerData.data()[statusFlagOffset]), 4);
+        std::memcpy(bytesBuffer, &(headerData.data()[sysTimeOffset]), 4);
+        uint32_t lineInternalTime = bytesBuffer[0] | bytesBuffer[1] << 8 | bytesBuffer[2] << 16 | bytesBuffer[3] << 24;
 
-        if ((flag ^ 0xBABE) != 0) {
-            std::cout << "Formatting error in the data" << std::endl;
+        std::memcpy(bytesBuffer, &(headerData.data()[statusFlagOffset]), 4);
+
+        uint32_t flag = bytesBuffer[0] | bytesBuffer[1] << 8;
+        //BABE if PPS changes
+
+        bool isBabe = false;
+
+        if ((flag ^ 0xBABE) == 0) {
+            isBabe = true;
         }
 
-        uint32_t gpsValidityTime;
-        std::memcpy(&gpsValidityTime, &(headerData.data()[utcTowOffset]), 4);
+        std::memcpy(bytesBuffer, &(headerData.data()[utcTowOffset]), 4);
 
-        uint32_t ppsInternalTime;
-        std::memcpy(&ppsInternalTime, &(headerData.data()[sysTimePPSOffset]), 4);
+        //Big endian
+        uint32_t gpsValidityTime = bytesBuffer[3] | bytesBuffer[2] << 8 | bytesBuffer[1] << 16 | bytesBuffer[0] << 24;
 
-        int32_t timeDelta = lineInternalTime - ppsInternalTime;
+        std::memcpy(bytesBuffer, &(headerData.data()[sysTimePPSOffset]), 4);
+        uint32_t ppsInternalTime = bytesBuffer[2] | bytesBuffer[3] << 8 | bytesBuffer[0] << 16 | bytesBuffer[1] << 24;
 
-        ret[i] = static_cast<double>(gpsValidityTime + timeDelta)/10000;
+        infos[i] = {lineInternalTime, gpsValidityTime, ppsInternalTime, isBabe};
 
+    }
+
+    //fill in missing values
+    std::vector<size_t> babeIdxs;
+    for (int i = 0; i < infos.size(); i++) {
+        if (infos[i].isBabe) {
+            babeIdxs.push_back(i);
+        }
+    }
+
+    if (babeIdxs.empty()) {
+        return std::vector<int64_t>();
+    }
+
+    int previousBabeIdx = babeIdxs[0];
+    int nextBabeIdx = babeIdxs[0];
+    int currentBabeIdxPos = 0;
+
+    for (int i = 0; i < infos.size(); i++) {
+        int delta_prev = std::abs(i - previousBabeIdx);
+        int delta_next = std::abs(i - nextBabeIdx);
+
+        if (delta_prev < delta_next) {
+            infos[i].gpsTimeLastPPS = infos[previousBabeIdx].gpsTimeLastPPS;
+            infos[i].internalTimeLastPPS = infos[previousBabeIdx].internalTimeLastPPS;
+        } else {
+            infos[i].gpsTimeLastPPS = infos[nextBabeIdx].gpsTimeLastPPS;
+            infos[i].internalTimeLastPPS = infos[nextBabeIdx].internalTimeLastPPS;
+        }
+
+        if (i == nextBabeIdx) {
+            previousBabeIdx = nextBabeIdx;
+            currentBabeIdxPos++;
+            if (currentBabeIdxPos >= babeIdxs.size()) {
+                currentBabeIdxPos = babeIdxs.size()-1;
+            }
+            nextBabeIdx = babeIdxs[currentBabeIdxPos];
+        }
+    }
+
+    //at that point infos has been filled such that a gps time reference and internal time for the corresponding pps is set
+    for (int i = 0; i < infos.size(); i++) {
+        int64_t delta_t = infos[i].internalTime - infos[i].internalTimeLastPPS;
+
+        ret[i] = infos[i].gpsTimeLastPPS*10 + delta_t;
     }
 
     return ret;
@@ -143,13 +170,13 @@ std::vector<double> aviris4io::loadFrameTimes(std::string const& frameFilePath) 
 
 }
 
-std::vector<double> aviris4io::loadSequenceTimes(std::string const& sequenceFolderPath, std::string const& filter) {
+std::vector<int64_t> aviris4io::loadSequenceTimes(std::string const& sequenceFolderPath, std::string const& filter) {
 
     std::vector<std::string> files = getFilesInSequence(sequenceFolderPath, filter);
-    std::vector<double> times;
+    std::vector<int64_t> times;
 
     for (std::string const& path : files) {
-        std::vector<double> ftimes = loadFrameTimes(path);
+        std::vector<int64_t> ftimes = loadFrameTimes(path);
 
         times.insert(times.end(), ftimes.begin(), ftimes.end());
     }
