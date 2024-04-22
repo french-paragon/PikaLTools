@@ -8,10 +8,9 @@ std::optional<Trajectory<double>> convertLcfSequenceToTrajectory(std::vector<Env
         return std::nullopt;
     }
 
-    Trajectory<double> ret;
-
-    ret.poses.reserve(lines.size());
-    ret.times.reserve(lines.size());
+    using TimedElement = Trajectory<double>::TimedElement;
+    std::vector<TimedElement> elements;
+    elements.reserve(lines.size());
 
     PJ_CONTEXT* ctx = proj_context_create();
 
@@ -62,9 +61,14 @@ std::optional<Trajectory<double>> convertLcfSequenceToTrajectory(std::vector<Env
                        -1, 0, 0,
                        0, 0, 1;
 
-        ret.poses.push_back(StereoVision::Geometry::AffineTransform<double>(ecef2ned.R.transpose()*RIMU2NED*cam2imu,t));
-        ret.times.push_back(line.timeStamp);
+        StereoVision::Geometry::AffineTransform<double> composed(ecef2ned.R.transpose()*RIMU2NED*cam2imu,t);
+
+        TimedElement element;
+        element.time = line.timeStamp;
+        element.val = StereoVision::Geometry::RigidBodyTransform<double>(composed);
+
+        elements.push_back(element);
     }
 
-    return ret;
+    return Trajectory<double>(std::move(elements));
 }

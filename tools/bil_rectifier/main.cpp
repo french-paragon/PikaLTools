@@ -7,79 +7,97 @@
 
 #include <steviapp/geo/geoRaster.h>
 #include <steviapp/geo/terrainProjector.h>
+#include <steviapp/datablocks/trajectory.h>
 
 #include <QTextStream>
 #include <QVector>
 #include <QRectF>
 #include <QFileInfo>
+#include <QDir>
 
-QTextStream& usage(QTextStream & out) {
-    out <<  "bil_rectifier bil_sequence_folder input_dtm [mapScale = 1] [maxTilePixels = 2000] [useCached] [output_folder = ./rectified]" << Qt::endl;
-    return out;
-}
+#include <QJsonDocument>
+#include <QJsonObject>
+
+#include <iostream>
+
+#include <tclap/CmdLine.h>
 
 template<typename T>
 int projectBilSequence(std::vector<std::string> const& filesList, int argc, char** argv) {
 
     QTextStream out(stdout);
 
-    if (argc < 2) {
-        out << "Missing input bil folder argument" << Qt::endl;
-        usage(out);
-        return 1;
-    }
-
-    std::string bil_folderpath(argv[1]);
-
-    if (argc < 3) {
-        out << "Missing input digital terrain model argument" << Qt::endl;
-        usage(out);
-        return 1;
-    }
-
-    std::string dtm_filepath(argv[2]);
-
-    float mapScale = 1;
-
-    if (argc >= 4) {
-        mapScale = atoi(argv[3]);
-    }
-
-    if (mapScale < 1) {
-        out << "Invalid map scale!" << Qt::endl;
-        return 1;
-    }
-
-    int maxTilePixels = 2000;
-
-    if (argc >= 5) {
-        maxTilePixels = atoi(argv[4]);
-    }
-
-    if (maxTilePixels <= 0) {
-        out << "max tile size smaller or equal 0 is invalid!" << Qt::endl;
-        return 1;
-    }
-
-    bool usedCached = false;
-
-    if (argc >= 6) {
-        QString option(argv[5]);
-        if (option == "useCached") {
-            usedCached = true;
-        }
-    }
-
+    std::string bil_folderpath;
+    std::string dtm_filepath;
+    float mapScale;
+    int maxTilePixels;
+    bool useCached;
     std::string output_folder;
+    std::string trajectoryConfig_filePath;
 
-    if (argc >= 7) {
-        output_folder = argv[6];
-    } else {
-        output_folder = bil_folderpath;
+    try {
+
+        TCLAP::CmdLine cmd("Project a bil sequence to a map", '=', "0.0");
+
+        TCLAP::UnlabeledValueArg<std::string> bilFolderPathArg("bildFolderPath", "Path where the bil sequence is stored", true, "", "local path to folder");
+        TCLAP::UnlabeledValueArg<std::string> dtmPathArg("dtmPath", "path to the dtm to use", true, "", "path to geotiff dtm");
+
+        cmd.add(bilFolderPathArg);
+        cmd.add(dtmPathArg);
+
+        TCLAP::ValueArg<float> scaleArg("s","scale", "Scale at which the dtm should be used", false, 1., "float");
+        TCLAP::ValueArg<int> tileArg("w","tileWidth", "Number of pixels in a tile", false, 2000, "int");
+        TCLAP::SwitchArg useCacheArg("c", "useCached", "Used cached projection");
+        TCLAP::ValueArg<std::string> outputPathArg("o","output", "Output path", false, "./rectified", "local path to folder");
+        TCLAP::ValueArg<std::string> trajectoryConfigArg("t","trajectory", "Output path", false, "", "local path to json file of trajectory");
+
+        cmd.add(scaleArg);
+        cmd.add(tileArg);
+        cmd.add(useCacheArg);
+        cmd.add(outputPathArg);
+
+        cmd.parse(argc, argv);
+
+        bil_folderpath = bilFolderPathArg.getValue();
+        dtm_filepath = dtmPathArg.getValue();
+
+        mapScale = scaleArg.getValue();
+
+        if (mapScale < 1) {
+            out << "Invalid map scale!" << Qt::endl;
+            return 1;
+        }
+
+        maxTilePixels = tileArg.getValue();
+
+        if (maxTilePixels <= 0) {
+            out << "max tile size smaller or equal 0 is invalid!" << Qt::endl;
+            return 1;
+        }
+
+        useCached = useCacheArg.getValue();
+
+        output_folder = outputPathArg.getValue();
+
+        if (output_folder.back() != '/') {
+            output_folder += '/';
+        }
+
+        trajectoryConfig_filePath = trajectoryConfigArg.getValue();
+
+    } catch (TCLAP::ArgException &e) {
+        std::cerr << "error: " << e.error() << " for arg " << e.argId() << std::endl;
+        return 1;
     }
 
-    if (output_folder.back() != '/') {
-        output_folder += '/';
+    QDir outputDir(QString::fromStdString(output_folder));
+    if (!outputDir.exists()) {
+        bool ok = outputDir.mkpath(".");
+
+        if (!ok) {
+            std::cerr << "Cannot create ouput path: " << output_folder << std::endl;
+            return 1;
+        }
     }
 
     if (filesList.empty()) {
@@ -97,6 +115,25 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
     StereoVisionApp::Geo::GeoRasterData<double, 2>& terrain = terrainOpt.value();
 
     StereoVisionApp::Geo::TerrainProjector<double> projector(terrain);
+
+    std::optional<Trajectory<double>> trajOpt = std::nullopt;
+    QFileInfo trajConfigFileInfos(QString::fromStdString(trajectoryConfig_filePath));
+
+    if (trajConfigFileInfos.exists()) {
+        QFile trajConfig(QString::fromStdString(trajectoryConfig_filePath));
+        QByteArray content = trajConfig.readAll();
+
+        QJsonParseError parseStatus;
+        QJsonDocument doc = QJsonDocument::fromJson(content, &parseStatus);
+
+        if (parseStatus.error == QJsonParseError::NoError) {
+            QJsonObject obj = doc.object();
+            StereoVisionApp::Trajectory trajBlock;
+            trajBlock.setParametersFromJsonRepresentation(obj);
+
+            trajOpt = trajBlock.loadTrajectorySequence();
+        }
+    }
 
     QVector<QRectF> bilFilesROI(filesList.size()); //keep track of the regions of the terrain (in pixels coordinates) which have already been covered
 
@@ -142,7 +179,7 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
 
         nBands = std::max(nBands, stoi(header["bands"])); //needs to load that data at least
 
-        if (usedCached) {
+        if (useCached) {
             QFileInfo infos(QString::fromStdString(file + "_projected_coords.stevimg"));
 
             if (infos.exists()) {
@@ -206,15 +243,17 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
         Multidim::Array<float,3> projectedCoordinates(nSamples, nLines, 2);
 
         //Sequence of body2ecef transforms
-        auto trajOpt = convertLcfSequenceToTrajectory(rawTrajectory);
+        std::optional<Trajectory<double>> lcfTrajOpt = convertLcfSequenceToTrajectory(rawTrajectory);
 
-        if (!trajOpt.has_value()) {
+        if (!lcfTrajOpt.has_value()) {
             out << "Failed to extract trajectory for file \"" << QString::fromStdString(file) << "\"" << Qt::endl;
             continue;
         }
 
-        Trajectory<double>& trajectory = trajOpt.value();
-        double t0 = trajectory.times[0];
+        Trajectory<double>& lcfTrajectory = lcfTrajOpt.value();
+        std::vector<double> times = get_envi_bil_lines_times(file);
+
+        Trajectory<double>& trajectory = (trajOpt.has_value()) ? trajOpt.value() : lcfTrajOpt.value();
 
         int currentPoseIndex = 0;
 
@@ -223,40 +262,10 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
             out << "\r\t" << "Treating line " << (i+1) << "/" << nLines;
             out.flush();
 
-            double targetTime = t0 + i*frameTime;
+            double targetTime = times[i];
 
-            while (trajectory.times[currentPoseIndex] < targetTime) {
-                if (currentPoseIndex + 1 == trajectory.times.size()) {
-                    break;
-                }
-                currentPoseIndex++;
-            }
-
-            int previousPoseIndex = std::max(0,currentPoseIndex-1);
-
-            double nextTime = trajectory.times[currentPoseIndex];
-            double previousTime = trajectory.times[previousPoseIndex];
-
-            double delta_t = targetTime - previousTime;
-
-            if (targetTime == previousTime) {
-                delta_t = 1;
-            }
-
-            StereoVision::Geometry::AffineTransform<double> const& poseNext = trajectory.poses[currentPoseIndex];
-            StereoVision::Geometry::AffineTransform<double> const& posePrevious = trajectory.poses[previousPoseIndex];
-
-            double coefficient = (targetTime - previousTime)/delta_t;
-
-            Eigen::Vector3d rNext = StereoVision::Geometry::inverseRodriguezFormula(poseNext.R);
-            Eigen::Vector3d rPrev = StereoVision::Geometry::inverseRodriguezFormula(posePrevious.R);
-
-            Eigen::Vector3d rInterp = coefficient*rNext + (1-coefficient)*rPrev;
-
-            Eigen::Matrix3d interpR = StereoVision::Geometry::rodriguezFormula(rInterp);
-            Eigen::Vector3d interpT = coefficient*poseNext.t + (1-coefficient)*posePrevious.t;
-
-            StereoVision::Geometry::AffineTransform<double> pose(interpR, interpT);
+            Trajectory<double>::TimeInterpolableVals vals = trajectory.getValueAtTime(targetTime);
+            StereoVision::Geometry::RigidBodyTransform<double> pose = vals.weigthLower*vals.valLower + vals.weigthUpper*vals.valUpper;
 
             std::array<double, 3> ecefOrigin{pose.t.x(), pose.t.y(), pose.t.z()};
 
@@ -264,7 +273,7 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
 
             for (int i = 0; i < nSamples; i++) {
                 Eigen::Vector3d vec(viewDirectionsSensor[i][0], viewDirectionsSensor[i][1], viewDirectionsSensor[i][2]);
-                Eigen::Vector3d transformed = pose.R*vec;
+                Eigen::Vector3d transformed = StereoVision::Geometry::angleAxisRotate(pose.r, vec);
 
                 viewDirectionsECEF[i] = std::array<float, 3>{float(transformed.x()), float(transformed.y()), float(transformed.z())};
             }
@@ -491,13 +500,21 @@ int main(int argc, char** argv) {
 
     QTextStream out(stdout);
 
-    if (argc < 2) {
+    int listPos = -1;
+
+    for (int i = 1; i < argc; i++) {
+        if (argv[i][0] != '-') {
+            listPos = i;
+            break;
+        }
+    }
+
+    if (listPos < 1) {
         out << "Missing input bil folder argument" << Qt::endl;
-        usage(out);
         return 1;
     }
 
-    std::string bil_folderpath(argv[1]);
+    std::string bil_folderpath(argv[listPos]);
     std::vector<std::string> fileList = get_bil_sequence_files(bil_folderpath);
 
     if (fileList.size() <= 0) {

@@ -9,4 +9,11 @@ add_executable(
 
 #ensure the path to the submodule libraries is set
 
-target_link_libraries(${EXEC_NAME} StereoVision::stevi SteviappSdk::StereoVisionAppGeo ${IO_LIB} ${GEO_LIB} Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets)
+target_link_libraries(${EXEC_NAME}
+    StereoVision::stevi
+    SteviappSdk::StereoVisionAppGeo
+    SteviappSdk::StereoVisionAppVision
+    SteviappSdk::StereoVisionAppData
+    ${IO_LIB} ${GEO_LIB}
+    Qt${QT_VERSION_MAJOR}::Core
+    Qt${QT_VERSION_MAJOR}::Widgets)
