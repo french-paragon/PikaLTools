@@ -84,7 +84,7 @@ public:
         for (int c = 0; c < 3; c++) {
             idx[_channel_axis] = _slice_channel_rgb[c];
 
-            ret[c].channelName = _channelName[c];
+            ret[c].channelName = _channelNames[c];
 
             double tmp = _array->valueOrAlt(idx, 0);
 
@@ -99,14 +99,16 @@ public:
 
     }
 
-    inline void configureOriginalChannelDisplay( QString const& channelName) {
+    inline void configureOriginalChannelDisplay( QString const& channelName1, QString const& channelName2, QString const& channelName3) {
         _displayOriginalChannels = true;
-        _channelName = channelName;
+        _channelNames = {channelName1, channelName2, channelName3};
     }
 
     inline void clearOriginalChannelDisplay() {
         _displayOriginalChannels = false;
-        _channelName.clear();
+        for (int c = 0; c < 3; c++) {
+            _channelNames[c].clear();
+        }
     }
 
     std::array<int, 3> getChannels() const {
@@ -152,7 +154,7 @@ protected:
     Array_T _white_level;
 
     bool _displayOriginalChannels;
-    QString _channelName;
+    std::array<QString,3> _channelNames;
 
 };
 
