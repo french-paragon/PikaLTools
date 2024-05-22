@@ -15,18 +15,35 @@ constexpr int64_t statusFlagExpected = 0xBABE;
 constexpr int64_t utcTowOffset = 116;
 constexpr int64_t sysTimePPSOffset = 164;
 
-Multidim::Array<aviris4io::data_t, 3> aviris4io::loadFrame(std::string const& frameFilePath) {
+int aviris4io::getAviris4FramesNLines(std::string const& frameFilePath) {
 
     QFile file(QString::fromStdString(frameFilePath));
 
     if (!file.open(QIODevice::ReadOnly)) {
-        std::vector<double>();
+        return -1;
     }
 
     qint64 fileSize = file.size();
 
     if (fileSize % aviris4img_linelen != 0) { //unexpected size
-        std::vector<double>();
+        return -1;
+    }
+
+    return fileSize/aviris4img_linelen;
+}
+
+Multidim::Array<aviris4io::data_t, 3> aviris4io::loadFrame(std::string const& frameFilePath) {
+
+    QFile file(QString::fromStdString(frameFilePath));
+
+    if (!file.open(QIODevice::ReadOnly)) {
+        return Multidim::Array<aviris4io::data_t, 3>();
+    }
+
+    qint64 fileSize = file.size();
+
+    if (fileSize % aviris4img_linelen != 0) { //unexpected size
+        return Multidim::Array<aviris4io::data_t, 3>();
     }
 
     int nLines = fileSize/aviris4img_linelen;
@@ -57,18 +74,63 @@ Multidim::Array<aviris4io::data_t, 3> aviris4io::loadFrame(std::string const& fr
 
 }
 
-std::vector<int64_t> aviris4io::loadFrameTimes(std::string const& frameFilePath) {
+Multidim::Array<aviris4io::data_t, 3> aviris4io::loadFrameSlice(std::string const& frameFilePath, int startLine, int nLines) {
 
     QFile file(QString::fromStdString(frameFilePath));
 
     if (!file.open(QIODevice::ReadOnly)) {
-        std::vector<double>();
+        return Multidim::Array<aviris4io::data_t, 3>();
     }
 
     qint64 fileSize = file.size();
 
     if (fileSize % aviris4img_linelen != 0) { //unexpected size
-        std::vector<double>();
+        return Multidim::Array<aviris4io::data_t, 3>();
+    }
+
+    int fileNLines = fileSize/aviris4img_linelen;
+
+    int nLoadedLines = std::min(fileNLines-startLine, nLines);
+
+    std::array<int,3> shape{nLoadedLines, aviris4img_resolution, aviris4img_channels};
+    std::array<int,3> strides{aviris4img_resolution*aviris4img_channels, 1, aviris4img_resolution};
+
+    Multidim::Array<data_t, 3> ret(shape, strides);
+
+    for (int i = 0; i < nLoadedLines; i++) {
+
+        file.seek((startLine+i)*aviris4img_linelen + aviris4img_headerlinelen);
+
+        data_t* dataptr = &ret.at(i,0,0);
+        void* voidptr = static_cast<void*>(dataptr);
+        char* charptr = static_cast<char*>(voidptr);
+
+        qint64 written = file.read(charptr, aviris4img_linedatalen);
+
+        if (written != aviris4img_linedatalen) {
+            std::fill_n(&ret.at(i,0,0), aviris4img_linedatalen, 0);
+            continue; //skip faulty line
+        }
+
+    }
+
+    return ret;
+
+
+}
+
+std::vector<int64_t> aviris4io::loadFrameTimes(std::string const& frameFilePath) {
+
+    QFile file(QString::fromStdString(frameFilePath));
+
+    if (!file.open(QIODevice::ReadOnly)) {
+        return std::vector<int64_t>();
+    }
+
+    qint64 fileSize = file.size();
+
+    if (fileSize % aviris4img_linelen != 0) { //unexpected size
+        return std::vector<int64_t>();
     }
 
     int nLines = fileSize/aviris4img_linelen;
@@ -166,7 +228,6 @@ std::vector<int64_t> aviris4io::loadFrameTimes(std::string const& frameFilePath)
     }
 
     return ret;
-
 
 }
 

@@ -34,7 +34,7 @@ std::optional<Trajectory<double>> convertLcfSequenceToTrajectory(std::vector<Env
 
         Eigen::Vector3d t(vx, vy, vz);
 
-        StereoVision::Geometry::AffineTransform<double> ecef2ned = getLocalFrameAtPosNED<double>(line.lat, line.lon, WGS84_Ellipsoid, line.height);
+        StereoVision::Geometry::AffineTransform<double> ecef2ned = getLocalFrameAtPosNED<double>(line.lat, line.lon, line.height);
 
         line.pitch = line.pitch;
         line.roll = -line.roll;
@@ -57,8 +57,8 @@ std::optional<Trajectory<double>> convertLcfSequenceToTrajectory(std::vector<Env
         Eigen::Matrix3d RIMU2NED = yawRMat*pitchRMat*rollRMat;
 
         Eigen::Matrix3d cam2imu = Eigen::Matrix3d::Identity();
-        cam2imu << 0, 1, 0,
-                       -1, 0, 0,
+        cam2imu << 1, 0, 0,
+                       0, 1, 0,
                        0, 0, 1;
 
         StereoVision::Geometry::AffineTransform<double> composed(ecef2ned.R.transpose()*RIMU2NED*cam2imu,t);

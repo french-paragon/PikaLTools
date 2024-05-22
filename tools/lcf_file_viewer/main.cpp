@@ -39,14 +39,14 @@ QVector<timedPositions> getINSMotionValue(QVector<QString> const& files) {
             meanLat += lat;
             meanLon += lon;
 
-            accumulated.push_back({convertLatLonToECEF<double>(lat, lon, alt, WGS84_Ellipsoid), line.timeStamp});
+            accumulated.push_back({convertLatLonToECEF<double>(lat, lon, alt), line.timeStamp});
         }
     }
 
     meanLat /= accumulated.size();
     meanLon /= accumulated.size();
 
-    StereoVision::Geometry::AffineTransform<double> ecef2local = getLocalFrameAtPos<double>(meanLat, meanLon, WGS84_Ellipsoid);
+    StereoVision::Geometry::AffineTransform<double> ecef2local = getLocalFrameAtPos<double>(meanLat, meanLon);
 
     for (timedPositions & pos : accumulated) {
 

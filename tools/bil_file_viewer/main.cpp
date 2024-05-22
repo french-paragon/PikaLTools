@@ -12,9 +12,23 @@
 #include "gui/hyperspectralslicedisplayadapter.h"
 #include "gui/hyperspectralsimplepseudocolordisplayadapter.h"
 
+#include "processing/darkframestools.h"
+
+#include <tclap/CmdLine.h>
+
+struct ArgStruct {
+    int argc;
+    char** argv;
+
+    TCLAP::UnlabeledValueArg<std::string>& bilFilePathArg;
+    TCLAP::UnlabeledValueArg<std::string>& blackFramePathArg;
+
+    TCLAP::ValueArg<int>& blackArg;
+    TCLAP::ValueArg<int>& whiteArg;
+};
 
 template<typename T>
-int displayBilImage(std::string const& filename, int argc, char** argv) {
+int displayBilImage(std::string const& filename, ArgStruct& args) {
 
     QTextStream out(stdout);
 
@@ -38,19 +52,26 @@ int displayBilImage(std::string const& filename, int argc, char** argv) {
         return 1;
     }
 
-    std::map<std::string, std::string> headerData = header.value();
+    if (args.blackFramePathArg.isSet()) {
+        std::string darkframe = args.blackFramePathArg.getValue();
 
-    QApplication app(argc, argv);
-
-    T blackLevel = 0;
-    T whiteLevel = 0;
-
-    if (headerData.count("ceiling") <= 0) {
-        out << "Missing ceiling data in header!" << Qt::endl;
-        whiteLevel = -1;
+        if (!envi_bil_img_match_type<T>(darkframe)) {
+            out << "dark frame has mismatched type" << Qt::endl;
+        } else {
+            Multidim::Array<T,3> dark_frame_data = read_envi_bil<T>(darkframe);
+            Multidim::Array<T,2> meanDrakFrame = PikaLTools::averageDarkFrame(dark_frame_data);
+            spectral_data = PikaLTools::subtractDarkFrame(spectral_data, meanDrakFrame);
+        }
     }
 
-    if ( whiteLevel < 0) {
+    std::map<std::string, std::string> headerData = header.value();
+
+    QApplication app(args.argc, args.argv);
+
+    T blackLevel = args.blackArg.getValue();
+    T whiteLevel = args.whiteArg.getValue();
+
+    if ( whiteLevel <= 0) {
         try {
             whiteLevel = std::stoi(headerData["ceiling"]);
         }
@@ -58,7 +79,9 @@ int displayBilImage(std::string const& filename, int argc, char** argv) {
             out << "Invalid ceiling value in header file!" << Qt::endl;
             return 1;
         }
-    } else {
+    }
+
+    if ( whiteLevel <= 0) {
         whiteLevel = spectral_data.valueUnchecked(0,0,0);
 
         for (int i = 0; i < spectral_data.shape()[0]; i++) {
@@ -157,6 +180,12 @@ int displayBilImage(std::string const& filename, int argc, char** argv) {
                                                                      image_viewer_yAxis,
                                                                      image_viewer_channelAxis,
                                                                      colorChannels);
+
+    imageViewAdapter.configureOriginalChannelDisplay(
+                QString("Band %1").arg(colorChannels[0]),
+            QString("Band %1").arg(colorChannels[1]),
+            QString("Band %1").arg(colorChannels[2]));
+
     QImageDisplay::ImageWindow imageViewWindow;
     imageViewWindow.setImage(&imageViewAdapter);
 
@@ -171,43 +200,64 @@ int main(int argc, char** argv) {
 
     QTextStream out(stdout);
 
-    if (argc != 2) {
-        out << "Missing input image argument" << Qt::endl;
-        return 1;
-    }
+    TCLAP::CmdLine cmd("View a bill file", '=', "0.0");
 
-    std::string filename(argv[1]);
+    TCLAP::UnlabeledValueArg<std::string> bilFilePathArg("bildFilePath", "Path where the bil is stored", true, "", "local path to bil file");
+    TCLAP::UnlabeledValueArg<std::string> blackFramePathArg("blackFramePath", "path to the black frame to use", false, "", "path to black frame bil");
+
+    cmd.add(bilFilePathArg);
+    cmd.add(blackFramePathArg);
+
+    TCLAP::ValueArg<int> blackArg("b","blackLevel", "black level to use for display", false, 0, "int");
+    TCLAP::ValueArg<int> whiteArg("w","whiteLevel", "white level to use for display", false, 0, "int");
+
+    cmd.add(blackArg);
+    cmd.add(whiteArg);
+
+    cmd.parse(argc, argv);
+
+    ArgStruct argStruct{argc, argv, bilFilePathArg, blackFramePathArg, blackArg, whiteArg};
+
+    std::string filename(bilFilePathArg.getValue());
 
     if (envi_bil_img_match_type<uint8_t>(filename)) {
-        return displayBilImage<uint8_t>(filename, argc, argv);
+        return displayBilImage<uint8_t>(filename, argStruct);
     }
 
     if (envi_bil_img_match_type<int8_t>(filename)) {
-        return displayBilImage<int8_t>(filename, argc, argv);
+        return displayBilImage<int8_t>(filename, argStruct);
     }
 
     if (envi_bil_img_match_type<uint16_t>(filename)) {
-        return displayBilImage<uint16_t>(filename, argc, argv);
+        return displayBilImage<uint16_t>(filename, argStruct);
     }
 
     if (envi_bil_img_match_type<int16_t>(filename)) {
-        return displayBilImage<int16_t>(filename, argc, argv);
+        return displayBilImage<int16_t>(filename, argStruct);
     }
 
     if (envi_bil_img_match_type<uint32_t>(filename)) {
-        return displayBilImage<uint32_t>(filename, argc, argv);
+        return displayBilImage<uint32_t>(filename, argStruct);
     }
 
     if (envi_bil_img_match_type<int32_t>(filename)) {
-        return displayBilImage<int32_t>(filename, argc, argv);
+        return displayBilImage<int32_t>(filename, argStruct);
     }
 
     if (envi_bil_img_match_type<uint64_t>(filename)) {
-        return displayBilImage<uint64_t>(filename, argc, argv);
+        return displayBilImage<uint64_t>(filename, argStruct);
     }
 
     if (envi_bil_img_match_type<int64_t>(filename)) {
-        return displayBilImage<int64_t>(filename, argc, argv);
+        return displayBilImage<int64_t>(filename, argStruct);
+    }
+
+    if (envi_bil_img_match_type<float>(filename)) {
+        return displayBilImage<float>(filename, argStruct);
+    }
+
+    if (envi_bil_img_match_type<double>(filename)) {
+        return displayBilImage<double>(filename, argStruct);
     }
 
     out << "Unsupported image type!" << Qt::endl;

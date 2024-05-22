@@ -61,6 +61,7 @@ target_link_directories(${MODULE_NAME} PRIVATE ${CMAKE_BINARY_DIR}/submodules/Li
 target_link_directories(${MODULE_NAME} PRIVATE ${CMAKE_BINARY_DIR}/submodules/LibStevi/submodules/qImageDisplayWidget/)
 
 set_target_properties(${MODULE_NAME} PROPERTIES PREFIX "")
+set_target_properties(${MODULE_NAME} PROPERTIES DEBUG_POSTFIX "_d")
 
 target_link_libraries(${MODULE_NAME}
     SteviappSdk::StereoVisionAppControl

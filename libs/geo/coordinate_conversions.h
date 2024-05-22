@@ -14,6 +14,8 @@
 
 #include "../io/read_envi_bil.h"
 
+#include "proj.h"
+
 struct EllipsoidDefinition {
     double equatorialRadius;
     double polarRadius;
@@ -23,76 +25,81 @@ constexpr EllipsoidDefinition WGS84_Ellipsoid = {6378137.0, 6356752.3142};
 
 template<typename T>
 struct CartesianCoord {
+
+    CartesianCoord(T px, T py, T pz) :
+        x(px),
+        y(py),
+        z(pz)
+    {
+
+    }
+
     T x;
     T y;
     T z;
 };
 
 template<typename CT>
-inline CartesianCoord<CT> convertLatLonToECEF(CT lat, CT lon, CT alt, EllipsoidDefinition ellipsoid) {
+inline CartesianCoord<CT> convertLatLonToECEF(CT lat, CT lon, CT alt) {
 
-    CT latRad = lat*M_PI/180;
-    CT lonRad = lon*M_PI/180;
+    PJ_CONTEXT* ctx = proj_context_create();
 
-    CT x_lat;
-    CT z_lat;
-    CT radius_lat;
-
-    if (std::tan(std::fabs(latRad)) < std::tan(M_PI_2 - std::fabs(latRad))) {
-
-        CT equatorial = 1/ellipsoid.equatorialRadius;
-        CT polar = std::tan(std::fabs(latRad))/ellipsoid.polarRadius;
-
-        x_lat = std::sqrt(1/((equatorial*equatorial + polar*polar)));
-
-        CT tmp = 1 - x_lat*x_lat*equatorial*equatorial;
-
-        radius_lat = std::sqrt(ellipsoid.polarRadius*ellipsoid.polarRadius*tmp + 1/((equatorial*equatorial + polar*polar)));
-
-        if (tmp <= 0) {
-            z_lat = 0;
-        } else {
-
-            z_lat = ellipsoid.polarRadius*std::sqrt(tmp);
-
-            if (lat < 0) {
-                z_lat = -z_lat;
-            }
-        }
-    } else {
-
-        CT equatorial = std::tan(M_PI_2 - std::fabs(latRad))/ellipsoid.equatorialRadius;
-        CT polar = 1/ellipsoid.polarRadius;
-
-        z_lat = std::sqrt(1/((equatorial*equatorial + polar*polar)));
-
-        if (lat < 0) {
-            z_lat = -z_lat;
-        }
-
-        CT tmp = 1 - z_lat*z_lat*polar*polar;
-
-        radius_lat = std::sqrt(ellipsoid.equatorialRadius*ellipsoid.equatorialRadius*tmp + 1/((equatorial*equatorial + polar*polar)));
-
-        if (tmp <= 0) {
-            x_lat = 0;
-        } else {
-
-            x_lat = ellipsoid.equatorialRadius*std::sqrt(tmp);
-        }
-
+    if (ctx == nullptr) {
+        return CartesianCoord{static_cast<CT>(std::nan("")), static_cast<CT>(std::nan("")), static_cast<CT>(std::nan(""))};
     }
 
-    CT scaling = (radius_lat+alt)/radius_lat;
-    x_lat *= scaling;
-    z_lat *= scaling;
+    const char* wgs84_ecef = "EPSG:4978";
+    const char* wgs84_geo = "EPSG:4979";
 
-    CartesianCoord<CT> ret;
-    ret.x = std::cos(lonRad)*x_lat;
-    ret.y = std::sin(lonRad)*x_lat;
-    ret.z = z_lat;
+    PJ* reprojector = proj_create_crs_to_crs(ctx, wgs84_geo, wgs84_ecef, nullptr);
 
-    return ret;
+    if (reprojector == nullptr) {
+        proj_context_destroy(ctx);
+        return CartesianCoord{static_cast<CT>(std::nan("")), static_cast<CT>(std::nan("")), static_cast<CT>(std::nan(""))};
+    }
+
+    PJ_COORD src, dst;
+
+    src = proj_coord(lat, lon, alt, 0);
+
+    dst = proj_trans(reprojector, PJ_FWD, src);
+
+    proj_destroy(reprojector);
+    proj_context_destroy(ctx);
+
+    return CartesianCoord{static_cast<CT>(dst.xyz.x), static_cast<CT>(dst.xyz.y), static_cast<CT>(dst.xyz.z)};
+
+}
+
+template<typename CT>
+inline CartesianCoord<CT> convertECEF2LatLon(CT x, CT y, CT z) {
+
+    PJ_CONTEXT* ctx = proj_context_create();
+
+    if (ctx == nullptr) {
+        return CartesianCoord{static_cast<CT>(std::nan("")), static_cast<CT>(std::nan("")), static_cast<CT>(std::nan(""))};
+    }
+
+    const char* wgs84_ecef = "EPSG:4978";
+    const char* wgs84_geo = "EPSG:4979";
+
+    PJ* reprojector = proj_create_crs_to_crs(ctx, wgs84_ecef, wgs84_geo, nullptr);
+
+    if (reprojector == nullptr) {
+        proj_context_destroy(ctx);
+        return CartesianCoord{static_cast<CT>(std::nan("")), static_cast<CT>(std::nan("")), static_cast<CT>(std::nan(""))};
+    }
+
+    PJ_COORD src, dst;
+
+    src = proj_coord(x, y, z, 0);
+
+    dst = proj_trans(reprojector, PJ_FWD, src);
+
+    proj_destroy(reprojector);
+    proj_context_destroy(ctx);
+
+    return CartesianCoord{static_cast<CT>(dst.xyz.x), static_cast<CT>(dst.xyz.y), static_cast<CT>(dst.xyz.z)};
 
 }
 
@@ -104,13 +111,13 @@ inline CartesianCoord<CT> convertLatLonToECEF(CT lat, CT lon, CT alt, EllipsoidD
  * \return a 3x4 matrix, representing the affine transform from ECEF to the local frame at altitude alt.
  */
 template<typename CT>
-inline StereoVision::Geometry::AffineTransform<CT> getLocalFrameAtPos(CT lat, CT lon, EllipsoidDefinition ellipsoid, CT alt = 0) {
+inline StereoVision::Geometry::AffineTransform<CT> getLocalFrameAtPos(CT lat, CT lon, CT alt = 0) {
 
     CT latRad = lat*M_PI/180;
     CT lonRad = lon*M_PI/180;
 
-    CartesianCoord<CT> zero = convertLatLonToECEF<CT>(lat, lon, alt, ellipsoid);
-    CartesianCoord<CT> z_one = convertLatLonToECEF<CT>(lat, lon, alt+1, ellipsoid);
+    CartesianCoord<CT> zero = convertLatLonToECEF<CT>(lat, lon, alt);
+    CartesianCoord<CT> z_one = convertLatLonToECEF<CT>(lat, lon, alt+1);
 
     Eigen::Matrix<CT,3,1> vec_zero(zero.x, zero.y, zero.z);
     Eigen::Matrix<CT,3,1> vec_z_one(z_one.x, z_one.y, z_one.z);
@@ -139,13 +146,13 @@ inline StereoVision::Geometry::AffineTransform<CT> getLocalFrameAtPos(CT lat, CT
  * \return a 3x4 matrix, representing the affine transform from ECEF to the local frame.
  */
 template<typename CT>
-inline StereoVision::Geometry::AffineTransform<CT> getLocalFrameAtPosNWU(CT lat, CT lon, EllipsoidDefinition ellipsoid, CT alt = 0) {
+inline StereoVision::Geometry::AffineTransform<CT> getLocalFrameAtPosNWU(CT lat, CT lon, CT alt = 0) {
 
     CT latRad = lat*M_PI/180;
     CT lonRad = lon*M_PI/180;
 
-    CartesianCoord<CT> zero = convertLatLonToECEF<CT>(lat, lon, alt, ellipsoid);
-    CartesianCoord<CT> z_one = convertLatLonToECEF<CT>(lat, lon, alt+1, ellipsoid);
+    CartesianCoord<CT> zero = convertLatLonToECEF<CT>(lat, lon, alt);
+    CartesianCoord<CT> z_one = convertLatLonToECEF<CT>(lat, lon, alt+1);
 
     Eigen::Matrix<CT,3,1> vec_zero(zero.x, zero.y, zero.z);
     Eigen::Matrix<CT,3,1> vec_z_one(z_one.x, z_one.y, z_one.z);
@@ -174,13 +181,13 @@ inline StereoVision::Geometry::AffineTransform<CT> getLocalFrameAtPosNWU(CT lat,
  * \return a 3x4 matrix, representing the affine transform from ECEF to the local frame.
  */
 template<typename CT>
-inline StereoVision::Geometry::AffineTransform<CT> getLocalFrameAtPosNED(CT lat, CT lon, EllipsoidDefinition ellipsoid, CT alt = 0) {
+inline StereoVision::Geometry::AffineTransform<CT> getLocalFrameAtPosNED(CT lat, CT lon, CT alt = 0) {
 
     CT latRad = lat*M_PI/180;
     CT lonRad = lon*M_PI/180;
 
-    CartesianCoord<CT> zero = convertLatLonToECEF<CT>(lat, lon, alt, ellipsoid);
-    CartesianCoord<CT> z_one = convertLatLonToECEF<CT>(lat, lon, alt+1, ellipsoid);
+    CartesianCoord<CT> zero = convertLatLonToECEF<CT>(lat, lon, alt);
+    CartesianCoord<CT> z_one = convertLatLonToECEF<CT>(lat, lon, alt+1);
 
     Eigen::Matrix<CT,3,1> vec_zero(zero.x, zero.y, zero.z);
     Eigen::Matrix<CT,3,1> vec_z_one(z_one.x, z_one.y, z_one.z);

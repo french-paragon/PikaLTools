@@ -15,5 +15,9 @@ target_link_libraries(${EXEC_NAME}
     SteviappSdk::StereoVisionAppVision
     SteviappSdk::StereoVisionAppData
     ${IO_LIB} ${GEO_LIB}
+    PROJ::proj
+    JPEG::JPEG
+    TIFF::TIFF
+    PNG::PNG
     Qt${QT_VERSION_MAJOR}::Core
     Qt${QT_VERSION_MAJOR}::Widgets)

@@ -6,6 +6,7 @@
 #include <StereoVision/io/image_io.h>
 
 #include <steviapp/geo/geoRaster.h>
+#include <steviapp/geo/localframes.h>
 #include <steviapp/geo/terrainProjector.h>
 #include <steviapp/datablocks/trajectory.h>
 
@@ -22,6 +23,9 @@
 
 #include <tclap/CmdLine.h>
 
+template<typename CT>
+using LocalOrientations = StereoVisionApp::IndexedTimeSequence<Eigen::Matrix<CT,3,1>, CT>;
+
 template<typename T>
 int projectBilSequence(std::vector<std::string> const& filesList, int argc, char** argv) {
 
@@ -34,6 +38,12 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
     bool useCached;
     std::string output_folder;
     std::string trajectoryConfig_filePath;
+
+    bool debugOn;
+
+    int redChannel;
+    int greenChannel;
+    int blueChannel;
 
     try {
 
@@ -48,13 +58,16 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
         TCLAP::ValueArg<float> scaleArg("s","scale", "Scale at which the dtm should be used", false, 1., "float");
         TCLAP::ValueArg<int> tileArg("w","tileWidth", "Number of pixels in a tile", false, 2000, "int");
         TCLAP::SwitchArg useCacheArg("c", "useCached", "Used cached projection");
-        TCLAP::ValueArg<std::string> outputPathArg("o","output", "Output path", false, "./rectified", "local path to folder");
+        TCLAP::ValueArg<std::string> outputPathArg("o","output", "Output path", false, "", "local path to folder");
         TCLAP::ValueArg<std::string> trajectoryConfigArg("t","trajectory", "Output path", false, "", "local path to json file of trajectory");
+        TCLAP::SwitchArg debugArg("d", "debug", "Output a bit more data for debugging purposes");
 
         cmd.add(scaleArg);
         cmd.add(tileArg);
         cmd.add(useCacheArg);
+        cmd.add(trajectoryConfigArg);
         cmd.add(outputPathArg);
+        cmd.add(debugArg);
 
         cmd.parse(argc, argv);
 
@@ -79,11 +92,17 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
 
         output_folder = outputPathArg.getValue();
 
-        if (output_folder.back() != '/') {
-            output_folder += '/';
+        if (output_folder.empty()) {
+            output_folder = bil_folderpath;
         }
 
         trajectoryConfig_filePath = trajectoryConfigArg.getValue();
+
+        redChannel = 43;
+        greenChannel = 27;
+        blueChannel = 12;
+
+        debugOn = debugArg.getValue();
 
     } catch (TCLAP::ArgException &e) {
         std::cerr << "error: " << e.error() << " for arg " << e.argId() << std::endl;
@@ -100,12 +119,30 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
         }
     }
 
+    QFile trajDebugFile(outputDir.filePath("trajectory_debug.csv"));
+
+    if (debugOn) {
+        if (!trajDebugFile.open(QFile::WriteOnly)) {
+            std::cerr << "Cannot open trajectory debug file: " << trajDebugFile.fileName().toStdString() << std::endl;
+            return 1;
+        }
+        QTextStream trajOut(&trajDebugFile);
+        trajOut << "time\t";
+        trajOut << "x\t" << "y\t" << "z\t";
+        trajOut << "lat\t" << "lon\t" << "h\t";
+        trajOut << "rx\t" << "ry\t" << "rz\t";
+        trajOut << "roll\t" << "pitch\t" << "yaw\t";
+        trajOut << "oroll\t" << "opitch\t" << "oyaw\t" << Qt::endl;
+    }
+
     if (filesList.empty()) {
         out << "Empty list of bil files" << Qt::endl;
         return 1;
     }
 
-    auto terrainOpt = PikaLTools::readGeoRasterData<double, 2>(dtm_filepath);
+    std::optional<StereoVisionApp::Geo::GeoRasterData<double, 2>> terrainOpt;
+
+    terrainOpt = PikaLTools::readGeoRasterData<double, 2>(dtm_filepath);
 
     if (!terrainOpt.has_value()) {
         out << "Could not read terrain file \"" << QString::fromStdString(dtm_filepath) << "\"" << Qt::endl;
@@ -114,24 +151,72 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
 
     StereoVisionApp::Geo::GeoRasterData<double, 2>& terrain = terrainOpt.value();
 
+    out << "Terrain loaded! (grid size = " << terrain.raster.shape()[0] << "x" << terrain.raster.shape()[1] << ")" << Qt::endl;;
+
+    if (debugOn) {
+        double terrainMin = std::numeric_limits<double>::infinity();
+        double terrainMax = -std::numeric_limits<double>::infinity();
+
+        for (int i = 0; i < terrain.raster.shape()[0]; i++) {
+            for (int j = 0; j < terrain.raster.shape()[1]; j++) {
+                double val = terrain.raster.valueUnchecked(i,j);
+
+                terrainMin = std::min(val, terrainMin);
+                terrainMax = std::max(val, terrainMax);
+            }
+        }
+
+        out << "\t terrain min = " << terrainMin << " terrain max = " << terrainMax << Qt::endl;
+    }
+
+    //auto worldInfos = terrain.getWorldInfos();
+
     StereoVisionApp::Geo::TerrainProjector<double> projector(terrain);
 
+    out << "Projector loaded! (bvh depth = " << projector.bvhLevels() << ", bouding box = [";
+    auto bb = projector.getTerrainAxisAlignedBoundingBox();
+
+    for (int i = 0; i < bb.size(); i++) {
+        out << " " << bb[i];
+    }
+
+    auto ecefOffset = projector.ecefOffset();
+
+    out << " ], ecef offset = [ " << ecefOffset[0] << " " << ecefOffset[1] << " " << ecefOffset[2] << " ])" << Qt::endl;
+
+    Multidim::Array<bool,2> trajCover = projector.cover();
+
+    std::optional<LocalOrientations<double>> trajOrient = std::nullopt;
     std::optional<Trajectory<double>> trajOpt = std::nullopt;
     QFileInfo trajConfigFileInfos(QString::fromStdString(trajectoryConfig_filePath));
 
     if (trajConfigFileInfos.exists()) {
         QFile trajConfig(QString::fromStdString(trajectoryConfig_filePath));
-        QByteArray content = trajConfig.readAll();
 
-        QJsonParseError parseStatus;
-        QJsonDocument doc = QJsonDocument::fromJson(content, &parseStatus);
+        if (trajConfig.open(QFile::ReadOnly)) {
 
-        if (parseStatus.error == QJsonParseError::NoError) {
-            QJsonObject obj = doc.object();
-            StereoVisionApp::Trajectory trajBlock;
-            trajBlock.setParametersFromJsonRepresentation(obj);
+            QByteArray content = trajConfig.readAll();
 
-            trajOpt = trajBlock.loadTrajectorySequence();
+            QJsonParseError parseStatus;
+            QJsonDocument doc = QJsonDocument::fromJson(content, &parseStatus);
+
+            if (parseStatus.error == QJsonParseError::NoError) {
+                QJsonObject obj = doc.object();
+                StereoVisionApp::Trajectory trajBlock;
+                trajBlock.setParametersFromJsonRepresentation(obj);
+
+                trajOpt = trajBlock.loadTrajectorySequence();
+                trajOrient = trajBlock.loadOrientationSequence();
+
+            } else {
+                out << "Invalid trajectory config file provided (error " << parseStatus.error << ")" << Qt::endl;
+                return 1;
+            }
+
+            if (!trajOpt.has_value()) {
+                out << "Unable to load the provided trajectory configuration" << Qt::endl;
+                return 1;
+            }
         }
     }
 
@@ -203,7 +288,7 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
                                 min_x = p_x;
                             }
 
-                            if (p_x > min_x) {
+                            if (p_x > max_x) {
                                 max_x = p_x;
                             }
 
@@ -211,7 +296,7 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
                                 min_y = p_y;
                             }
 
-                            if (p_y > min_y) {
+                            if (p_y > max_y) {
                                 max_y = p_y;
                             }
 
@@ -232,7 +317,7 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
         std::vector<std::array<double, 3>> viewDirectionsSensor(nSamples);
 
         for (int i = 0; i < nSamples; i++) {
-            viewDirectionsSensor[i] = std::array<double, 3>{i - midPoint, 0, fLenPix};
+            viewDirectionsSensor[i] = std::array<double, 3>{0, i - midPoint, fLenPix};
         }
 
         //Trajectory
@@ -245,27 +330,82 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
         //Sequence of body2ecef transforms
         std::optional<Trajectory<double>> lcfTrajOpt = convertLcfSequenceToTrajectory(rawTrajectory);
 
-        if (!lcfTrajOpt.has_value()) {
+        if (!lcfTrajOpt.has_value() and !trajOpt.has_value()) {
             out << "Failed to extract trajectory for file \"" << QString::fromStdString(file) << "\"" << Qt::endl;
             continue;
         }
 
-        Trajectory<double>& lcfTrajectory = lcfTrajOpt.value();
         std::vector<double> times = get_envi_bil_lines_times(file);
+
+        if (times.size() != nLines) {
+            out << "Time vector do not have the same number of lines as the bil corresponding file" << Qt::endl;
+            continue;
+        }
 
         Trajectory<double>& trajectory = (trajOpt.has_value()) ? trajOpt.value() : lcfTrajOpt.value();
 
         int currentPoseIndex = 0;
 
+        #pragma omp parallel for
         for (int i = 0; i < nLines; i++) {
 
+#ifndef NDEBUG
             out << "\r\t" << "Treating line " << (i+1) << "/" << nLines;
             out.flush();
+#endif
 
             double targetTime = times[i];
 
             Trajectory<double>::TimeInterpolableVals vals = trajectory.getValueAtTime(targetTime);
             StereoVision::Geometry::RigidBodyTransform<double> pose = vals.weigthLower*vals.valLower + vals.weigthUpper*vals.valUpper;
+
+            if (debugOn) {
+
+                CartesianCoord<double> latlonheight = convertECEF2LatLon(pose.t.x(), pose.t.y(), pose.t.z());
+                std::optional<StereoVision::Geometry::AffineTransform<double>> ltp2ecef =
+                        StereoVisionApp::Geo::getLTPC2ECEF(Eigen::Vector3d(latlonheight.x, latlonheight.y, latlonheight.z),
+                                                           "EPSG:4979",
+                                                           StereoVisionApp::Geo::NED);
+                StereoVision::Geometry::RigidBodyTransform<double> ltp2ecefRigid(ltp2ecef.value());
+                StereoVision::Geometry::RigidBodyTransform<double> body2ltp = ltp2ecefRigid.inverse()*pose;
+
+                Eigen::Vector3d eulerAnglesPose = StereoVision::Geometry::rMat2eulerRadxyz(StereoVision::Geometry::rodriguezFormula(body2ltp.r));
+
+                QTextStream trajOut(&trajDebugFile);
+                trajOut.setRealNumberPrecision(16);
+                trajOut.setRealNumberNotation(QTextStream::FixedNotation);
+                trajOut << targetTime << "\t";
+                trajOut << pose.t.x() << "\t"
+                        << pose.t.y() << "\t"
+                        << pose.t.z() << "\t";
+                trajOut << latlonheight.x << "\t"
+                        << latlonheight.y << "\t"
+                        << latlonheight.z << "\t";
+                trajOut << pose.r.x() << "\t"
+                        << pose.r.y() << "\t"
+                        << pose.r.z() << "\t";
+                trajOut << (eulerAnglesPose.x()/M_PI*180) << "\t"
+                        << (eulerAnglesPose.y()/M_PI*180) << "\t"
+                        << (eulerAnglesPose.z()/M_PI*180) << "\t";
+
+                if (trajOrient.has_value()) {
+
+                    LocalOrientations<double>::TimeInterpolableVals orientVal = trajOrient.value().getValueAtTime(targetTime);
+                    Eigen::Vector3d orientation = orientVal.weigthLower*orientVal.valLower + orientVal.weigthUpper*orientVal.valUpper;
+
+                    Eigen::Vector3d eulerAnglesOriginal = StereoVision::Geometry::rMat2eulerRadxyz(StereoVision::Geometry::rodriguezFormula(orientation));
+
+                    trajOut << (eulerAnglesOriginal.x()/M_PI*180) << "\t"
+                            << (eulerAnglesOriginal.y()/M_PI*180) << "\t"
+                            << (eulerAnglesOriginal.z()/M_PI*180);
+
+
+                } else {
+                    trajOut << "-\t-\t-";
+                }
+
+                trajOut << Qt::endl;
+            }
 
             std::array<double, 3> ecefOrigin{pose.t.x(), pose.t.y(), pose.t.z()};
 
@@ -278,7 +418,7 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
                 viewDirectionsECEF[i] = std::array<float, 3>{float(transformed.x()), float(transformed.y()), float(transformed.z())};
             }
 
-            auto projResOpt = projector.projectVectorsOptimized(ecefOrigin, viewDirectionsECEF);
+            auto projResOpt = projector.projectVectors(ecefOrigin, viewDirectionsECEF);
 
             if (!projResOpt.has_value()) {
                 continue;
@@ -295,7 +435,7 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
                         min_x = proj[0];
                     }
 
-                    if (proj[0] > min_x) {
+                    if (proj[0] > max_x) {
                         max_x = proj[0];
                     }
 
@@ -303,7 +443,7 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
                         min_y = proj[1];
                     }
 
-                    if (proj[1] > min_y) {
+                    if (proj[1] > max_y) {
                         max_y = proj[1];
                     }
 
@@ -314,15 +454,40 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
 
             }
 
+            int pi = std::round(results.originMapPos[0]);
+            int pj = std::round(results.originMapPos[1]);
+
+            if (pi >= 0 and pi < trajCover.shape()[0] and pj >= 0 and pj < trajCover.shape()[1]) {
+                trajCover.atUnchecked(pi,pj) = true;
+            }
+
         }
+        #ifndef NDEBUG
         out << Qt::endl;
+        #endif
 
         bilFilesROI[fileId] = QRectF(QPointF(min_x, min_y), QPointF(max_x, max_y));
+
+        out << "\tBounding box: " << bilFilesROI[fileId].top() << " " << bilFilesROI[fileId].left() << " " << bilFilesROI[fileId].right() << " " << bilFilesROI[fileId].bottom() << Qt::endl;
 
         StereoVision::IO::writeStevimg<float>(file + "_projected_coords.stevimg", projectedCoordinates);
     }
 
     out << "Reprojection done, starting rendering!" << Qt::endl;
+
+    //export the trajectory cover
+
+    Multidim::Array<uint8_t,2> coverTraj(trajCover.shape());
+
+    for (int i = 0; i < trajCover.shape()[0]; i++) {
+        for (int j = 0; j < trajCover.shape()[1]; j++) {
+
+            coverTraj.atUnchecked(i,j) = (trajCover.valueUnchecked(i,j)) ? 255 : 0;
+
+        }
+    }
+
+    StereoVision::IO::writeImage<uint8_t>(output_folder + "cover_traj.bmp", coverTraj);
 
     //export reprojected mosaïc
     int newGridHeight = mapScale*terrain.raster.shape()[0];
@@ -342,6 +507,13 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
         hPixsPerSplit -= (maxTilePixels - newGridWidth%maxTilePixels)/(gridHSplits-1);
     }
 
+    Eigen::Matrix<double,2,3> modifiedGeoTransform = terrain.geoTransform;
+    for (int i = 0; i < 2; i++) {
+        for (int j = 0; j < 2; j++) {
+            modifiedGeoTransform(i,j) /= mapScale;
+        }
+    }
+
     for (int v = 0; v < gridVSplits; v++) {
         for (int h = 0; h < gridHSplits; h++) {
 
@@ -353,17 +525,23 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
             int split_height = (v == gridVSplits-1) ? newGridHeight - i0 : vPixsPerSplit;
             int split_width = (h == gridHSplits-1) ? newGridWidth - j0 : hPixsPerSplit;
 
-            QRectF currentAOI(float(j0)/mapScale,
-                              float(i0)/mapScale,
-                              float(split_width)/mapScale,
-                              float(split_height)/mapScale);
+            Eigen::Vector3d topLeft(j0, i0, 1);
+            Eigen::Vector2d topLeftGeoCoord = modifiedGeoTransform*topLeft;
+
+            QRectF currentAOI(float(i0)/mapScale,
+                              float(j0)/mapScale,
+                              float(split_height)/mapScale,
+                              float(split_width)/mapScale);
+
+            out << "Current AOI: " << currentAOI.top() << " " << currentAOI.left() << " " << currentAOI.right() << " " << currentAOI.bottom() << Qt::endl;
 
             Multidim::Array<float,2> nSamples(split_height, split_width);
-            std::fill(&nSamples.at(0,0), &nSamples.at(split_height-1,split_width-1), 0);
 
             Multidim::Array<float,3> samples(split_height, split_width, nBands);
-            std::fill(&samples.at(0,0,0), &samples.at(split_height-1,split_width-1, nBands-1), 0);
 
+            Multidim::Array<float, 3> geotiff(split_height, split_width, 3);
+
+            bool outInitialized = false;
             bool anyWritten = false;
 
             for (int f = 0; f < bilFilesROI.size(); f++) {
@@ -372,7 +550,25 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
                     continue;
                 }
 
+                if (!outInitialized) { //doing it like that is marginally less performant for dense maps but save so much time during testing.
+                    #pragma omp parallel for
+                    for (int i = 0; i < split_height; i++) {
+                        for (int j = 0; j < split_width; j++) {
+
+                            nSamples.atUnchecked(i,j) = 0;
+
+                            for (int c = 0; c < nBands; c++) {
+
+                                samples.atUnchecked(i,j,c) = 0;
+                            }
+                        }
+                    }
+                    outInitialized = true;
+                }
+
                 std::string const& file = filesList[f];
+
+                out << "Treat file: " << file.c_str() << Qt::endl;
 
                 Multidim::Array<float, 3> projectedCoordinates = StereoVision::IO::readStevimg<float, 3>(file + "_projected_coords.stevimg");
                 Multidim::Array<float, 3> billFile = read_envi_bil_to_float(file);
@@ -420,7 +616,8 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
                             wJ = 1;
                         }
 
-                        for (int c = 0; c < billFile.shape()[2]; c++) {
+                        #pragma omp parallel for
+                        for (int c = 0; c < billFile.shape()[2]; c++) { //paralelize here to avoid race conditions.
 
                             float val = billFile.valueUnchecked(i,j,c);
 
@@ -450,6 +647,8 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
                 continue;
             }
 
+            out << "\t" << "Tile computed" << Qt::endl;
+
             for (int i = 0; i < samples.shape()[0]; i++) {
                 for (int j = 0; j < samples.shape()[1]; j++) {
 
@@ -466,17 +665,65 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
                 }
             }
 
-            std::stringstream ss;
-            ss << "tile_" << v << "_" << h << ".stevimg";
+            for (int i = 0; i < split_height; i++) {
+                for (int j = 0; j < split_width; j++) {
 
-            bool ok = StereoVision::IO::writeStevimg<float>(output_folder + ss.str(), samples);
+                    geotiff.atUnchecked(i,j,0) = samples.atUnchecked(i,j,redChannel);
+                    geotiff.atUnchecked(i,j,1) = samples.atUnchecked(i,j,greenChannel);
+                    geotiff.atUnchecked(i,j,2) = samples.atUnchecked(i,j,blueChannel);
+                }
+            }
+
+            std::stringstream streamName;
+            streamName << "tile_" << v << "_" << h << ".stevimg";
+
+            std::stringstream streamWld;
+            streamWld << "tile_" << v << "_" << h << ".wld";
+
+            std::stringstream streamTiff;
+            streamTiff << "tile_" << v << "_" << h << ".tiff";
+
+            bool ok = StereoVision::IO::writeStevimg<float>(output_folder + streamName.str(), samples);
             if (ok) {
                 out << "\t" << "Written" << Qt::endl;
             } else {
                 out << "\t" << "Failed to write" << Qt::endl;
             }
 
+            ok = StereoVision::IO::writeImage<float>(output_folder + streamTiff.str(), geotiff);
+            if (ok) {
+                out << "\t" << "Tiff file Written" << Qt::endl;
+            } else {
+                out << "\t" << "Failed to write tiff" << Qt::endl;
+            }
+
+            QFile wldFile(QString::fromStdString(output_folder + streamWld.str()));
+            if (wldFile.open(QFile::WriteOnly)) {
+
+                QTextStream wldOut(&wldFile);
+                wldOut.setRealNumberPrecision(16);
+                wldOut.setRealNumberNotation(QTextStream::FixedNotation);
+                wldOut << modifiedGeoTransform(1,0) << "\n";
+                wldOut << modifiedGeoTransform(1,1) << "\n";
+                wldOut << modifiedGeoTransform(0,0) << "\n";
+                wldOut << modifiedGeoTransform(0,1) << "\n";
+                wldOut << topLeftGeoCoord[1] << "\n";
+                wldOut << topLeftGeoCoord[0];
+
+                wldOut.flush();
+
+                wldFile.close();
+                out << "\t" << "Wld file Written" << Qt::endl;
+
+            } else {
+                out << "\t" << "Failed to write wld file" << Qt::endl;
+            }
+
         }
+    }
+
+    if (useCached) {
+        return 0; //cannot use cover mask when using cached data.
     }
 
     Multidim::Array<bool,2> const& coverMask = projector.cover();
@@ -491,6 +738,11 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
     }
 
     StereoVision::IO::writeImage<uint8_t>(output_folder + "cover_mask.bmp", coverImg);
+
+    if (debugOn) {
+        out << "Closing debug traj file" << Qt::endl;
+        trajDebugFile.close();
+    }
 
     return 0;
 

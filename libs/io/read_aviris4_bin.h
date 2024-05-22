@@ -24,11 +24,27 @@ struct Aviris4FrameData {
 };
 
 /*!
+ * \brief getAviris4FramesNLines get the number of lines in an aviris4 frame
+ * \param frameFilePath the file path to the frame file.
+ * \return the number of lines, or -1 in case of error
+ */
+int getAviris4FramesNLines(std::string const& frameFilePath);
+
+/*!
  * \brief loadFrame load a single aviris4 frame
  * \param frameFilePath the path to the frame file.
  * \return the frame data with gps time of the individual lines
  */
 Multidim::Array<data_t, 3> loadFrame(std::string const& frameFilePath);
+
+/*!
+ * \brief loadFrameSlice load a certain number of lines from an aviris4 frame
+ * \param frameFilePath the path to the frame file
+ * \param startLine the starting line to load from
+ * \param nLines the number of lines to load
+ * \return the frame data with gps time of the individual lines still included
+ */
+Multidim::Array<data_t, 3> loadFrameSlice(std::string const& frameFilePath, int startLine, int nLines);
 
 /*!
  * \brief loadFrameTime load the gps time from a single aviris4 frame

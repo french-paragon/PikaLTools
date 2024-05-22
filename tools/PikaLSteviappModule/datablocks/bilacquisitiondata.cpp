@@ -153,7 +153,7 @@ bool BilSequenceAcquisitionData::loadLcfData() const {
                 lat0 = line.lat;
                 lon0 = line.lon;
 
-                ecef2localAlt0 = getLocalFrameAtPos<double>(lat0, lon0, WGS84_Ellipsoid);
+                ecef2localAlt0 = getLocalFrameAtPos<double>(lat0, lon0);
 
                 ecef2LocalEstimated = true;
             }
@@ -168,7 +168,7 @@ bool BilSequenceAcquisitionData::loadLcfData() const {
 
             Eigen::Vector3f t(vx, vy, vz);
 
-            StereoVision::Geometry::AffineTransform<double> ecef2ned = getLocalFrameAtPosNED<double>(line.lat, line.lon, WGS84_Ellipsoid, line.height);
+            StereoVision::Geometry::AffineTransform<double> ecef2ned = getLocalFrameAtPosNED<double>(line.lat, line.lon, line.height);
 
             line.pitch = line.pitch;
             line.roll = -line.roll;

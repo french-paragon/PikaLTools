@@ -26,7 +26,7 @@ void TestGeoTools::testECEF2LocalFrame() {
     float lon = 10;
     float alt = 400;
 
-    StereoVision::Geometry::AffineTransform<float> ecef2local1 = getLocalFrameAtPos(lat, lon, WGS84_Ellipsoid, alt);
+    StereoVision::Geometry::AffineTransform<float> ecef2local1 = getLocalFrameAtPos(lat, lon, alt);
     StereoVision::Geometry::AffineTransform<float> local3ecef1 =
             StereoVision::Geometry::AffineTransform<float>(ecef2local1.R.transpose(), -ecef2local1.R.transpose()*ecef2local1.t);
 
@@ -34,7 +34,7 @@ void TestGeoTools::testECEF2LocalFrame() {
     QVERIFY(local3ecef1.R(z_id,y_id) > 0);
     QVERIFY(local3ecef1.R(z_id,z_id) > 0);
 
-    StereoVision::Geometry::AffineTransform<float> ecef2local1NWU = getLocalFrameAtPosNWU(lat, lon, WGS84_Ellipsoid, alt);
+    StereoVision::Geometry::AffineTransform<float> ecef2local1NWU = getLocalFrameAtPosNWU(lat, lon, alt);
     StereoVision::Geometry::AffineTransform<float> local3ecef1NWU  =
             StereoVision::Geometry::AffineTransform<float>(ecef2local1NWU .R.transpose(), -ecef2local1NWU .R.transpose()*ecef2local1NWU.t);
 
@@ -42,7 +42,7 @@ void TestGeoTools::testECEF2LocalFrame() {
     QVERIFY(local3ecef1NWU.R(z_id,x_id) > 0);
     QVERIFY(local3ecef1NWU.R(z_id,z_id) > 0);
 
-    StereoVision::Geometry::AffineTransform<float> ecef2local1NED = getLocalFrameAtPosNED(lat, lon, WGS84_Ellipsoid, alt);
+    StereoVision::Geometry::AffineTransform<float> ecef2local1NED = getLocalFrameAtPosNED(lat, lon, alt);
     StereoVision::Geometry::AffineTransform<float> local3ecef1NED  =
             StereoVision::Geometry::AffineTransform<float>(ecef2local1NED .R.transpose(), -ecef2local1NED .R.transpose()*ecef2local1NED.t);
 

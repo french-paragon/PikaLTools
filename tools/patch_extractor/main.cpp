@@ -96,7 +96,7 @@ QVector<LinePose> getScalinesPoseValues(QVector<QString> const& files, bool flip
                 meanLat += lat;
                 meanLon += lon;
 
-                CartesianCoord<double> ecefPosition = convertLatLonToECEF<double>(lat, lon, alt, WGS84_Ellipsoid);
+                CartesianCoord<double> ecefPosition = convertLatLonToECEF<double>(lat, lon, alt);
 
                 Eigen::Vector3d position(ecefPosition.x, ecefPosition.y, ecefPosition.z);
 
@@ -133,7 +133,7 @@ QVector<LinePose> getScalinesPoseValues(QVector<QString> const& files, bool flip
     meanLat /= accumulated.size();
     meanLon /= accumulated.size();
 
-    StereoVision::Geometry::AffineTransform<double> ecef2local = getLocalFrameAtPos<double>(meanLat, meanLon, WGS84_Ellipsoid);
+    StereoVision::Geometry::AffineTransform<double> ecef2local = getLocalFrameAtPos<double>(meanLat, meanLon);
 
     for (LinePose & pose : accumulated) {
 
