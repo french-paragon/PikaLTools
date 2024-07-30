@@ -4,7 +4,10 @@
 
 #include "bilsequenceactions.h"
 
+#include <steviapp/control/mainwindow.h>
+
 #include <QAction>
+#include <QMessageBox>
 
 namespace PikaLTools {
 
@@ -33,7 +36,22 @@ QList<QAction*> BilSequenceActionManager::factorizeClassContextActions(QObject* 
         simulatePseudoPushBroomData();
     });
 
-    return {add, generateSimulated};
+    QAction* initLandmarks = new QAction(tr("Init landmarks from bil sequences"), parent);
+    connect(initLandmarks, &QAction::triggered, [] () {
+        bool ok = initBilSequencesTiePoints();
+
+        if (!ok) {
+            StereoVisionApp::MainWindow* mw = StereoVisionApp::MainWindow::getActiveMainWindow();
+            QMessageBox::warning(mw, tr("Could not init tie points from bil sequence"), tr("Unknown error"));
+        }
+    });
+
+    QAction* optimizeSeqs = new QAction(tr("Optimize bil sequences"), parent);
+    connect(optimizeSeqs, &QAction::triggered, [] () {
+        refineTrajectoryUsingDn();
+    });
+
+    return {add, generateSimulated, initLandmarks, optimizeSeqs};
 
 }
 
@@ -75,12 +93,12 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
         showCovariance(bilSeq);
     });
 
-    QAction* optimizeSeq = new QAction(tr("Optimize bil sequence"), parent);
-    connect(optimizeSeq, &QAction::triggered, [bilSeq] () {
-        refineTrajectoryUsingDn(bilSeq);
+    QAction* assignTraj2Seq = new QAction(tr("Assign trajectory"), parent);
+    connect(assignTraj2Seq, &QAction::triggered, [bilSeq] () {
+        setBilSequenceTrajectory(bilSeq, -1);
     });
 
-    return {view_trajectory, view_bil_cube, export_landmarks, compute_orthophoto, compute_corrMat, optimizeSeq};
+    return {view_trajectory, assignTraj2Seq, view_bil_cube, export_landmarks, compute_orthophoto, compute_corrMat};
 }
 
 QList<QAction*> BilSequenceActionManager::factorizeMultiItemsContextActions(QObject* parent, StereoVisionApp::Project* p, QModelIndexList const& projectIndex) const {

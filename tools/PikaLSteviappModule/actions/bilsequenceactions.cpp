@@ -1,6 +1,8 @@
 #include "bilsequenceactions.h"
 
 #include <steviapp/datablocks/project.h>
+#include <steviapp/datablocks/image.h>
+#include <steviapp/datablocks/trajectory.h>
 #include <steviapp/control/application.h>
 #include <steviapp/control/mainwindow.h>
 #include <steviapp/gui/stepprocessmonitorbox.h>
@@ -8,8 +10,12 @@
 #include <steviapp/gui/imageadapters/imagedatadisplayadapter.h>
 
 #include <steviapp/datablocks/landmark.h>
+#include <steviapp/datablocks/trajectory.h>
 
 #include <steviapp/vision/indexed_timed_sequence.h>
+
+#include <steviapp/sparsesolver/sbagraphreductor.h>
+#include <steviapp/sparsesolver/modularsbasolver.h>
 
 #include <StereoVision/geometry/core.h>
 #include <StereoVision/geometry/rotations.h>
@@ -28,6 +34,7 @@
 #include "../processing/rectifybilseqtoorthosteppedprocess.h"
 
 #include "../solving/cerespushbroomsolver.h"
+#include "../solving/bilsequencesbamodule.h"
 
 #include "io/read_envi_bil.h"
 
@@ -42,6 +49,8 @@
 
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QInputDialog>
+#include <QFileInfo>
 
 #include <algorithm>
 #include <random>
@@ -544,6 +553,204 @@ bool showCovariance(BilSequenceAcquisitionData *bilSequence) {
 
 }
 
+bool setBilSequenceTrajectory(BilSequenceAcquisitionData *bilSequence, qint64 trajId) {
+
+    if (bilSequence == nullptr) {
+        return false;
+    }
+
+    StereoVisionApp::Project* project = bilSequence->getProject();
+
+    if (project == nullptr) {
+        return false;
+    }
+
+    StereoVisionApp::Trajectory* traj = project->getDataBlock<StereoVisionApp::Trajectory>(trajId);
+
+    if (traj == nullptr) {
+
+        StereoVisionApp::MainWindow* mw = StereoVisionApp::MainWindow::getActiveMainWindow();
+
+        if (mw == nullptr) {
+            return false;
+        }
+
+        QVector<qint64> trajIdxs = project->getIdsByClass(StereoVisionApp::Trajectory::staticMetaObject.className());
+        QStringList names;
+
+        for (qint64 id : trajIdxs) {
+            names << project->getById(id)->objectName();
+        }
+
+        bool ok = true;
+        QString selected = QInputDialog::getItem(mw, QObject::tr("Get trajectory"), QObject::tr("trajectory"), names, 0, false, &ok);
+
+        if (!ok) {
+            return false;
+        }
+
+        int idx = names.indexOf(selected);
+
+        if (idx < 0 or idx >= trajIdxs.size()) {
+            return false;
+        }
+
+        qint64 trajId = trajIdxs[idx];
+
+        traj = project->getDataBlock<StereoVisionApp::Trajectory>(trajId);
+
+    }
+
+    if (traj == nullptr) {
+        return false;
+    }
+
+    bilSequence->assignTrajectory(traj->internalId());
+
+    return true;
+
+}
+
+
+bool initBilSequencesTiePoints() {
+
+    QTextStream out(stdout);
+
+    out << "init Bil Sequences Tie Points" << Qt::endl;
+
+    //get options
+    StereoVisionApp::StereoVisionApplication* app = StereoVisionApp::StereoVisionApplication::GetAppInstance();
+
+    if (app == nullptr) {
+        return false;
+    }
+
+    StereoVisionApp::Project* project = app->getCurrentProject();
+
+    if (project == nullptr) {
+        return false;
+    }
+
+    StereoVision::Geometry::AffineTransform<float> ecef2local = project->ecef2local();
+    StereoVision::Geometry::AffineTransform<float> local2ecef(ecef2local.R.transpose(),
+                                                              -ecef2local.R.transpose()*ecef2local.t);
+
+    QVector<qint64> bilSeqIdxs = project->getIdsByClass(BilSequenceAcquisitionData::staticMetaObject.className());
+
+    struct LmPointInfo{qint64 seqId; qint64 seqlmid;};
+
+    QMap<qint64,QVector<LmPointInfo>> pointsInfos;
+
+    for (qint64 bilSeqId : bilSeqIdxs) {
+
+        BilSequenceAcquisitionData* bilSeq = project->getDataBlock<BilSequenceAcquisitionData>(bilSeqId);
+
+        if (bilSeq == nullptr) {
+            continue;
+        }
+
+        QVector<qint64> bilLandmarksIdxs = bilSeq->listTypedSubDataBlocks(BilSequenceLandmark::staticMetaObject.className());
+
+        for (qint64 bilLmId : bilLandmarksIdxs) {
+
+            BilSequenceLandmark* lm = bilSeq->getBilSequenceLandmark(bilLmId);
+
+            if (lm == nullptr) {
+                continue;
+            }
+
+            qint64 lmId = lm->attachedLandmarkid();
+
+            pointsInfos[lmId].push_back({bilSeqId, bilLmId});
+
+        }
+    }
+
+    QList<qint64> selectedLmIdxs = pointsInfos.keys();
+
+    out << "Candidate points: ";
+
+    for (qint64 id : selectedLmIdxs) {
+        out << id << " ";
+    }
+
+    out << Qt::endl;
+
+    out << "Processed points: ";
+
+    for (qint64 lmId : selectedLmIdxs) {
+
+        StereoVisionApp::Landmark* lm = project->getDataBlock<StereoVisionApp::Landmark>(lmId);
+
+        if (lm == nullptr) {
+            continue;
+        }
+
+        if (lm->hasOptimizedParameters() or pointsInfos[lmId].size() < 2) { // initial solution already set
+            continue;
+        }
+
+        int nMeasures = pointsInfos[lmId].size();
+
+        //We build a system of equations d x (x - t) = 0, where x is the coordinate of the landmark, d is the ray direction and t is the ray origin
+        // (or, alternatively, d x x = d x t
+        Eigen::Matrix<double,Eigen::Dynamic,3> A;
+        Eigen::Matrix<double,Eigen::Dynamic,1> b;
+
+        A.resize(3*nMeasures,3);
+        b.resize(3*nMeasures,1);
+
+        bool ok = true;
+
+        for (int i = 0; i < pointsInfos[lmId].size(); i++) {
+
+            LmPointInfo& lmInfos = pointsInfos[lmId][i];
+
+            BilSequenceAcquisitionData* bilSeq = project->getDataBlock<BilSequenceAcquisitionData>(lmInfos.seqId);
+
+            if (bilSeq == nullptr) {
+                ok = false;
+                break;
+            }
+
+            BilSequenceLandmark* lm = bilSeq->getBilSequenceLandmark(lmInfos.seqlmid);
+
+            if (lm == nullptr) {
+                ok = false;
+                break;
+            }
+
+            std::optional<Eigen::Matrix<double,3,2>> rayInfos = lm->getRayInfos();
+
+            if (!rayInfos.has_value()) {
+                ok = false;
+                break;
+            }
+
+            A.block<3,3>(i*3,0) = StereoVision::Geometry::skew<double>(rayInfos.value().col(1));
+
+            b.block<3,1>(i*3,0) = rayInfos.value().col(1).cross(rayInfos.value().col(0));
+
+        }
+
+        if (!ok) {
+            continue;
+        }
+
+        Eigen::Vector3f lsInteresctPos = A.matrix().colPivHouseholderQr().solve(b).cast<float>();
+
+        constexpr bool optimized = true;
+        lm->setPositionFromEcef(local2ecef*lsInteresctPos, optimized);
+
+        out << lmId << " ";
+
+    }
+
+    out << Qt::endl;
+
+    return true;
+}
+
 bool simulatePseudoPushBroomData() {
 
     using TimeSeq = CeresPushBroomSolver::IndexedVec3TimeSeq;
@@ -884,11 +1091,7 @@ bool simulatePseudoPushBroomData() {
 
 }
 
-bool refineTrajectoryUsingDn(BilSequenceAcquisitionData *bilSequence) {
-
-    if (bilSequence == nullptr) {
-        return false;
-    }
+bool refineTrajectoryUsingDn() {
 
     //get options
     StereoVisionApp::StereoVisionApplication* app = StereoVisionApp::StereoVisionApplication::GetAppInstance();
@@ -905,15 +1108,11 @@ bool refineTrajectoryUsingDn(BilSequenceAcquisitionData *bilSequence) {
 
     StereoVisionApp::MainWindow* mw = StereoVisionApp::MainWindow::getActiveMainWindow();
 
-    PushBroomOptimizationConfigDialog configDialog(project, mw);
-    configDialog.setModal(true);
-    configDialog.setWindowTitle(QObject::tr("Configure optimizer"));
-
-    int code = configDialog.exec();
-
-    if (code == QDialog::Rejected) {
+    if (mw == nullptr) {
         return false;
     }
+
+    //TODO: add config dialog for options if needed
 
     int nSteps = 200;
 
@@ -921,225 +1120,9 @@ bool refineTrajectoryUsingDn(BilSequenceAcquisitionData *bilSequence) {
         return false;
     }
 
-    // GPS infos
-    DataColumnsSelectionWidget::ColumnSelectionInfos gpsSelectionInfos = configDialog.getsGpsColsSelectionInfos();
-
-    CeresPushBroomSolver::GPSMeasurementInfos gpsInfos;
-    auto errorMessage = gpsInfos.configureFromColumnsSelection(gpsSelectionInfos);
-
-    if (errorMessage.has_value()) {
-        QMessageBox::warning(mw,
-                             QObject::tr("Could not run optimization"),
-                             errorMessage.value());
-        return false;
-    }
-
-    //initial orientation infos
-    DataColumnsSelectionWidget::ColumnSelectionInfos initialOrientationSelectionInfos = configDialog.getsInitialOrientationColsSelectionInfos();
-
-    CeresPushBroomSolver::InitialOrientationInfos initialOrientationInfos;
-    errorMessage = initialOrientationInfos.configureFromColumnsSelection(initialOrientationSelectionInfos);
-
-    if (errorMessage.has_value()) {
-        QMessageBox::warning(mw,
-                             QObject::tr("Could not run optimization"),
-                             errorMessage.value());
-        return false;
-    }
-
-    //Accelerometer infos
-    DataColumnsSelectionWidget::ColumnSelectionInfos accSelectionInfos = configDialog.getsAccColsSelectionInfos();
-
-    if (accSelectionInfos.dataTable == nullptr) {
-        QMessageBox::warning(mw,
-                             QObject::tr("Could not run optimization"),
-                             QObject::tr("Missing accelerometer data"));
-        return false;
-    }
-
-    bool validAccdata = true;
-    QVector<QString> accDataColumns = accSelectionInfos.dataTable->columns();
-
-    if (accSelectionInfos.variableType != DataColumnsSelectionWidget::Acceleration or
-            !accDataColumns.contains(accSelectionInfos.indexingCol) or
-            accSelectionInfos.columnsNames.size() != 3) {
-        validAccdata = false;
-    }
-
-    if (validAccdata) {
-        for (QString const& colName : accSelectionInfos.columnsNames) {
-            if (!accDataColumns.contains(colName)) {
-                validAccdata = false;
-            }
-        }
-    }
-
-    if (!validAccdata) {
-        QMessageBox::warning(mw,
-                             QObject::tr("Could not run optimization"),
-                             QObject::tr("Invalid accelerometer data"));
-        return false;
-    }
-
-    CeresPushBroomSolver::AccMeasurementInfos accInfos;
-    accInfos.dataTable = accSelectionInfos.dataTable;
-    accInfos.colTime = accSelectionInfos.indexingCol;
-    accInfos.colAccX = accSelectionInfos.columnsNames[0];
-    accInfos.colAccY = accSelectionInfos.columnsNames[0];
-    accInfos.colAccZ = accSelectionInfos.columnsNames[0];
-
-    //gyro infos
-    DataColumnsSelectionWidget::ColumnSelectionInfos gyroSelectionInfos = configDialog.getsGyroColsSelectionInfos();
-
-    if (gyroSelectionInfos.dataTable == nullptr) {
-        QMessageBox::warning(mw,
-                             QObject::tr("Could not run optimization"),
-                             QObject::tr("Missing gyroscope data"));
-        return false;
-    }
-
-    bool validGyrodata = true;
-    QVector<QString> gyroDataColumns = gyroSelectionInfos.dataTable->columns();
-
-    if (gyroSelectionInfos.variableType != DataColumnsSelectionWidget::AngularSpeed or
-            !gyroDataColumns.contains(gyroSelectionInfos.indexingCol)) {
-        validGyrodata = false;
-    }
-
-    if ((gyroSelectionInfos.angleRepType != DataColumnsSelectionWidget::Quaternion and gyroSelectionInfos.columnsNames.size() != 3)) {
-        validGyrodata = false;
-    }
-
-    if ((gyroSelectionInfos.angleRepType == DataColumnsSelectionWidget::Quaternion and gyroSelectionInfos.columnsNames.size() != 4)) {
-        validGyrodata = false;
-    }
-
-    if (validGyrodata) {
-        for (QString const& colName : gyroSelectionInfos.columnsNames) {
-            if (!gyroDataColumns.contains(colName)) {
-                validGyrodata = false;
-            }
-        }
-    }
-
-    if (!validGyrodata) {
-        QMessageBox::warning(mw,
-                             QObject::tr("Could not run optimization"),
-                             QObject::tr("Invalid gyroscope data"));
-        return false;
-    }
-
-    CeresPushBroomSolver::GyroMeasurementInfos gyroInfos;
-    gyroInfos.dataTable = gyroSelectionInfos.dataTable;
-    gyroInfos.colTime = gyroSelectionInfos.indexingCol;
-
-    if (gyroSelectionInfos.angleRepType == DataColumnsSelectionWidget::Quaternion) {
-        gyroInfos.rotationRepresentation = CeresPushBroomSolver::Quaternion;
-        gyroInfos.colAngSpeedW = gyroSelectionInfos.columnsNames[0];
-        gyroInfos.colAngSpeedX = gyroSelectionInfos.columnsNames[1];
-        gyroInfos.colAngSpeedY = gyroSelectionInfos.columnsNames[2];
-        gyroInfos.colAngSpeedZ = gyroSelectionInfos.columnsNames[3];
-    }
-
-    if (gyroSelectionInfos.angleRepType == DataColumnsSelectionWidget::AxisAngle) {
-        gyroInfos.rotationRepresentation = CeresPushBroomSolver::AngleAxis;
-        gyroInfos.colAngSpeedX = gyroSelectionInfos.columnsNames[0];
-        gyroInfos.colAngSpeedY = gyroSelectionInfos.columnsNames[1];
-        gyroInfos.colAngSpeedZ = gyroSelectionInfos.columnsNames[2];
-    }
-
-    if (gyroSelectionInfos.angleRepType == DataColumnsSelectionWidget::EulerXYZ) {
-        gyroInfos.rotationRepresentation = CeresPushBroomSolver::EulerXYZ;
-        gyroInfos.colAngSpeedX = gyroSelectionInfos.columnsNames[0];
-        gyroInfos.colAngSpeedY = gyroSelectionInfos.columnsNames[1];
-        gyroInfos.colAngSpeedZ = gyroSelectionInfos.columnsNames[2];
-    }
-
-    //points infos
-    /*DataColumnsSelectionWidget::ColumnSelectionInfos pointsSelectionInfos = configDialog.getsPointsColsSelectionInfos();
-
-    if (pointsSelectionInfos.dataTable == nullptr) {
-        QMessageBox::warning(mw,
-                             QObject::tr("Could not run optimization"),
-                             QObject::tr("Missing points data"));
-        return false;
-    }
-
-    bool validPointsdata = true;
-    QVector<QString> pointsDataColumns = pointsSelectionInfos.dataTable->columns();
-
-    if (pointsSelectionInfos.variableType != DataColumnsSelectionWidget::Position or
-            !pointsDataColumns.contains(pointsSelectionInfos.indexingCol) or
-            pointsSelectionInfos.columnsNames.size() != 3) {
-        validPointsdata = false;
-    }
-
-    if (validPointsdata) {
-        for (QString const& colName : pointsSelectionInfos.columnsNames) {
-            if (!pointsDataColumns.contains(colName)) {
-                validPointsdata = false;
-            }
-        }
-    }
-
-    if (!validPointsdata) {
-        QMessageBox::warning(mw,
-                             QObject::tr("Could not run optimization"),
-                             QObject::tr("Invalid points data"));
-        return false;
-    }*/
-
-    CeresPushBroomSolver::AdditionalPointsInfos pointsInfos;
-    pointsInfos.dataTable = nullptr;
-    pointsInfos.colPtId = "pointsSelectionInfos.indexingCol";
-    pointsInfos.colPosX = "pointsSelectionInfos.columnsNames[0]";
-    pointsInfos.colPosY = "pointsSelectionInfos.columnsNames[1]";
-    pointsInfos.colPosZ = "pointsSelectionInfos.columnsNames[2]";
-
-
-    //points view infos
-    /*DataColumnsSelectionWidget::ColumnSelectionInfos pointsViewSelectionInfos = configDialog.getsPointsViewColsSelectionInfos();
-
-    if (pointsViewSelectionInfos.dataTable == nullptr) {
-        QMessageBox::warning(mw,
-                             QObject::tr("Could not run optimization"),
-                             QObject::tr("Missing points view data"));
-        return false;
-    }
-
-    bool validPointsViewdata = true;
-    QVector<QString> pointsViewDataColumns = pointsViewSelectionInfos.dataTable->columns();
-
-    if (pointsViewSelectionInfos.variableType != DataColumnsSelectionWidget::Position2D or
-            !pointsViewDataColumns.contains(pointsViewSelectionInfos.indexingCol) or
-            pointsViewSelectionInfos.columnsNames.size() != 2) {
-        validPointsViewdata = false;
-    }
-
-    if (validPointsViewdata) {
-        for (QString const& colName : pointsViewSelectionInfos.columnsNames) {
-            if (!pointsViewDataColumns.contains(colName)) {
-                validPointsViewdata = false;
-            }
-        }
-    }
-
-    if (!validPointsViewdata) {
-        QMessageBox::warning(mw,
-                             QObject::tr("Could not run optimization"),
-                             QObject::tr("Invalid points view data"));
-        return false;
-    }*/
-
-    CeresPushBroomSolver::AdditionalViewsInfos pointsViewInfos;
-    pointsViewInfos.dataTable = nullptr;
-    pointsViewInfos.colLmId = "";
-    pointsViewInfos.colPtId = "pointsViewSelectionInfos.indexingCol";
-    pointsViewInfos.colPosX = "pointsViewSelectionInfos.columnsNames[0]";
-    pointsViewInfos.colPosY = "pointsViewSelectionInfos.columnsNames[1]";
-
     bool computeUncertainty = false;
     bool sparse = true;
+    bool verbose = true;
 
     Eigen::Matrix3d Rcam2frame = Eigen::Matrix3d::Zero();
 
@@ -1151,46 +1134,57 @@ bool refineTrajectoryUsingDn(BilSequenceAcquisitionData *bilSequence) {
 
     StereoVision::Geometry::AffineTransform<double> frame2cam(Rcam2frame.transpose(), -Rcam2frame.transpose()*tcam2frame);
 
-    CeresPushBroomSolver* solver = new CeresPushBroomSolver(project,
-                                                            frame2cam,
-                                                            bilSequence,
-                                                            gpsInfos,
-                                                            initialOrientationInfos,
-                                                            accInfos,
-                                                            gyroInfos,
-                                                            pointsInfos,
-                                                            pointsViewInfos,
-                                                            computeUncertainty,
-                                                            sparse);
+    StereoVisionApp::ModularSBASolver* solver =
+            new StereoVisionApp::ModularSBASolver(project, computeUncertainty, sparse, verbose);
+
+    solver->setOptimizationSteps(nSteps);
+
+    QFileInfo projSourceInfos(project->source());
+
+    QDir projDir = projSourceInfos.dir();
+    solver->enableLogging(projDir.filePath("logging"));
 
     double gpsAccuracy = 0.02;
+    double angularAccuracy = 0.1;
     double gyroAccuracy = 0.1;
     double accAccuracy = 0.2;
     double tiePointAccuracy = 0.5;
 
-    solver->setGpsAccuracy(gpsAccuracy);
-    solver->setGyroAccuracy(gyroAccuracy);
-    solver->setAccAccuracy(accAccuracy);
-    solver->setTiepointsAccuracy(tiePointAccuracy);
+    double integrationtime = 0.5; //half a second
 
-    solver->setOptimizationSteps(nSteps);
+    StereoVisionApp::TrajectoryBaseSBAModule* trajectoryModule =
+            new StereoVisionApp::TrajectoryBaseSBAModule(integrationtime);
 
-    qint64 id = project->createDataBlock(StereoVisionApp::DataTable::staticMetaObject.className());
+    trajectoryModule->setGpsAccuracy(gpsAccuracy);
+    trajectoryModule->setOrientAccuracy(angularAccuracy);
+    trajectoryModule->setGyroAccuracy(gyroAccuracy);
+    trajectoryModule->setAccAccuracy(accAccuracy);
 
-    if (id <= 0) {
-        return false;
+    solver->addModule(trajectoryModule);
+
+    StereoVisionApp::SBAGraphReductor selector(3,2,true,true);
+
+    StereoVisionApp::SBAGraphReductor::elementsSet selection = selector(project, false);
+
+    if (!selection.imgs.isEmpty() and !selection.pts.isEmpty()) {
+        StereoVisionApp::ImageAlignementSBAModule* imageModule =
+                new StereoVisionApp::ImageAlignementSBAModule();
+
+        solver->addModule(imageModule);
     }
 
-    StereoVisionApp::DataTable* resultsDataTable = project->getDataBlock<StereoVisionApp::DataTable>(id);
-    resultsDataTable->setObjectName("Pushbroom trajectory optimization results");
+    BilSequenceSBAModule* bilSequenceModule =
+            new BilSequenceSBAModule();
 
-    solver->setResultsDataTable(resultsDataTable);
+    solver->addModule(bilSequenceModule);
 
-    QThread* t = new QThread();
+    //do the solving
 
-    solver->moveToThread(t);
+    //QThread* t = new QThread();
+
+    /*solver->moveToThread(t);
     QObject::connect(solver, &QObject::destroyed, t, &QThread::quit);
-    QObject::connect(t, &QThread::finished, t, &QObject::deleteLater);
+    QObject::connect(t, &QThread::finished, t, &QObject::deleteLater);*/
 
     if (mw != nullptr) {
 
@@ -1210,7 +1204,7 @@ bool refineTrajectoryUsingDn(BilSequenceAcquisitionData *bilSequence) {
         solver->deleteWhenDone(true);
     }
 
-    t->start();
+    //t->start();
 
     solver->run();
 

@@ -36,6 +36,7 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
     float mapScale;
     int maxTilePixels;
     bool useCached;
+    bool euclideanFrame;
     std::string output_folder;
     std::string trajectoryConfig_filePath;
 
@@ -58,6 +59,7 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
         TCLAP::ValueArg<float> scaleArg("s","scale", "Scale at which the dtm should be used", false, 1., "float");
         TCLAP::ValueArg<int> tileArg("w","tileWidth", "Number of pixels in a tile", false, 2000, "int");
         TCLAP::SwitchArg useCacheArg("c", "useCached", "Used cached projection");
+        TCLAP::SwitchArg euclidianArg("e", "euclidean", "Consider all input data (trajectory and dtm) to be euclidean and do not need conversion to ecef");
         TCLAP::ValueArg<std::string> outputPathArg("o","output", "Output path", false, "", "local path to folder");
         TCLAP::ValueArg<std::string> trajectoryConfigArg("t","trajectory", "Output path", false, "", "local path to json file of trajectory");
         TCLAP::SwitchArg debugArg("d", "debug", "Output a bit more data for debugging purposes");
@@ -65,6 +67,7 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
         cmd.add(scaleArg);
         cmd.add(tileArg);
         cmd.add(useCacheArg);
+        cmd.add(euclidianArg);
         cmd.add(trajectoryConfigArg);
         cmd.add(outputPathArg);
         cmd.add(debugArg);
@@ -89,6 +92,7 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
         }
 
         useCached = useCacheArg.getValue();
+        euclideanFrame = euclidianArg.getValue();
 
         output_folder = outputPathArg.getValue();
 
@@ -151,6 +155,10 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
 
     StereoVisionApp::Geo::GeoRasterData<double, 2>& terrain = terrainOpt.value();
 
+    if (euclideanFrame) {
+        terrain.crsInfos = ""; //no crs shall be used in case of euclidean input
+    }
+
     out << "Terrain loaded! (grid size = " << terrain.raster.shape()[0] << "x" << terrain.raster.shape()[1] << ")" << Qt::endl;;
 
     if (debugOn) {
@@ -204,6 +212,10 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
                 QJsonObject obj = doc.object();
                 StereoVisionApp::Trajectory trajBlock;
                 trajBlock.setParametersFromJsonRepresentation(obj);
+
+                if (euclideanFrame) {
+                    trajBlock.setPositionEpsg("");
+                }
 
                 trajOpt = trajBlock.loadTrajectorySequence();
                 trajOrient = trajBlock.loadOrientationSequence();

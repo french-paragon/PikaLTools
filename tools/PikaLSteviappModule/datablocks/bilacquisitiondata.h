@@ -2,6 +2,7 @@
 #define PIKALTOOLS_BILACQUISITIONDATA_H
 
 #include <steviapp/datablocks/project.h>
+#include <steviapp/datablocks/rigidbody.h>
 #include <steviapp/datablocks/landmark.h>
 #include <steviapp/datablocks/floatparameter.h>
 #include <steviapp/datablocks/georeferenceddatablockinterface.h>
@@ -22,11 +23,22 @@
 #include "../../libs/io/read_envi_bil.h"
 #include "../../libs/processing/scanlinecleaner.h"
 
+namespace StereoVisionApp {
+
+class Landmark;
+class ImageLandmark;
+class Trajectory;
+
+}
+
 namespace PikaLTools {
 
 class BilSequenceLandmark;
 
-class BilSequenceAcquisitionData : public StereoVisionApp::DataBlock, public StereoVisionApp::GeoReferencedDataBlockInterface
+/*!
+ * \brief The BilSequenceAcquisitionData class represent a bill sequence, along with a level arm and boresight
+ */
+class BilSequenceAcquisitionData : public StereoVisionApp::RigidBody, public StereoVisionApp::GeoReferencedDataBlockInterface
 {
     Q_OBJECT
     Q_INTERFACES(StereoVisionApp::GeoReferencedDataBlockInterface)
@@ -90,6 +102,10 @@ public:
 
     void clearOptimized() override;
     bool hasOptimizedParameters() const override;
+
+    qint64 assignedTrajectory() const;
+    StereoVisionApp::Trajectory* getAssignedTrajectory() const;
+    void assignTrajectory(qint64 trajId);
 
     inline std::vector<StereoVision::Geometry::AffineTransform<float>> const& ecefTrajectory() const {
         if (!_ecefTrajectoryCached) {
@@ -176,12 +192,43 @@ public:
     const SequenceInfos &sequenceInfos() const;
     void setSequenceInfos(const SequenceInfos &newSequenceInfos);
 
+    /*!
+     * \brief getTimeFromPixCoord get the time a given (possibly subpixel) y pixel coordinate
+     * \param yPos the y pixel index
+     * \return the time, or -infinity if no time could be extracted
+     */
+    double getTimeFromPixCoord(double yPos) const;
+
+    double getFocalLen() const;
+    double getBilWidth() const;
+
+    int sensorIndex() const;
+    void setSensorIndex(int sensorIndex);
+
+    double timeScale() const;
+    void setTimeScale(double timeScale);
+
+    double timeDelta() const;
+    void setTimeDelta(double timeDelta);
+
+    QString timeScaleStr() const;
+    void setTimeScaleStr(QString timeScale);
+
+    QString timeDeltaStr() const;
+    void setTimeDeltaStr(QString timeDelta);
+
 Q_SIGNALS:
 
     void pointAdded(qint64 pt);
     void pointRemoved(qint64 pt);
 
     void bilSequenceChanged();
+    void assignedTrajectoryChanged(qint64 id);
+
+    void sensorIndexChanged(int sensorIndex);
+
+    void timeScaleChanged();
+    void timeDeltaChanged();
 
 protected:
 
@@ -198,13 +245,20 @@ protected:
     bool loadLcfData() const;
 
     QList<BilAcquisitionData> _bilSequence;
+    int _sensorIndex; //used to get multiple lines to use the same sensor.
 
     SequenceInfos _sequenceInfos;
 
     mutable bool _ecefTrajectoryCached;
     mutable std::vector<StereoVision::Geometry::AffineTransform<float>> _ecefTrajectory; //trajectory, as a sequence of body to ecef poses
     mutable std::vector<double> _ecefTimes;
+    double _timeScale; //scaling factor to convert the stored times to reference times in second.
+    double _timeDelta;
 
+    qint64 _assignedTrajectory; //the trajectory the bil sequence has been taken from.
+
+    mutable std::vector<bool> _loadedTimes;
+    mutable std::vector<double> _linesTimes;
 
     mutable std::vector<bool> _mask;
 };
@@ -245,6 +299,12 @@ public:
     void setBilSequenceCoordinates(QPointF const& point);
     QPointF bilSequenceCoordinates() const;
 
+    /*!
+     * \brief getRayInfos get the information about the ray from this landmark
+     * \param optimizationSpace if true the ray is given in the project optimization space, if false, in plain ECEF
+     * \return a 3x2 matrix, the first column is the sensor position at the time corresponding to the point, the second is the ray direction from the sensor.
+     */
+    std::optional<Eigen::Matrix<double,3,2>> getRayInfos(bool optimizationSpace = true);
 
 Q_SIGNALS:
 

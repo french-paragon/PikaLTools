@@ -21,6 +21,21 @@ constexpr int LineAxis = 0;
 constexpr int SamplesAxis = 1;
 constexpr int BandsAxis = 2;
 
+// source = https://www.l3harrisgeospatial.com/docs/enviheaderfiles.html
+enum BilTypes {
+    BilUint8T = 1,
+    BilInt16T = 2,
+    BilInt32T = 3,
+    BilFloatT = 4,
+    BilDoubleT = 5,
+    BilComplexFloatT = 6,
+    BilComplexDoubleT = 9,
+    BilUint16T = 12,
+    BilUint32T = 13,
+    BilInt64T = 14,
+    BilUint64T = 15
+};
+
 std::optional<std::map<std::string, std::string>> readHeaderData(std::string const& filename);
 
 template<typename T>
@@ -49,27 +64,27 @@ bool envi_bil_img_match_type(std::string const& filename) {
 
     // source = https://www.l3harrisgeospatial.com/docs/enviheaderfiles.html
     switch (datatype) {
-    case 1:
+    case BilUint8T:
         return std::is_same_v<T, uint8_t>;
-    case 2:
+    case BilInt16T:
         return std::is_same_v<T, int16_t>;
-    case 3:
+    case BilInt32T:
         return std::is_same_v<T, int32_t>;
-    case 4:
+    case BilFloatT:
         return std::is_same_v<T, float>;
-    case 5:
+    case BilDoubleT:
         return std::is_same_v<T, double>;
-    case 6:
+    case BilComplexFloatT:
         return std::is_same_v<T, std::complex<float>>;
-    case 9:
+    case BilComplexDoubleT:
         return std::is_same_v<T, std::complex<double>>;
-    case 12:
+    case BilUint16T:
         return std::is_same_v<T, uint16_t>;
-    case 13:
+    case BilUint32T:
         return std::is_same_v<T, uint32_t>;
-    case 14:
+    case BilInt64T:
         return std::is_same_v<T, int64_t>;
-    case 15:
+    case BilUint64T:
         return std::is_same_v<T, uint64_t>;
     default:
         break;

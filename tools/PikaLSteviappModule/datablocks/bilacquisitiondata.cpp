@@ -1,6 +1,10 @@
 #include "bilacquisitiondata.h"
 
 #include "io/read_envi_bil.h"
+#include <steviapp/datablocks/trajectory.h>
+#include <steviapp/datablocks/itemdatamodel.h>
+
+#include <StereoVision/geometry/rotations.h>
 
 #include "geo/coordinate_conversions.h"
 
@@ -13,13 +17,18 @@
 namespace PikaLTools {
 
 BilSequenceAcquisitionData::BilSequenceAcquisitionData(StereoVisionApp::Project *parent) :
-    StereoVisionApp::DataBlock(parent),
-    _ecefTrajectoryCached(false)
+    StereoVisionApp::RigidBody(parent),
+    _ecefTrajectoryCached(false),
+    _sensorIndex(-1),
+    _timeScale(1),
+    _timeDelta(0)
 
 {
     connect(this, &BilSequenceAcquisitionData::bilSequenceChanged, this, [this] () {
         _ecefTrajectoryCached = false;
     });
+
+    extendDataModel();
 }
 BilSequenceAcquisitionData::BilAcquisitionData::BilAcquisitionData(QString path) :
     _bil_file_path(path),
@@ -105,6 +114,13 @@ void BilSequenceAcquisitionData::setBilSequence(QList<QString> const& bilFiles) 
     for (int i = 0; i < bilFiles.size(); i++) {
         _bilSequence.push_back(BilAcquisitionData(bilFiles[i]));
     }
+
+    int nLines = nLinesInSequence();
+
+    _loadedTimes.resize(std::max(nLines,0));
+    _linesTimes.resize(std::max(nLines,0));
+
+    std::fill(_loadedTimes.begin(), _loadedTimes.end(), false);
 
 }
 
@@ -225,11 +241,189 @@ void BilSequenceAcquisitionData::setSequenceInfos(const SequenceInfos &newSequen
     _sequenceInfos = newSequenceInfos;
 }
 
+double BilSequenceAcquisitionData::getTimeFromPixCoord(double yPos) const {
+
+    if (isInfosOnly()) {
+        return _sequenceInfos.initial_time + yPos*_sequenceInfos.time_per_line;
+    }
+
+    int floor = std::floor(yPos);
+    int ceil = floor + 1;
+
+    int nLines = 0;
+
+    if (_loadedTimes[floor] and _loadedTimes[ceil]) {
+        goto compute_subtime;
+    }
+
+    for (int i = 0; i < _bilSequence.size(); i++) {
+
+        int bilnLines = _bilSequence[i].getNLines();
+
+        QString bilFilePath = _bilSequence[i].bilFilePath();
+
+        if (!_loadedTimes[nLines]) {
+
+            std::vector<double> bilTimes = get_envi_bil_lines_times(bilFilePath.toStdString());
+
+            if (bilTimes.size() != bilnLines) { // error loading times
+                return 0;
+            }
+
+            for (int i = 0; i < bilnLines; i++) {
+                _loadedTimes[nLines+i] = true;
+                _linesTimes[nLines+i] = _timeScale*bilTimes[i] + _timeDelta;
+            }
+        }
+
+        nLines += bilnLines;
+
+        if (nLines > ceil) {
+            break;
+        }
+    }
+
+    compute_subtime:
+
+    double pTime = _linesTimes[floor];
+    double nTime = _linesTimes[ceil];
+
+    double wp = ceil - yPos;
+    double wn = yPos - floor;
+
+    return wp*pTime + wn*nTime;
+}
+
+double BilSequenceAcquisitionData::getFocalLen() const {
+
+    if (isInfosOnly()) {
+        return _sequenceInfos.fLen;
+    }
+
+    std::optional<std::map<std::string, std::string>> headerData = readHeaderData(getBilFiles()[0].toStdString());
+
+    if (!headerData.has_value()) {
+        return -1;
+    }
+
+    if (headerData.value().count("field of view") < 1 or headerData.value().count("samples") < 1) {
+
+    }
+
+    //TODO: add a cache
+    double fov = std::stod(headerData.value()["field of view"]);
+    double sensorWidth = std::stod(headerData.value()["samples"]);
+    double fov_rad = fov*M_PI/180.;
+    double fLen = sensorWidth*std::tan(M_PI_2-fov_rad/2.)/2.;
+
+    return fLen;
+
+}
+double BilSequenceAcquisitionData::getBilWidth() const {
+
+    if (isInfosOnly()) {
+        return _sequenceInfos.lineWidth;
+    }
+
+    std::optional<std::map<std::string, std::string>> headerData = readHeaderData(getBilFiles()[0].toStdString());
+
+    if (!headerData.has_value()) {
+        return -1;
+    }
+
+    if (headerData.value().count("samples") < 1) {
+
+    }
+
+    //TODO: add a cache
+    double sensorWidth = std::stod(headerData.value()["samples"]);
+
+    return sensorWidth;
+}
+
+
+int BilSequenceAcquisitionData::sensorIndex() const {
+    return _sensorIndex;
+}
+void BilSequenceAcquisitionData::setSensorIndex(int pSensorIndex) {
+    if (pSensorIndex != _sensorIndex) {
+        _sensorIndex = pSensorIndex;
+        Q_EMIT sensorIndexChanged(_sensorIndex);
+    }
+}
+
+double BilSequenceAcquisitionData::timeScale() const {
+    return _timeScale;
+}
+void BilSequenceAcquisitionData::setTimeScale(double timeScale) {
+    if (_timeScale != timeScale) {
+        _timeScale = timeScale;
+        Q_EMIT timeScaleChanged();
+    }
+}
+
+double BilSequenceAcquisitionData::timeDelta() const {
+    return _timeDelta;
+}
+void BilSequenceAcquisitionData::setTimeDelta(double timeDelta) {
+    if (_timeDelta != timeDelta) {
+        _timeDelta = timeDelta;
+        Q_EMIT timeDeltaChanged();
+    }
+}
+
+QString BilSequenceAcquisitionData::timeScaleStr() const {
+    return QString("%1").arg(_timeScale);
+}
+void BilSequenceAcquisitionData::setTimeScaleStr(QString timeScale) {
+    bool ok;
+    double scale = timeScale.toDouble(&ok);
+    if (!ok) {
+        return;
+    }
+    setTimeScale(scale);
+}
+
+QString BilSequenceAcquisitionData::timeDeltaStr() const {
+    return QString("%1").arg(_timeDelta);
+}
+void BilSequenceAcquisitionData::setTimeDeltaStr(QString timeDelta) {
+    bool ok;
+    double delta = timeDelta.toDouble(&ok);
+    if (!ok) {
+        return;
+    }
+    setTimeDelta(delta);
+
+}
+
 void BilSequenceAcquisitionData::clearOptimized() {
     return;
 }
 bool BilSequenceAcquisitionData::hasOptimizedParameters() const {
     return false;
+}
+
+qint64 BilSequenceAcquisitionData::assignedTrajectory() const {
+    return _assignedTrajectory;
+}
+
+StereoVisionApp::Trajectory* BilSequenceAcquisitionData::getAssignedTrajectory() const {
+    return getProject()->getDataBlock<StereoVisionApp::Trajectory>(_assignedTrajectory);
+}
+
+void BilSequenceAcquisitionData::assignTrajectory(qint64 trajId) {
+
+    if (trajId == _assignedTrajectory) {
+        return;
+    }
+
+    if (_assignedTrajectory >= 0) removeRefered({_assignedTrajectory});
+    _assignedTrajectory = trajId;
+    if (_assignedTrajectory >= 0) addRefered({_assignedTrajectory});
+    emit assignedTrajectoryChanged(_assignedTrajectory);
+    return;
+
 }
 
 Multidim::Array<float, 3> BilSequenceAcquisitionData::getFloatBilData(int startLine, int lastLine) const {
@@ -492,7 +686,7 @@ QString BilSequenceAcquisitionData::getCoordinateReferenceSystemDescr(int CRSRol
 
 QJsonObject BilSequenceAcquisitionData::encodeJson() const {
 
-    QJsonObject obj;
+    QJsonObject obj = RigidBody::encodeJson();
 
     QJsonArray bilFiles;
 
@@ -520,10 +714,23 @@ QJsonObject BilSequenceAcquisitionData::encodeJson() const {
 
     obj.insert("SeqInfos", seqInfos);
 
+    if (_sensorIndex != -1) {
+        obj.insert("sensorIdx", _sensorIndex);
+    }
+
+    if (_assignedTrajectory >= 0) {
+        obj.insert("assignedTrajectoryId", _assignedTrajectory);
+    }
+
+    obj.insert("timeScale", _timeScale);
+    obj.insert("timeDelta", _timeDelta);
+
     return obj;
 }
 
 void BilSequenceAcquisitionData::configureFromJson(QJsonObject const& data) {
+
+    RigidBody::configureFromJson(data);
 
     QList<QString> bilFiles;
 
@@ -566,10 +773,174 @@ void BilSequenceAcquisitionData::configureFromJson(QJsonObject const& data) {
         _sequenceInfos.nLines = seqInfos.value("nLines").toInt();
         _sequenceInfos.time_per_line = seqInfos.value("timePerLine").toDouble();
     }
+
+    if (data.contains("sensorIdx")) {
+        _sensorIndex = data.value("sensorIdx").toInt(-1);
+    } else {
+        _sensorIndex = -1;
+    }
+
+    if(data.contains("assignedTrajectoryId")) {
+        _assignedTrajectory = data.value("assignedTrajectoryId").toInt(-1);
+    } else {
+        _assignedTrajectory = -1;
+    }
+
+    if (data.contains("timeScale")) {
+        _timeScale = data.value("timeScale").toDouble(1);
+    } else {
+        _timeScale = 1;
+    }
+
+    if (data.contains("timeDelta")) {
+        _timeDelta = data.value("timeDelta").toDouble(0);
+    } else {
+        _timeDelta = 0;
+    }
 }
 
 void BilSequenceAcquisitionData::extendDataModel() {
     //TODO: add more options to extend the data model
+    StereoVisionApp::ItemDataModel::Category* tg = _dataModel->addCategory(tr("Timing properties"));
+
+    tg->addCatProperty<QString,
+            BilSequenceAcquisitionData,
+            false,
+            StereoVisionApp::ItemDataModel::ItemPropertyDescription::NoValueSignal>(
+                tr("Time scale"),
+                &BilSequenceAcquisitionData::timeScaleStr,
+                &BilSequenceAcquisitionData::setTimeScaleStr,
+                &BilSequenceAcquisitionData::timeScaleChanged
+                );
+    tg->addCatProperty<QString,
+            BilSequenceAcquisitionData,
+            false,
+            StereoVisionApp::ItemDataModel::ItemPropertyDescription::NoValueSignal>(
+                tr("Time delta"),
+                &BilSequenceAcquisitionData::timeDeltaStr,
+                &BilSequenceAcquisitionData::setTimeDeltaStr,
+                &BilSequenceAcquisitionData::timeDeltaChanged
+                );
+
+    StereoVisionApp::ItemDataModel::Category* g = _dataModel->addCategory(tr("Lever arm properties"));
+
+    //Position
+    g->addCatProperty<StereoVisionApp::floatParameter,
+            StereoVisionApp::RigidBody,
+            true,
+            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
+            (tr("X"),
+             &StereoVisionApp::RigidBody::xCoord,
+             &StereoVisionApp::RigidBody::setXCoord,
+             &StereoVisionApp::RigidBody::xCoordChanged);
+
+    g->addCatProperty<StereoVisionApp::floatParameter,
+            StereoVisionApp::RigidBody,
+            true,
+            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
+            (tr("Y"),
+             &StereoVisionApp::RigidBody::yCoord,
+             &StereoVisionApp::RigidBody::setYCoord,
+             &StereoVisionApp::RigidBody::yCoordChanged);
+
+    g->addCatProperty<StereoVisionApp::floatParameter,
+            StereoVisionApp::RigidBody,
+            true,
+            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
+            (tr("Z"),
+             &StereoVisionApp::RigidBody::yCoord,
+             &StereoVisionApp::RigidBody::setYCoord,
+             &StereoVisionApp::RigidBody::yCoordChanged);
+
+    //Rotation
+    g->addCatProperty<StereoVisionApp::floatParameter,
+            StereoVisionApp::RigidBody,
+            true,
+            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
+            (tr("RAxis X"),
+             &StereoVisionApp::RigidBody::xRot,
+             &StereoVisionApp::RigidBody::setXRot,
+             &StereoVisionApp::RigidBody::xRotChanged);
+
+    g->addCatProperty<StereoVisionApp::floatParameter,
+            StereoVisionApp::RigidBody,
+            true,
+            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
+            (tr("RAxis Y"),
+             &StereoVisionApp::RigidBody::yRot,
+             &StereoVisionApp::RigidBody::setYRot,
+             &StereoVisionApp::RigidBody::yRotChanged);
+
+    g->addCatProperty<StereoVisionApp::floatParameter,
+            StereoVisionApp::RigidBody,
+            true,
+            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
+            (tr("Raxis Z"),
+             &StereoVisionApp::RigidBody::zRot,
+             &StereoVisionApp::RigidBody::setZRot,
+             &StereoVisionApp::RigidBody::zRotChanged);
+
+
+
+    StereoVisionApp::ItemDataModel::Category* optCat = _dataModel->addCategory(tr("Optimizer properties"));
+
+    optCat->addCatProperty<bool, DataBlock, false, StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
+            (tr("Enabled"),
+             &DataBlock::isEnabled,
+             &DataBlock::setEnabled,
+             &DataBlock::isEnabledChanged);
+
+    optCat->addCatProperty<bool, DataBlock, false, StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
+            (tr("Fixed"),
+             &DataBlock::isFixed,
+             &DataBlock::setFixed,
+             &DataBlock::isFixedChanged);
+
+    optCat->addCatProperty<int, BilSequenceAcquisitionData, false, StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
+            (tr("SensorIdx"),
+             &BilSequenceAcquisitionData::sensorIndex,
+             &BilSequenceAcquisitionData::setSensorIndex,
+             &BilSequenceAcquisitionData::sensorIndexChanged);
+
+    StereoVisionApp::ItemDataModel::Category* og = _dataModel->addCategory(tr("Optimized lever arm"));
+
+    //Position
+    og->addCatProperty<float, StereoVisionApp::RigidBody, true, StereoVisionApp::ItemDataModel::ItemPropertyDescription::NoValueSignal>
+            (tr("X pos"),
+             &StereoVisionApp::RigidBody::optXCoord,
+             &StereoVisionApp::RigidBody::setOptXCoord,
+             &StereoVisionApp::RigidBody::optPosChanged);
+
+    og->addCatProperty<float, StereoVisionApp::RigidBody, true, StereoVisionApp::ItemDataModel::ItemPropertyDescription::NoValueSignal>
+            (tr("Y pos"),
+             &StereoVisionApp::RigidBody::optYCoord,
+             &StereoVisionApp::RigidBody::setOptYCoord,
+             &StereoVisionApp::RigidBody::optPosChanged);
+
+    og->addCatProperty<float, StereoVisionApp::RigidBody, true, StereoVisionApp::ItemDataModel::ItemPropertyDescription::NoValueSignal>
+            (tr("Z pos"),
+             &StereoVisionApp::RigidBody::optZCoord,
+             &StereoVisionApp::RigidBody::setOptZCoord,
+             &StereoVisionApp::RigidBody::optPosChanged);
+
+    //Rotation
+    og->addCatProperty<float, StereoVisionApp::RigidBody, true, StereoVisionApp::ItemDataModel::ItemPropertyDescription::NoValueSignal>
+            (tr("X Raxis"),
+             &StereoVisionApp::RigidBody::optXRot,
+             &StereoVisionApp::RigidBody::setOptXRot,
+             &StereoVisionApp::RigidBody::optRotChanged);
+
+    og->addCatProperty<float, StereoVisionApp::RigidBody, true, StereoVisionApp::ItemDataModel::ItemPropertyDescription::NoValueSignal>
+            (tr("Y Raxis"),
+             &StereoVisionApp::RigidBody::optYRot,
+             &StereoVisionApp::RigidBody::setOptYRot,
+             &StereoVisionApp::RigidBody::optRotChanged);
+
+    og->addCatProperty<float, StereoVisionApp::RigidBody, true, StereoVisionApp::ItemDataModel::ItemPropertyDescription::NoValueSignal>
+            (tr("Z Raxis"),
+             &StereoVisionApp::RigidBody::optZRot,
+             &StereoVisionApp::RigidBody::setOptZRot,
+             &StereoVisionApp::RigidBody::optRotChanged);
 }
 
 
@@ -698,6 +1069,84 @@ void BilSequenceLandmark::setBilSequenceCoordinates(QPointF const& point) {
 }
 QPointF BilSequenceLandmark::bilSequenceCoordinates() const {
     return QPointF(_x.value(), _y.value());
+}
+
+std::optional<Eigen::Matrix<double,3,2>> BilSequenceLandmark::getRayInfos(bool optimizationSpace) {
+
+    if (!_x.isSet() or !_y.isSet()) {
+        return std::nullopt;
+    }
+
+    StereoVision::Geometry::AffineTransform<double> ecef2optim(Eigen::Matrix3d::Identity(), Eigen::Vector3d::Zero());
+
+    if (optimizationSpace) {
+        StereoVisionApp::Project* proj = getProject();
+
+        if (proj != nullptr) {
+            ecef2optim = proj->ecef2local().cast<double>();
+        }
+    }
+
+    BilSequenceAcquisitionData* seqData = qobject_cast<BilSequenceAcquisitionData*>(parent());
+
+    if (seqData == nullptr) {
+        return std::nullopt;
+    }
+
+    StereoVision::Geometry::RigidBodyTransform<double> leverArm(Eigen::Vector3d(0,0,0), Eigen::Vector3d(0,0,0));
+
+    StereoVisionApp::floatParameterGroup<3> oPos = seqData->optPos();
+    StereoVisionApp::floatParameterGroup<3> oRot = seqData->optRot();
+
+    if (oPos.isSet() and oRot.isSet()) {
+        leverArm.r = (Eigen::Vector3d(oRot.value(0),oRot.value(1),oRot.value(2)));
+        leverArm.t = (Eigen::Vector3d(oPos.value(0),oPos.value(1),oPos.value(2)));
+    } else {
+        StereoVisionApp::floatParameter xpos = seqData->xCoord();
+        StereoVisionApp::floatParameter ypos = seqData->yCoord();
+        StereoVisionApp::floatParameter zpos = seqData->zCoord();
+
+        StereoVisionApp::floatParameter xrot = seqData->xRot();
+        StereoVisionApp::floatParameter yrot = seqData->yRot();
+        StereoVisionApp::floatParameter zrot = seqData->zRot();
+
+        if (xpos.isSet() and ypos.isSet() and zpos.isSet() and
+                xrot.isSet() and yrot.isSet() and zrot.isSet()) {
+
+            leverArm.r = (Eigen::Vector3d(xrot.value(),yrot.value(),zrot.value()));
+            leverArm.t = (Eigen::Vector3d(xpos.value(),ypos.value(),zpos.value()));
+
+        }
+    }
+
+    StereoVisionApp::Trajectory* traj = seqData->getAssignedTrajectory();
+
+    if (traj == nullptr) {
+        return std::nullopt;
+    }
+
+    std::optional<StereoVisionApp::Trajectory::TimeTrajectorySequence> posSeq =
+            traj->loadTrajectorySequence(); //sequence is platform 2 ecef
+
+    if (!posSeq.has_value()) {
+        return std::nullopt;
+    }
+
+    double time = seqData->getTimeFromPixCoord(_y.value());
+    double flen = seqData->getFocalLen();
+    double midPoint = seqData->getBilWidth()/2;
+
+    auto interpolablePose = posSeq->getValueAtTime(time);
+
+    StereoVision::Geometry::RigidBodyTransform<double> pose = interpolablePose.weigthLower*interpolablePose.valLower + interpolablePose.weigthUpper*interpolablePose.valUpper;
+
+    Eigen::Matrix<double,3,2> ret;
+    ret.block<3,1>(0,0) = ecef2optim*(StereoVision::Geometry::angleAxisRotate(pose.r,leverArm.t) + pose.t);
+
+    Eigen::Vector3d dir(0,(_x.value() - midPoint)/flen,1);
+    ret.block<3,1>(0,1) = ecef2optim.R*StereoVision::Geometry::angleAxisRotate(pose.r,StereoVision::Geometry::angleAxisRotate(leverArm.r,dir));
+
+    return ret;
 }
 
 QJsonObject BilSequenceLandmark::encodeJson() const{

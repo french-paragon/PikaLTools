@@ -122,6 +122,28 @@ public:
         }
     }
 
+    inline void setBlackLevel(Array_T const& blackLevel) {
+        if (_black_level != blackLevel) {
+            _black_level = blackLevel;
+            Q_EMIT imageValuesChanged(QRect());
+        }
+    }
+
+    inline void setWhiteLevel(Array_T const& whiteLevel) {
+        if (_white_level != whiteLevel) {
+            _white_level = whiteLevel;
+            Q_EMIT imageValuesChanged(QRect());
+        }
+    }
+
+    inline void setBlackAndWhiteLevel(Array_T const& blackLevel, Array_T const& whiteLevel) {
+        if (_black_level != blackLevel or _white_level != whiteLevel) {
+            _black_level = blackLevel;
+            _white_level = whiteLevel;
+            Q_EMIT imageValuesChanged(QRect());
+        }
+    }
+
 protected:
 
     using ComputeType = StereoVision::TypesManipulations::accumulation_extended_t<Array_T>;

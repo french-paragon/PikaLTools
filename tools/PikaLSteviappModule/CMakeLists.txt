@@ -45,6 +45,8 @@ set(MODULE_SRC
     gui/simulatepushbroomtiepointsoptiondialog.cpp
     solving/cerespushbroomsolver.h
     solving/cerespushbroomsolver.cpp
+    solving/bilsequencesbamodule.h
+    solving/bilsequencesbamodule.cpp
     solving/cost_functors/parametrizedxyz2pushbroom.h
     solving/cost_functors/parametrizedxyz2pushbroom.cpp
     solving/cost_functors/orientationspeedconsistency.h

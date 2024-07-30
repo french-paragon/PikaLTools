@@ -5,6 +5,7 @@
 
 #include <QLabel>
 #include <QSpinBox>
+#include <QDoubleSpinBox>
 #include <QComboBox>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -88,6 +89,29 @@ BilCubeViewEditor::BilCubeViewEditor(QWidget* parent) :
     QPushButton* commitChannelsButton = new QPushButton(this);
     commitChannelsButton->setText(tr("Set channels"));
 
+    QLabel* levelsLabel = new QLabel(this);
+    levelsLabel->setText(tr("Levels:"));
+
+    QLabel* blackLevelLabel = new QLabel(this);
+    blackLevelLabel->setText(tr("b:"));
+
+    _blackLevelChannelSpinBox = new QDoubleSpinBox(this);
+    _blackLevelChannelSpinBox->setMinimum(0);
+    _blackLevelChannelSpinBox->setMaximum(2);
+    _blackLevelChannelSpinBox->setValue(0);
+    _blackLevelChannelSpinBox->setDecimals(2);
+
+    QLabel* whiteLevelLabel = new QLabel(this);
+    whiteLevelLabel->setText(tr("w:"));
+
+    _whiteLevelChannelSpinBox = new QDoubleSpinBox(this);
+    _whiteLevelChannelSpinBox->setMinimum(0);
+    _whiteLevelChannelSpinBox->setMaximum(2);
+    _whiteLevelChannelSpinBox->setValue(0);
+    _whiteLevelChannelSpinBox->setDecimals(2);
+
+    QPushButton* commitLevelsButton = new QPushButton(this);
+    commitLevelsButton->setText(tr("Set Levels"));
 
     QLabel* activeLandmarkLabel = new QLabel(this);
     activeLandmarkLabel->setText(tr("Active landmark:"));
@@ -132,6 +156,24 @@ BilCubeViewEditor::BilCubeViewEditor(QWidget* parent) :
     toolsLayout->addSpacing(5);
     toolsLayout->addStretch();
 
+    toolsLayout->addWidget(levelsLabel);
+    toolsLayout->addSpacing(3);
+
+    toolsLayout->addWidget(blackLevelLabel);
+    toolsLayout->addWidget(_blackLevelChannelSpinBox);
+    toolsLayout->addSpacing(2);
+
+    toolsLayout->addWidget(whiteLevelLabel);
+    toolsLayout->addWidget(_whiteLevelChannelSpinBox);
+    toolsLayout->addSpacing(2);
+
+    toolsLayout->addSpacing(5);
+
+    toolsLayout->addWidget(commitLevelsButton);
+
+    toolsLayout->addSpacing(5);
+    toolsLayout->addStretch();
+
     toolsLayout->addWidget(activeLandmarkLabel);
     toolsLayout->addWidget(_currentLandmarkMenu);
 
@@ -156,8 +198,12 @@ BilCubeViewEditor::BilCubeViewEditor(QWidget* parent) :
     _greenChannelSpinBox->setEnabled(false);
     _blueChannelSpinBox->setEnabled(false);
 
+    _blackLevelChannelSpinBox->setEnabled(false);
+    _whiteLevelChannelSpinBox->setEnabled(false);
+
     connect(commitLinesButton, &QPushButton::pressed, this, &BilCubeViewEditor::commit_lines_changes);
     connect(commitChannelsButton, &QPushButton::pressed, this, &BilCubeViewEditor::commit_channels_changes);
+    connect(commitLevelsButton, &QPushButton::pressed, this, &BilCubeViewEditor::commit_bwLevels_changes);
 
 
     _displayOverlay = new BilSequenceLandmarksOverlay(_viewWidget);
@@ -219,8 +265,18 @@ void BilCubeViewEditor::setSequence(BilSequenceAcquisitionData* sequence) {
         _whiteLevel = headerData.value("ceiling", "1.0").toFloat(&ok);
 
         if (!ok) {
+
             _whiteLevel = 1.0;
         }
+
+        _blackLevelChannelSpinBox->setMaximum(2*_whiteLevel);
+        _whiteLevelChannelSpinBox->setMaximum(2*_whiteLevel);
+
+        _blackLevelChannelSpinBox->setValue(_blackLevel);
+        _whiteLevelChannelSpinBox->setValue(_whiteLevel);
+
+        _blackLevelChannelSpinBox->setEnabled(true);
+        _whiteLevelChannelSpinBox->setEnabled(true);
 
         QVector<float> waveLengths;
 
@@ -314,6 +370,9 @@ void BilCubeViewEditor::clearSequence() {
         _redChannelSpinBox->setEnabled(false);
         _greenChannelSpinBox->setEnabled(false);
         _blueChannelSpinBox->setEnabled(false);
+
+        _blackLevelChannelSpinBox->setEnabled(false);
+        _whiteLevelChannelSpinBox->setEnabled(false);
     }
 
 }
@@ -389,6 +448,19 @@ void BilCubeViewEditor::commit_channels_changes() {
     channels[2] = _blueChannelSpinBox->value();
 
     _displayAdapter->setChannels(channels);
+
+}
+
+void BilCubeViewEditor::commit_bwLevels_changes() {
+
+    if (_displayAdapter == nullptr) {
+        return;
+    }
+
+    _blackLevel = _blackLevelChannelSpinBox->value();
+    _whiteLevel = _whiteLevelChannelSpinBox->value();
+
+    _displayAdapter->setBlackAndWhiteLevel(_blackLevel, _whiteLevel);
 
 }
 

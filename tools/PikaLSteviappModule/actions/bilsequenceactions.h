@@ -24,8 +24,12 @@ bool computeOrthophoto(BilSequenceAcquisitionData *bilSequence, InputDtm* inputD
 
 bool showCovariance(BilSequenceAcquisitionData *bilSequence);
 
+bool setBilSequenceTrajectory(BilSequenceAcquisitionData *bilSequence, qint64 trajId);
+
+bool initBilSequencesTiePoints();
+
 bool simulatePseudoPushBroomData();
-bool refineTrajectoryUsingDn(BilSequenceAcquisitionData *bilSequence = nullptr);
+bool refineTrajectoryUsingDn();
 
 } // namespace PikaLTools
 

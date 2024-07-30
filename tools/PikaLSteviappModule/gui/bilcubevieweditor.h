@@ -9,6 +9,7 @@
 #include "../../libs/gui/hyperspectralsimplepseudocolordisplayadapter.h"
 
 class QSpinBox;
+class QDoubleSpinBox;
 class QComboBox;
 
 namespace StereoVisionApp {
@@ -37,6 +38,7 @@ protected:
 
     void commit_lines_changes();
     void commit_channels_changes();
+    void commit_bwLevels_changes();
 
     void afterProjectChange(StereoVisionApp::Project* op) override;
 
@@ -61,6 +63,9 @@ protected:
     QSpinBox* _redChannelSpinBox;
     QSpinBox* _greenChannelSpinBox;
     QSpinBox* _blueChannelSpinBox;
+
+    QDoubleSpinBox* _blackLevelChannelSpinBox;
+    QDoubleSpinBox* _whiteLevelChannelSpinBox;
 
     QComboBox* _currentLandmarkMenu;
 
