@@ -14,6 +14,7 @@
 
 #include "./gui/trajectoryvieweditor.h"
 #include "./gui/bilcubevieweditor.h"
+#include "./gui/dtmrastervieweditor.h"
 
 #include "actions/bilsequenceactionmanager.h"
 #include "actions/comparisonsequenceactionmanager.h"
@@ -50,6 +51,7 @@ int PikaLSteviappModule::loadModule(StereoVisionApp::StereoVisionApplication* ap
     if (w != nullptr) {
         w->installEditor(new TrajectoryViewEditorFactory(app));
         w->installEditor(new BilCubeViewEditorFactory(app));
+        w->installEditor(new DTMRasterViewEditorFactory(app));
     }
 
     out << "PikaL Steviapp module loaded!" << Qt::endl;

@@ -31,8 +31,12 @@ set(MODULE_SRC
     gui/trajectoryvieweditor.cpp
     gui/bilcubevieweditor.h
     gui/bilcubevieweditor.cpp
+    gui/dtmrastervieweditor.h
+    gui/dtmrastervieweditor.cpp
     gui/imageOverlays/bilsequencelandmarksoverlay.h
     gui/imageOverlays/bilsequencelandmarksoverlay.cpp
+    gui/imageOverlays/inputdtmlandmarksoverlay.h
+    gui/imageOverlays/inputdtmlandmarksoverlay.cpp
     gui/exportorthophotooptionsdialog.h
     gui/exportorthophotooptionsdialog.cpp
     gui/exportorthophotooptionsdialog.ui
@@ -47,6 +51,8 @@ set(MODULE_SRC
     solving/cerespushbroomsolver.cpp
     solving/bilsequencesbamodule.h
     solving/bilsequencesbamodule.cpp
+    solving/dtmtiepointsmodule.h
+    solving/dtmtiepointsmodule.cpp
     solving/cost_functors/parametrizedxyz2pushbroom.h
     solving/cost_functors/parametrizedxyz2pushbroom.cpp
     solving/cost_functors/orientationspeedconsistency.h

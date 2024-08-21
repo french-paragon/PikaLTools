@@ -35,6 +35,7 @@
 
 #include "../solving/cerespushbroomsolver.h"
 #include "../solving/bilsequencesbamodule.h"
+#include "../solving/dtmtiepointsmodule.h"
 
 #include "io/read_envi_bil.h"
 
@@ -1177,6 +1178,11 @@ bool refineTrajectoryUsingDn() {
             new BilSequenceSBAModule();
 
     solver->addModule(bilSequenceModule);
+
+    DtmTiePointsModule* dtmTiePointsModule =
+            new DtmTiePointsModule();
+
+    solver->addModule(dtmTiePointsModule);
 
     //do the solving
 

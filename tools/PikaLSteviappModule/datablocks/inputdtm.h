@@ -6,11 +6,15 @@
 #include <steviapp/datablocks/floatparameter.h>
 #include <steviapp/datablocks/georeferenceddatablockinterface.h>
 
+#include <steviapp/datablocks/image.h>
+
 #include <optional>
 
 #include "io/georasterreader.h"
 
 namespace PikaLTools {
+
+class DtmLandmark;
 
 class InputDtm: public StereoVisionApp::DataBlock
 {
@@ -30,7 +34,20 @@ public:
 
     std::optional<StereoVisionApp::Geo::GeoRasterData<float, 2>> dtmData() const;
 
+    qint64 addDtmLandmark(const QPointF &coordinates, bool uncertain = false, qreal sigma_pos = 1.0);
+    qint64 addDtmLandmark(const QPointF &coordinates, qint64 attacheLandmarkId, bool uncertain = false, qreal sigma_pos = 1.0);
+    DtmLandmark* getDtmLandmark(qint64 id) const;
+    DtmLandmark* getDtmLandmarkByLandmarkId(qint64 id) const;
+    void clearDtmLandmark(qint64 id);
+    qint64 getDtmLandmarkAt(QPointF const& coord, float tol = 3);
+    QVector<qint64> getAttachedLandmarksIds() const;
+
+    Eigen::Array2Xf getDtmLandmarksCoordinates(QVector<qint64> ids) const;
+
 Q_SIGNALS:
+
+    void pointAdded(qint64 pt);
+    void pointRemoved(qint64 pt);
 
     void dataSourceChanged();
 
@@ -49,6 +66,55 @@ protected:
     std::optional<float> _maxHeight;
 
     mutable std::optional<StereoVisionApp::Geo::GeoRasterData<float, 2>> _dtmDataCache;
+};
+
+class DtmLandmark : public StereoVisionApp::DataBlock
+{
+    Q_OBJECT
+public:
+
+    explicit DtmLandmark(InputDtm* parent = nullptr);
+
+    qint64 attachedLandmarkid() const;
+    void setAttachedLandmark(qint64 id);
+    QString attachedLandmarkName() const;
+    StereoVisionApp::Landmark* attachedLandmark() const;
+
+    StereoVisionApp::floatParameter x() const;
+    void setX(const StereoVisionApp::floatParameter &x);
+    void setX(float x);
+
+    StereoVisionApp::floatParameter y() const;
+    void setY(const StereoVisionApp::floatParameter &y);
+    void setY(float y);
+
+    void setImageCoordinates(QPointF const& point);
+    QPointF imageCoordinates() const;
+
+
+Q_SIGNALS:
+
+    void attachedLandmarkidChanged(qint64 id);
+
+    void xCoordChanged(StereoVisionApp::floatParameter);
+    void yCoordChanged(StereoVisionApp::floatParameter);
+
+    void coordsChanged();
+
+protected:
+
+    QJsonObject encodeJson() const override;
+    void configureFromJson(QJsonObject const& data) override;
+
+    void referedCleared(QVector<qint64> const& referedId) override;
+
+    qint64 _attachedLandmarkId;
+
+    StereoVisionApp::floatParameter _x;
+    StereoVisionApp::floatParameter _y;
+
+    friend class InputDtm;
+
 };
 
 class InputDtmFactory : public StereoVisionApp::DataBlockFactory
