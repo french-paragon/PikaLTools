@@ -33,7 +33,7 @@ QVector<LinePose> getScalinesPoseValues(QVector<QString> const& files, bool flip
 
     for (QString const& file : files) {
 
-        auto header = readHeaderData(file.toStdString());
+        auto header = readBilHeaderData(file.toStdString());
 
         if (!header.has_value()) {
             return QVector<LinePose>();
@@ -369,7 +369,7 @@ int showSelectedBand(QVector<QString> inputs, QMap<QString, QString> options, in
         maxLineDelta = 2*radius;
     }
 
-    auto header = readHeaderData(inputs[0].toStdString());
+    auto header = readBilHeaderData(inputs[0].toStdString());
 
     if (!header.has_value()) {
         out << "Missing header file!" << Qt::endl;

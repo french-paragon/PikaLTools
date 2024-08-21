@@ -85,7 +85,7 @@ std::vector<std::string> get_bil_sequence_files(std::string const& main_folder) 
     return ret;
 }
 
-std::optional<std::map<std::string, std::string>> readHeaderData(std::string const& filename) {
+std::optional<std::map<std::string, std::string>> readBilHeaderData(std::string const& filename) {
 
     std::ifstream headerFile(filename + ".hdr");
 
@@ -234,7 +234,7 @@ Multidim::Array<float, 3> read_bil_sequence_to_float(std::vector<std::string> co
 
 std::vector<double> read_envi_bil_times(std::string const& filename) {
 
-    auto header = readHeaderData(filename);
+    auto header = readBilHeaderData(filename);
 
     if (!header.has_value()) {
         return std::vector<double>();
@@ -287,7 +287,7 @@ std::vector<double> read_envi_bil_times(std::string const& filename) {
 }
 std::vector<double> get_envi_bil_lines_times(std::string const& filename) {
 
-    auto header = readHeaderData(filename);
+    auto header = readBilHeaderData(filename);
 
     if (!header.has_value()) {
         return std::vector<double>();

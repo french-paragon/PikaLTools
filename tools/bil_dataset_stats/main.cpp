@@ -38,7 +38,7 @@ int main(int argc, char** argv) {
     std::string missingHeaderFile;
 
     for (std::string const& bilFilePath : bilFilesLists) {
-        auto headerOpt = readHeaderData(bilFilePath);
+        auto headerOpt = readBilHeaderData(bilFilePath);
 
         if (!headerOpt.has_value()) {
             missing_headers = true;

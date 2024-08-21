@@ -62,7 +62,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::doNextStep() {
 
     BilSequenceAcquisitionData::BilAcquisitionData data(bilPath);
 
-    auto header = readHeaderData(data.bilFilePath().toStdString());
+    auto header = readBilHeaderData(data.bilFilePath().toStdString());
 
     std::map<std::string, std::string> headerData = header.value();
 
@@ -372,7 +372,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::init() {
 
     _processedLines = 0;
 
-    auto header = readHeaderData(_bilPaths.first().toStdString());
+    auto header = readBilHeaderData(_bilPaths.first().toStdString());
 
     if (!header.has_value()) {
         return false;

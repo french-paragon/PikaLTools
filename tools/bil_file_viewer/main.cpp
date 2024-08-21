@@ -38,7 +38,7 @@ int displayBilImage(std::string const& filename, ArgStruct& args) {
     }
 
 
-    auto header = readHeaderData(filename);
+    auto header = readBilHeaderData(filename);
 
     if (!header.has_value()) {
         out << "Missing header file!" << Qt::endl;

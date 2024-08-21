@@ -36,12 +36,12 @@ enum BilTypes {
     BilUint64T = 15
 };
 
-std::optional<std::map<std::string, std::string>> readHeaderData(std::string const& filename);
+std::optional<std::map<std::string, std::string>> readBilHeaderData(std::string const& filename);
 
 template<typename T>
 bool envi_bil_img_match_type(std::string const& filename) {
 
-    auto header = readHeaderData(filename);
+    auto header = readBilHeaderData(filename);
 
     if (!header.has_value()) {
         return false;
@@ -107,7 +107,7 @@ Multidim::Array<T, 3> read_envi_bil(std::string const& filename) {
         return Multidim::Array<T, 3>();
     }
 
-    auto header = readHeaderData(filename);
+    auto header = readBilHeaderData(filename);
 
     if (!header.has_value()) {
         return Multidim::Array<T, 3>();
@@ -214,7 +214,7 @@ Multidim::Array<T, 3> read_bil_sequence(std::vector<std::string> const& filename
 
     for (std::string const& filename : filenames) {
 
-        auto header = readHeaderData(filename);
+        auto header = readBilHeaderData(filename);
 
         if (!header.has_value()) {
             return Multidim::Array<T, 3>();

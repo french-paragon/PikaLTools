@@ -57,7 +57,7 @@ QString BilSequenceAcquisitionData::BilAcquisitionData::lcfFilePath() const {
 }
 
 QMap<QString, QString> BilSequenceAcquisitionData::BilAcquisitionData::headerData() const {
-    std::optional<std::map<std::string, std::string>> optData = readHeaderData(_bil_file_path.toStdString());
+    std::optional<std::map<std::string, std::string>> optData = readBilHeaderData(_bil_file_path.toStdString());
 
     if (!optData.has_value()) {
         return QMap<QString, QString>();
@@ -300,7 +300,7 @@ double BilSequenceAcquisitionData::getFocalLen() const {
         return _sequenceInfos.fLen;
     }
 
-    std::optional<std::map<std::string, std::string>> headerData = readHeaderData(getBilFiles()[0].toStdString());
+    std::optional<std::map<std::string, std::string>> headerData = readBilHeaderData(getBilFiles()[0].toStdString());
 
     if (!headerData.has_value()) {
         return -1;
@@ -325,7 +325,7 @@ double BilSequenceAcquisitionData::getBilWidth() const {
         return _sequenceInfos.lineWidth;
     }
 
-    std::optional<std::map<std::string, std::string>> headerData = readHeaderData(getBilFiles()[0].toStdString());
+    std::optional<std::map<std::string, std::string>> headerData = readBilHeaderData(getBilFiles()[0].toStdString());
 
     if (!headerData.has_value()) {
         return -1;

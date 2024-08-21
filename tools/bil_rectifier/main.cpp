@@ -249,7 +249,7 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
         out << "Started processing \"" << QString::fromStdString(file) << "\"" << Qt::endl;
 
         //Sensor infos
-        std::optional<std::map<std::string, std::string>> headerOpt = readHeaderData(file);
+        std::optional<std::map<std::string, std::string>> headerOpt = readBilHeaderData(file);
 
         if (!headerOpt.has_value()) {
             out << "Failed to extract header infos for file \"" << QString::fromStdString(file) << "\"" << Qt::endl;
