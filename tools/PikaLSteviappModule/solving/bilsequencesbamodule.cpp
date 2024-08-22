@@ -247,6 +247,23 @@ bool BilSequenceSBAModule::writeResults(StereoVisionApp::ModularSBASolver* solve
         seq->setOptPos(optLeverArm);
         seq->setOptRot(optBoresight);
 
+        seq->setOptimizedFLen(camParams.fLen[0]);
+        seq->setOptimizedOpticalCenterX(camParams.principalPoint[0]);
+
+        seq->setOptimizedA0(camParams.lateralDistortion[0]);
+        seq->setOptimizedA1(camParams.lateralDistortion[1]);
+        seq->setOptimizedA2(camParams.lateralDistortion[2]);
+        seq->setOptimizedA3(camParams.lateralDistortion[3]);
+        seq->setOptimizedA4(camParams.lateralDistortion[4]);
+        seq->setOptimizedA5(camParams.lateralDistortion[5]);
+
+        seq->setOptimizedB0(camParams.frontalDistortion[0]);
+        seq->setOptimizedB1(camParams.frontalDistortion[1]);
+        seq->setOptimizedB2(camParams.frontalDistortion[2]);
+        seq->setOptimizedB3(camParams.frontalDistortion[3]);
+        seq->setOptimizedB4(camParams.frontalDistortion[4]);
+        seq->setOptimizedB5(camParams.frontalDistortion[5]);
+
     }
 
     return true;
