@@ -322,7 +322,7 @@ Multidim::Array<T, 3> read_bil_sequence(std::vector<std::string> const& filename
 
     for (int i = 0; i < filenames.size(); i++) {
 
-        if (nLinesSeen > l_Line) {
+        if (nLinesSeen >= l_Line) {
             //all required data copied
             break;
         }

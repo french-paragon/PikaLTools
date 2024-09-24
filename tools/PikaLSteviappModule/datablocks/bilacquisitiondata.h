@@ -140,7 +140,7 @@ public:
         int nTotalLines = 0;
 
         for (BilAcquisitionData const& bil : _bilSequence) {
-            if  (nTotalLines + bil.getNLines() < startLine) {
+            if  (nTotalLines + bil.getNLines() <= startLine) {
                 sLine -= bil.getNLines();
                 lLine -= bil.getNLines();
 
@@ -149,7 +149,7 @@ public:
                 continue;
             }
 
-            if (nTotalLines > lastLine) {
+            if (nTotalLines >= lastLine) {
                 break;
             }
 
