@@ -13,7 +13,7 @@ target_link_directories(${EXEC_NAME} PRIVATE ${CMAKE_BINARY_DIR}/submodules/LibS
 
 target_link_libraries(${EXEC_NAME}
     StereoVision::stevi
-    ${QIMAGEDISPLAYWIDGET_LIB}
+    StereoVision::qImageWidget
     ${IO_LIB}
     PROJ::proj
     Qt${QT_VERSION_MAJOR}::Core
