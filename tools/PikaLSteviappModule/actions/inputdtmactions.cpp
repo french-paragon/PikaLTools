@@ -8,9 +8,11 @@
 
 #include <steviapp/datablocks/project.h>
 
+#include <steviapp/gui/sparsealignementeditor.h>
 #include <steviapp/gui/imageadapters/imagedatadisplayadapter.h>
 
 #include "../gui/dtmrastervieweditor.h"
+#include "../gui/opengldrawables/opengldrawabledtm.h"
 
 #include <QFileDialog>
 
@@ -69,19 +71,39 @@ bool viewInputDtm(InputDtm* inputDtm) {
         return false; //need main windows to display trajectory
     }
 
-    StereoVisionApp::Editor* e = mw->openEditor(TrajectoryViewEditor::staticMetaObject.className());
+    StereoVisionApp::Editor* e = mw->openEditor(StereoVisionApp::SparseAlignementEditor::staticMetaObject.className());
 
-    TrajectoryViewEditor* trjve = qobject_cast<TrajectoryViewEditor*>(e);
+    StereoVisionApp::SparseAlignementEditor* sae = qobject_cast<StereoVisionApp::SparseAlignementEditor*>(e);
 
-    if (trjve == nullptr) {
+    if (sae == nullptr) {
         return false;
     }
 
-    trjve->setDtm(inputDtm);
+    QString traj_drawable_name = QString("InputDsm_%1").arg(inputDtm->objectName());
 
-    QObject::connect(inputDtm, &InputDtm::dataSourceChanged, trjve, [trjve, inputDtm] () {
-        trjve->setDtm(inputDtm);
-    }); //TODO: ensure this connection can be destroyed later
+    StereoVisionApp::OpenGlDrawable* drawable = sae->getDrawable(traj_drawable_name);
+    OpenGlDrawableDtm* drawableDtm = qobject_cast<OpenGlDrawableDtm*>(drawable);
+
+    if (drawable == nullptr) {
+
+        drawableDtm = new OpenGlDrawableDtm();
+        drawableDtm->setSceneScale(sae->sceneScale());
+
+        QObject::connect(sae, &StereoVisionApp::SparseAlignementEditor::sceneScaleChanged,
+                         drawableDtm, &OpenGlDrawableDtm::setSceneScale);
+
+        sae->addDrawable(traj_drawable_name, drawableDtm);
+
+    } else if (drawableDtm == nullptr) {
+        //a drawable already exist with the name and is not a OpenGlDrawableDtm
+        return false; //error, this is not supposed to happen
+    }
+
+    drawableDtm->setDtm(inputDtm);
+
+    QObject::connect(inputDtm, &InputDtm::dataSourceChanged, drawableDtm, [drawableDtm, inputDtm] () {
+        drawableDtm->setDtm(inputDtm);
+    });
 
     return true;
 }

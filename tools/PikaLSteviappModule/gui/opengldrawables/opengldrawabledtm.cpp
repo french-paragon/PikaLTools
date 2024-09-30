@@ -10,6 +10,10 @@
 #include <QOpenGLContext>
 #include <QOpenGLFunctions>
 
+#include "datablocks/inputdtm.h"
+
+#include <proj.h>
+
 namespace PikaLTools {
 
 OpenGlDrawableDtm::OpenGlDrawableDtm(StereoVisionApp::OpenGl3DSceneViewWidget* parent) :
@@ -311,6 +315,118 @@ void OpenGlDrawableDtm::setDtm(Multidim::Array<float,3> const& points, Multidim:
     Q_EMIT updateRequested();
 
 }
+
+void OpenGlDrawableDtm::setDtm(InputDtm* bilSequence) {
+
+    StereoVisionApp::Project* project = bilSequence->getProject();
+
+    if (project == nullptr) {
+        return;
+    }
+
+    if (!project->hasLocalCoordinateFrame()) {
+        //TODO: return an error message in that case
+        return;
+    }
+
+    auto rasterDataOpt = readGeoRasterData<float,2>(bilSequence->getDataSource().toStdString());
+
+    if (!rasterDataOpt.has_value()) {
+        return;
+    }
+
+    StereoVisionApp::Geo::GeoRasterData<float,2>& rasterData = rasterDataOpt.value();
+
+    int nPoints = rasterData.raster.flatLenght();
+
+    auto inShape = rasterData.raster.shape();
+
+    Multidim::Array<double,3> vertices_pos({inShape[0], inShape[1], 3}, {3*inShape[1],3,1});
+    Multidim::Array<bool,2> vertices_valid(inShape);
+
+    for (int i = 0; i < rasterData.raster.shape()[0]; i++) {
+        for (int j = 0; j < rasterData.raster.shape()[1]; j++) {
+
+            float h = rasterData.raster.valueUnchecked(i,j);
+
+            bool ok;
+            float thresh = bilSequence->minHeight().toFloat(&ok);
+
+            if (ok and h < thresh) {
+                vertices_valid.atUnchecked(i,j) = false;
+                continue;
+            }
+
+            thresh = bilSequence->maxHeight().toFloat(&ok);
+
+            if (ok and h > thresh) {
+                vertices_valid.atUnchecked(i,j) = false;
+                continue;
+            }
+
+            Eigen::Vector3d homogeneousImgCoord(j,i,1);
+            Eigen::Vector2d geoCoord = rasterData.geoTransform*homogeneousImgCoord;
+
+            vertices_pos.atUnchecked(i,j,0) = geoCoord.x();
+            vertices_pos.atUnchecked(i,j,1) = geoCoord.y();
+
+            vertices_pos.atUnchecked(i,j,2) = h;
+
+            vertices_valid.atUnchecked(i,j) = true;
+
+        }
+    }
+
+    PJ_CONTEXT* ctx = proj_context_create();
+
+
+    const char* wgs84_ecef = "EPSG:4978";
+
+
+    PJ* reprojector = proj_create_crs_to_crs(ctx, rasterData.crsInfos.c_str(), wgs84_ecef, nullptr);
+
+    if (reprojector == 0) { //in case of error
+        return;
+    }
+
+    proj_trans_generic(reprojector, PJ_FWD,
+                       &vertices_pos.atUnchecked(0,0,0), 3*sizeof(double), nPoints,
+                       &vertices_pos.atUnchecked(0,0,1), 3*sizeof(double), nPoints,
+                       &vertices_pos.atUnchecked(0,0,2), 3*sizeof(double), nPoints,
+                       nullptr,0,0); //reproject to ecef coordinates
+
+    StereoVision::Geometry::AffineTransform<float> transformation = project->ecef2local();
+
+
+    Multidim::Array<float,3> vertices_local_pos({inShape[0], inShape[1], 3}, {3*inShape[1],3,1});
+
+    for (int i = 0; i < rasterData.raster.shape()[0]; i++) {
+        for (int j = 0; j < rasterData.raster.shape()[1]; j++) {
+
+            if (!vertices_valid.valueUnchecked(i,j)) {
+                continue;
+            }
+
+            Eigen::Vector3f coord(vertices_pos.valueUnchecked(i,j,0),
+                                  vertices_pos.valueUnchecked(i,j,1),
+                                  vertices_pos.valueUnchecked(i,j,2));
+
+            Eigen::Vector3f local = transformation*coord;
+
+            vertices_local_pos.atUnchecked(i,j,0) = local.x();
+            vertices_local_pos.atUnchecked(i,j,1) = local.y();
+            vertices_local_pos.atUnchecked(i,j,2) = local.z();
+
+        }
+    }
+
+    proj_destroy(reprojector);
+    proj_context_destroy(ctx);
+
+    setDtm(vertices_local_pos, &vertices_valid);
+
+}
+
 void OpenGlDrawableDtm::clearDtm() {
     _vertices_pos.clear();
     _vertices_normals.clear();

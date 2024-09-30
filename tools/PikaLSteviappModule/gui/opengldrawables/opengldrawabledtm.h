@@ -8,16 +8,20 @@
 
 namespace PikaLTools {
 
+class InputDtm;
+
 class OpenGlDrawableDtm : public StereoVisionApp::OpenGlDrawable
 {
+    Q_OBJECT
 public:
-    OpenGlDrawableDtm(StereoVisionApp::OpenGl3DSceneViewWidget* parent);
+    OpenGlDrawableDtm(StereoVisionApp::OpenGl3DSceneViewWidget* parent = nullptr);
 
     void initializeGL();
     void paintGL(QMatrix4x4 const& modelView, QMatrix4x4 const& projectionView);
     void clearViewRessources();
 
     void setDtm(const Multidim::Array<float, 3> &points, Multidim::Array<bool,2> const* validPixels = nullptr);
+    void setDtm(InputDtm* bilSequence);
     void clearDtm();
 
     void setSceneScale(float newSceneScale);
