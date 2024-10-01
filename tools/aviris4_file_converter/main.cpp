@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
         cmd.add(bilFolderPathArg);
 
         TCLAP::ValueArg<int> lineArg("l","line", "number of the line in the flight", false, 1, "int");
-        TCLAP::ValueArg<int> heightArg("b","blockHeight", "Maximal size of a bil file", false, 2000, "int");
+        TCLAP::ValueArg<int> heightArg("b","blockHeight", "Maximal size of a bil file (<= 0 means no limit)", false, 2000, "int");
 
         cmd.add(lineArg);
         cmd.add(heightArg);
@@ -72,6 +72,11 @@ int main(int argc, char** argv) {
     }
 
     int nLines = aviris4io::getAviris4FramesNLines(filename);
+
+    if (maxBilLen <= 0) {
+        maxBilLen = nLines;
+    }
+
     int nBlocks = nLines/maxBilLen;
 
     if (nLines > maxBilLen*nBlocks) {
@@ -84,13 +89,6 @@ int main(int argc, char** argv) {
 
         int startLine = i*maxBilLen;
         int blockNLines = std::min(maxBilLen, nLines - startLine);
-
-        Multidim::Array<aviris4io::data_t, 3> frameData = aviris4io::loadFrameSlice(filename, startLine, blockNLines);
-
-        if (frameData.empty()) {
-            err << "empty frame data" << Qt::endl;
-            return 1;
-        }
 
         QString frameFolderName = QString("%1_%2").arg(lineNumber, 4, 10, QChar('0')).arg(i+1, 4, 10, QChar('0'));
 
@@ -114,10 +112,29 @@ int main(int argc, char** argv) {
             return 1;
         }
 
-        aviris4io::data_t* dataPtr = &frameData.at(0,0,0);
-        void* voidPtr = static_cast<void*>(dataPtr);
+        int channels = 0;
+        int samples = 0;
+        int linesWritten = 0;
 
-        bilFile.write(static_cast<char*>(voidPtr), frameData.flatLenght()*sizeof (aviris4io::data_t));
+        //read the file line by line
+        for (int i = 0; i < blockNLines; i++) {
+
+            Multidim::Array<aviris4io::data_t, 3> frameData = aviris4io::loadFrameSlice(filename, startLine+i, 1);
+
+            if (frameData.empty()) {
+                continue;
+            }
+
+            channels = frameData.shape()[2];
+            samples = frameData.shape()[1];
+
+            aviris4io::data_t* dataPtr = &frameData.at(0,0,0);
+            void* voidPtr = static_cast<void*>(dataPtr);
+
+            bilFile.write(static_cast<char*>(voidPtr), frameData.flatLenght()*sizeof (aviris4io::data_t));
+
+            linesWritten++;
+        }
 
         bilFile.close();
 
@@ -134,9 +151,9 @@ int main(int argc, char** argv) {
         hdrFileStream << "ENVI" << "\n";
         hdrFileStream << "interleave = bil" << "\n";
         hdrFileStream << "data type = 12" << "\n";
-        hdrFileStream << "lines = " << frameData.shape()[0] << "\n";
-        hdrFileStream << "samples = " << frameData.shape()[1] << "\n";
-        hdrFileStream << "bands = " << frameData.shape()[2] << "\n";
+        hdrFileStream << "lines = " << linesWritten << "\n";
+        hdrFileStream << "samples = " << samples << "\n";
+        hdrFileStream << "bands = " << channels << "\n";
         hdrFileStream << "ceiling = " << 0xffff << "\n";
         hdrFileStream << "field of view = " << 39.5 << "\n";
         hdrFileStream << "imager serial number = " << "AVIRIS-4" << "\n";
@@ -144,18 +161,16 @@ int main(int argc, char** argv) {
         hdrFileStream << "wavelength units = nanometers" << "\n";
         hdrFileStream << "wavelength = {";
 
-        int nBands = frameData.shape()[2];
-
         constexpr float wlmin = 380;
         constexpr float wlmax = 2490;
         constexpr float wldelta = wlmax - wlmin;
 
         //compute the bands wavelengths
-        for (int i = 0; i < nBands; i++) {
+        for (int i = 0; i < channels; i++) {
             if (i > 0) {
                 hdrFileStream << ",";
             }
-            hdrFileStream << wlmin + wldelta*i/(nBands-1);
+            hdrFileStream << wlmin + wldelta*i/(channels-1);
         }
 
         hdrFileStream << "}\n";
