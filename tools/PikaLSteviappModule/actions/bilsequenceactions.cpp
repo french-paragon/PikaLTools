@@ -1115,7 +1115,7 @@ bool refineTrajectoryUsingDn() {
 
     //TODO: add config dialog for options if needed
 
-    int nSteps = 200;
+    int nSteps = 400;
 
     if (nSteps <= 0) {
         return false;
@@ -1148,7 +1148,7 @@ bool refineTrajectoryUsingDn() {
     double gpsAccuracy = 0.02;
     double angularAccuracy = 0.1;
     double gyroAccuracy = 0.1;
-    double accAccuracy = 0.2;
+    double accAccuracy = 0.5;
     double tiePointAccuracy = 0.5;
 
     double integrationtime = 0.5; //half a second
