@@ -247,7 +247,7 @@ void BilCubeViewEditor::setSequence(BilSequenceAcquisitionData* sequence) {
 
         _startLineSpinBox->setValue(0);
         _endLineSpinBox->setMaximum(_sequence_nLines);
-        _endLineSpinBox->setValue(std::min(1000, _sequence_nLines)); //load 100 lines max initially
+        _endLineSpinBox->setValue(std::min(1000, _sequence_nLines)); //load 1000 lines max initially
 
         _endLineSpinBox->setMinimum(_startLineSpinBox->value()+1);
         _startLineSpinBox->setMaximum(_endLineSpinBox->value()-1);
@@ -305,6 +305,10 @@ void BilCubeViewEditor::setSequence(BilSequenceAcquisitionData* sequence) {
         std::array<int, 3> colorChannels = {nSpetrcalBands/4,
                                             nSpetrcalBands/2,
                                             nSpetrcalBands-nSpetrcalBands/4};
+
+        if (colorChannels[2] >= nSpetrcalBands) {
+            colorChannels[2] = nSpetrcalBands-1;
+        }
 
         if (waveLengths.size() == nSpetrcalBands) {
 
