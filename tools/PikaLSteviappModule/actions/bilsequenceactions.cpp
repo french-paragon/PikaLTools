@@ -16,6 +16,7 @@
 
 #include <steviapp/sparsesolver/sbagraphreductor.h>
 #include <steviapp/sparsesolver/modularsbasolver.h>
+#include <steviapp/sparsesolver/sbamodules/trajectorybasesbamodule.h>
 
 #include <StereoVision/geometry/core.h>
 #include <StereoVision/geometry/rotations.h>
