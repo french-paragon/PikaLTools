@@ -321,7 +321,7 @@ double BilSequenceAcquisitionData::getFocalLen() const {
     }
 
     if (headerData.value().count("field of view") < 1 or headerData.value().count("samples") < 1) {
-
+        return -1;
     }
 
     //TODO: add a cache
@@ -1496,18 +1496,23 @@ std::optional<Eigen::Matrix<double,3,2>> BilSequenceLandmark::getRayInfos(bool o
         return std::nullopt;
     }
 
-    std::optional<StereoVisionApp::Trajectory::TimeTrajectorySequence> posSeq =
+    StereoVisionApp::StatusOptionalReturn<StereoVisionApp::Trajectory::TimeTrajectorySequence> posSeq =
             traj->loadTrajectorySequence(); //sequence is platform 2 ecef
 
-    if (!posSeq.has_value()) {
+    if (!posSeq.isValid()) {
         return std::nullopt;
     }
 
     double time = seqData->getTimeFromPixCoord(_y.value());
     double flen = seqData->getFocalLen();
+
+    if (flen < 0) {
+        return std::nullopt;
+    }
+
     double midPoint = seqData->getBilWidth()/2;
 
-    auto interpolablePose = posSeq->getValueAtTime(time);
+    auto interpolablePose = posSeq.val().getValueAtTime(time);
 
     StereoVision::Geometry::RigidBodyTransform<double> pose = interpolablePose.weigthLower*interpolablePose.valLower + interpolablePose.weigthUpper*interpolablePose.valUpper;
 
