@@ -14,6 +14,75 @@ DtmTiePointsModule::DtmTiePointsModule()
 
 }
 
+bool DtmTiePointsModule::addGraphReductorVariables(StereoVisionApp::Project *currentProject,
+                                                   StereoVisionApp::GenericSBAGraphReductor* graphReductor) {
+
+    return true;
+
+}
+
+bool DtmTiePointsModule::addGraphReductorObservations(StereoVisionApp::Project *currentProject,
+                                                      StereoVisionApp::GenericSBAGraphReductor* graphReductor) {
+
+    if (currentProject == nullptr or graphReductor == nullptr) {
+        return false;
+    }
+
+    QVector<qint64> dtmsIdxs = currentProject->getIdsByClass(InputDtm::staticMetaObject.className());
+
+    for (qint64 dtmId : qAsConst(dtmsIdxs)) {
+        InputDtm* inputDtm = currentProject->getDataBlock<InputDtm>(dtmId);
+
+        if (inputDtm == nullptr) {
+            continue;
+        }
+
+        auto optDtmData = inputDtm->dtmData();
+
+        if (!optDtmData.has_value()) {
+            continue;
+        }
+
+        QVector<qint64> dtmLmsIdxs = inputDtm->listTypedSubDataBlocks(DtmLandmark::staticMetaObject.className());
+
+        QVector<DtmLandmark*> dtmLandmarks;
+        dtmLandmarks.reserve(dtmLmsIdxs.size());
+
+        for (qint64 dtmLmId : qAsConst(dtmLmsIdxs)) {
+            DtmLandmark* dtmLm = inputDtm->getDtmLandmark(dtmLmId);
+
+            if (dtmLm == nullptr) {
+                continue;
+            }
+
+            if (!dtmLm->x().isSet()) {
+                continue;
+            }
+
+            if (!dtmLm->y().isSet()) {
+                continue;
+            }
+
+            dtmLandmarks.push_back(dtmLm);
+        }
+
+        if (dtmLandmarks.isEmpty()) {
+            continue;
+        }
+
+        for (DtmLandmark* dtmLm : dtmLandmarks) {
+
+            qint64 lmid = dtmLm->attachedLandmarkid();
+
+            graphReductor->insertSelfObservation(lmid, 3);
+        }
+
+    }
+
+    return true;
+
+}
+
 bool DtmTiePointsModule::init(StereoVisionApp::ModularSBASolver* solver, ceres::Problem & problem) {
 
     StereoVisionApp::Project* currentProject = solver->currentProject();

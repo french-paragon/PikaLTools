@@ -13,10 +13,15 @@ class BilSequenceSBAModule : public StereoVisionApp::ModularSBASolver::SBAModule
 public:
     BilSequenceSBAModule();
 
-    virtual bool init(StereoVisionApp::ModularSBASolver* solver, ceres::Problem & problem);
-    virtual bool writeResults(StereoVisionApp::ModularSBASolver* solver);
-    virtual bool writeUncertainty(StereoVisionApp::ModularSBASolver* solver);
-    virtual void cleanup(StereoVisionApp::ModularSBASolver* solver);
+    virtual bool addGraphReductorVariables(StereoVisionApp::Project *currentProject,
+                                           StereoVisionApp::GenericSBAGraphReductor* graphReductor) override;
+    virtual bool addGraphReductorObservations(StereoVisionApp::Project *currentProject,
+                                              StereoVisionApp::GenericSBAGraphReductor* graphReductor) override;
+
+    virtual bool init(StereoVisionApp::ModularSBASolver* solver, ceres::Problem & problem) override;
+    virtual bool writeResults(StereoVisionApp::ModularSBASolver* solver) override;
+    virtual bool writeUncertainty(StereoVisionApp::ModularSBASolver* solver) override;
+    virtual void cleanup(StereoVisionApp::ModularSBASolver* solver) override;
 
 protected:
 

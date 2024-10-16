@@ -13,6 +13,61 @@ BilSequenceSBAModule::BilSequenceSBAModule()
 
 }
 
+bool BilSequenceSBAModule::addGraphReductorVariables(StereoVisionApp::Project *currentProject,
+                                                     StereoVisionApp::GenericSBAGraphReductor* graphReductor) {
+
+    if (currentProject == nullptr or graphReductor == nullptr) {
+        return false;
+    }
+
+    QVector<qint64> bilSeqsIdxs = currentProject->getIdsByClass(BilSequenceAcquisitionData::staticMetaObject.className());
+
+    for (qint64 seqId : bilSeqsIdxs) {
+
+        BilSequenceAcquisitionData* seq = currentProject->getDataBlock<BilSequenceAcquisitionData>(seqId);
+
+        if (seq == nullptr) {
+            continue;
+        }
+
+        graphReductor->insertItem(seqId, 0);
+    }
+
+    return true;
+}
+
+bool BilSequenceSBAModule::addGraphReductorObservations(StereoVisionApp::Project *currentProject,
+                                                        StereoVisionApp::GenericSBAGraphReductor* graphReductor) {
+
+    if (currentProject == nullptr or graphReductor == nullptr) {
+        return false;
+    }
+
+    QVector<qint64> bilSeqsIdxs = currentProject->getIdsByClass(BilSequenceAcquisitionData::staticMetaObject.className());
+
+    for (qint64 seqId : bilSeqsIdxs) {
+
+        BilSequenceAcquisitionData* seq = currentProject->getDataBlock<BilSequenceAcquisitionData>(seqId);
+
+        if (seq == nullptr) {
+            continue;
+        }
+
+        QVector<qint64> imlmids = seq->listTypedSubDataBlocks(BilSequenceLandmark::staticMetaObject.className());
+
+        for (qint64 imlmid : imlmids) {
+
+            BilSequenceLandmark* blm = seq->getBilSequenceLandmark(imlmid);
+
+            qint64 lmid = blm->attachedLandmarkid();
+
+            graphReductor->insertObservation(seqId, lmid, 2);
+        }
+    }
+
+    return true;
+}
+
 bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres::Problem & problem) {
 
     _sensorsParameters.clear();
@@ -148,13 +203,21 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
 
             qint64 lmid = blm->attachedLandmarkid();
 
+            StereoVisionApp::Landmark* lm = currentProject->getDataBlock<StereoVisionApp::Landmark>(lmid);
+
+            if (lm == nullptr) {
+                continue;
+            }
+
+            if (!lm->optPos().isSet()) {
+                continue; //skip uninitialized landmarks.
+            }
+
             StereoVisionApp::ModularSBASolver::LandmarkNode* lmNode = solver->getNodeForLandmark(lmid, true);
 
             if (lmNode == nullptr) {
                 continue;
             }
-
-            StereoVisionApp::Landmark* lm = currentProject->getDataBlock<StereoVisionApp::Landmark>(lmNode->lmId);
 
             Eigen::Vector2d uv(blm->x().value(), 0);
 

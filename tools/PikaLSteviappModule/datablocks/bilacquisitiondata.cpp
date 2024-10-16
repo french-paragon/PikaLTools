@@ -1512,7 +1512,7 @@ std::optional<Eigen::Matrix<double,3,2>> BilSequenceLandmark::getRayInfos(bool o
 
     double midPoint = seqData->getBilWidth()/2;
 
-    auto interpolablePose = posSeq.val().getValueAtTime(time);
+    auto interpolablePose = posSeq.value().getValueAtTime(time);
 
     StereoVision::Geometry::RigidBodyTransform<double> pose = interpolablePose.weigthLower*interpolablePose.valLower + interpolablePose.weigthUpper*interpolablePose.valUpper;
 

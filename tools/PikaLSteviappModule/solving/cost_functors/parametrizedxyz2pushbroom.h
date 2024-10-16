@@ -60,6 +60,9 @@ public:
         if (Pbar[2] < 0.0) {
             residual[0] = T(std::nan(""));
             residual[1] = T(std::nan(""));
+            #ifndef NDEBUG
+            std::cout << "Error in ParametrizedXYZ2PushBroom projection computation" << std::endl;
+            #endif
             return false;
         }
 
@@ -148,10 +151,17 @@ public:
         V3T leverarm_r;
         leverarm_r << leverArm_r[0], leverArm_r[1], leverArm_r[2];
 
+        M3T pose_R1 = StereoVision::Geometry::rodriguezFormula<T>(pose_r1);
+        M3T pose_R2 = StereoVision::Geometry::rodriguezFormula<T>(pose_r2);
 
-        V3T pose_r = T(_w1)*pose_r1 + T(_w2)*pose_r2;
+        M3T pose_RDelta = pose_R1.transpose()*pose_R2;
 
-        M3T pose_R = StereoVision::Geometry::rodriguezFormula(pose_r);
+        V3T pose_RDeltaLog = StereoVision::Geometry::inverseRodriguezFormula<T>(pose_RDelta);
+        pose_RDeltaLog *= T(_w2);
+
+        M3T pose_RDeltaInterp = StereoVision::Geometry::rodriguezFormula<T>(pose_RDeltaLog);
+
+        M3T pose_R = pose_R1*pose_RDeltaInterp;
 
         V3T pose_t1;
         pose_t1 << t1[0], t1[1], t1[2];
@@ -168,6 +178,9 @@ public:
         if (Pbar[2] < 0.0) {
             residual[0] = T(std::nan(""));
             residual[1] = T(std::nan(""));
+            #ifndef NDEBUG
+            std::cout << "Error in ParametrizedInterpolatedXYZ2PushBroom projection computation" << std::endl;
+            #endif
             return false;
         }
 
@@ -198,7 +211,7 @@ public:
 
 #ifndef NDEBUG
         if (!ceres::IsFinite(residual[0]) or !ceres::IsFinite(residual[1])) {
-            std::cout << "Error in projection computation" << std::endl;
+            std::cout << "Error in ParametrizedInterpolatedXYZ2PushBroom projection computation" << std::endl;
         }
 #endif
 

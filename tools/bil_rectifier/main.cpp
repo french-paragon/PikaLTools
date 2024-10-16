@@ -194,8 +194,8 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
 
     Multidim::Array<bool,2> trajCover = projector.cover();
 
-    std::optional<LocalOrientations<double>> trajOrient = std::nullopt;
-    std::optional<Trajectory<double>> trajOpt = std::nullopt;
+    StereoVisionApp::StatusOptionalReturn<LocalOrientations<double>> trajOrient = StereoVisionApp::StatusOptionalReturn<LocalOrientations<double>>::error("");
+    StereoVisionApp::StatusOptionalReturn<Trajectory<double>> trajOpt = StereoVisionApp::StatusOptionalReturn<Trajectory<double>>::error("");
     QFileInfo trajConfigFileInfos(QString::fromStdString(trajectoryConfig_filePath));
 
     if (trajConfigFileInfos.exists()) {
@@ -225,7 +225,7 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
                 return 1;
             }
 
-            if (!trajOpt.has_value()) {
+            if (!trajOpt.isValid()) {
                 out << "Unable to load the provided trajectory configuration" << Qt::endl;
                 return 1;
             }
@@ -342,7 +342,7 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
         //Sequence of body2ecef transforms
         std::optional<Trajectory<double>> lcfTrajOpt = convertLcfSequenceToTrajectory(rawTrajectory);
 
-        if (!lcfTrajOpt.has_value() and !trajOpt.has_value()) {
+        if (!lcfTrajOpt.has_value() and !trajOpt.isValid()) {
             out << "Failed to extract trajectory for file \"" << QString::fromStdString(file) << "\"" << Qt::endl;
             continue;
         }
@@ -354,7 +354,7 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
             continue;
         }
 
-        Trajectory<double>& trajectory = (trajOpt.has_value()) ? trajOpt.value() : lcfTrajOpt.value();
+        Trajectory<double>& trajectory = (trajOpt.isValid()) ? trajOpt.value() : lcfTrajOpt.value();
 
         int currentPoseIndex = 0;
 
@@ -400,7 +400,7 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
                         << (eulerAnglesPose.y()/M_PI*180) << "\t"
                         << (eulerAnglesPose.z()/M_PI*180) << "\t";
 
-                if (trajOrient.has_value()) {
+                if (trajOrient.isValid()) {
 
                     LocalOrientations<double>::TimeInterpolableVals orientVal = trajOrient.value().getValueAtTime(targetTime);
                     Eigen::Vector3d orientation = orientVal.weigthLower*orientVal.valLower + orientVal.weigthUpper*orientVal.valUpper;
