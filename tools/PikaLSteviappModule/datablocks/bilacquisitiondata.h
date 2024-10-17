@@ -105,6 +105,7 @@ public:
 
     qint64 assignedTrajectory() const;
     StereoVisionApp::Trajectory* getAssignedTrajectory() const;
+    QString getAssignedTrajectoryName() const;
     void assignTrajectory(qint64 trajId);
 
     inline std::vector<StereoVision::Geometry::AffineTransform<float>> const& ecefTrajectory() const {
@@ -255,7 +256,7 @@ Q_SIGNALS:
     void pointRemoved(qint64 pt);
 
     void bilSequenceChanged();
-    void assignedTrajectoryChanged(qint64 id);
+    void assignedTrajectoryChanged();
 
     void sensorIndexChanged(int sensorIndex);
 

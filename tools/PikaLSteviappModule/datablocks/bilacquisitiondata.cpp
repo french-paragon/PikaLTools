@@ -572,6 +572,16 @@ StereoVisionApp::Trajectory* BilSequenceAcquisitionData::getAssignedTrajectory()
     return getProject()->getDataBlock<StereoVisionApp::Trajectory>(_assignedTrajectory);
 }
 
+QString BilSequenceAcquisitionData::getAssignedTrajectoryName() const {
+    StereoVisionApp::Trajectory* traj = getAssignedTrajectory();
+
+    if (traj == nullptr) {
+        return tr("No trajectory");
+    }
+
+    return traj->objectName();
+}
+
 void BilSequenceAcquisitionData::assignTrajectory(qint64 trajId) {
 
     if (trajId == _assignedTrajectory) {
@@ -581,7 +591,7 @@ void BilSequenceAcquisitionData::assignTrajectory(qint64 trajId) {
     if (_assignedTrajectory >= 0) removeRefered({_assignedTrajectory});
     _assignedTrajectory = trajId;
     if (_assignedTrajectory >= 0) addRefered({_assignedTrajectory});
-    emit assignedTrajectoryChanged(_assignedTrajectory);
+    emit assignedTrajectoryChanged();
     return;
 
 }
@@ -1040,6 +1050,20 @@ void BilSequenceAcquisitionData::configureFromJson(QJsonObject const& data) {
 
 void BilSequenceAcquisitionData::extendDataModel() {
     //TODO: add more options to extend the data model
+
+
+    StereoVisionApp::ItemDataModel::Category* tjg = _dataModel->addCategory(tr("Trajectory properties"));
+
+    tjg->addCatProperty<QString,
+            BilSequenceAcquisitionData,
+            false,
+            StereoVisionApp::ItemDataModel::ItemPropertyDescription::NoValueSignal> (
+                tr("Trajectory"),
+                &BilSequenceAcquisitionData::getAssignedTrajectoryName,
+                nullptr,
+                &BilSequenceAcquisitionData::assignedTrajectoryChanged
+                );
+
     StereoVisionApp::ItemDataModel::Category* tg = _dataModel->addCategory(tr("Timing properties"));
 
     tg->addCatProperty<QString,
