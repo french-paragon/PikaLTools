@@ -702,6 +702,13 @@ bool initBilSequencesTiePoints() {
         A.resize(3*nMeasures,3);
         b.resize(3*nMeasures,1);
 
+        #ifndef NDEBUG //be able to check positions and directions in debug variables
+        Eigen::Matrix<double,Eigen::Dynamic,1> d;
+        d.resize(3*nMeasures,1);
+        Eigen::Matrix<double,Eigen::Dynamic,1> p;
+        p.resize(3*nMeasures,1);
+        #endif
+
         bool ok = true;
 
         for (int i = 0; i < pointsInfos[lmId].size(); i++) {
@@ -728,6 +735,11 @@ bool initBilSequencesTiePoints() {
                 ok = false;
                 break;
             }
+
+            #ifndef NDEBUG
+            d.block<3,1>(i*3,0) = rayInfos.value().col(1);
+            p.block<3,1>(i*3,0) = rayInfos.value().col(0);
+            #endif
 
             A.block<3,3>(i*3,0) = StereoVision::Geometry::skew<double>(rayInfos.value().col(1));
 
