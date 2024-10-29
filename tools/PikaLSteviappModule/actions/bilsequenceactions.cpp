@@ -1169,10 +1169,10 @@ bool refineTrajectoryUsingDn() {
     StereoVisionApp::TrajectoryBaseSBAModule* trajectoryModule =
             new StereoVisionApp::TrajectoryBaseSBAModule(integrationtime);
 
-    trajectoryModule->setGpsAccuracy(gpsAccuracy);
-    trajectoryModule->setOrientAccuracy(angularAccuracy);
-    trajectoryModule->setGyroAccuracy(gyroAccuracy);
-    trajectoryModule->setAccAccuracy(accAccuracy);
+    trajectoryModule->setDefaultGpsAccuracy(gpsAccuracy);
+    trajectoryModule->setDefaultOrientAccuracy(angularAccuracy);
+    trajectoryModule->setDefaultGyroAccuracy(gyroAccuracy);
+    trajectoryModule->setDefaultAccAccuracy(accAccuracy);
 
     solver->addModule(trajectoryModule);
 
