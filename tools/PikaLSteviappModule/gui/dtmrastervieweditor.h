@@ -53,6 +53,15 @@ protected:
 
     void recomputeBlackAndWhiteLevel(bool all = true);
 
+    /*!
+     * \brief downScaleDtmDataRaster rescale a dtm/dsm for display
+     * \param fullRes the full res dtm/dsm
+     * \param currentSize a int representing the current size
+     * \param targetSize a target size, the dtm/dsm will be downscale by a factor min(1, targetSize/currentSize);
+     * \return a rescaled dataset.
+     */
+    Multidim::Array<float, 2> downScaleDtmDataRaster(Multidim::Array<float, 2> const& fullRes, int currentSize, int targetSize);
+
     InputDtm* _currentDtm;
 
     QDoubleSpinBox* _blackLevelChannelSpinBox;
@@ -62,7 +71,8 @@ protected:
 
     StereoVisionApp::ImageWidget* _viewWidget;
 
-    Multidim::Array<float, 2> _bil_data;
+    Multidim::Array<float, 2> _dtm_data;
+    double _dtm_data_scale;
     float _whiteLevel;
     float _blackLevel;
 

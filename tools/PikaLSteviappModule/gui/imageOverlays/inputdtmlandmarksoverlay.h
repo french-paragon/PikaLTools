@@ -17,6 +17,7 @@ class InputDtm;
 class InputDtmLandmarksOverlay : public QImageDisplay::Overlay
 {
     Q_OBJECT
+
 public:
     InputDtmLandmarksOverlay(QWidget *parent = nullptr);
 
@@ -48,12 +49,26 @@ public:
         return _drawOnlyPoint;
     }
 
+    /*!
+     * \brief imageRescale is the property used when the image that is displayed and the image stored in the corresponding datablock do not have the same size.
+     * \return the image rescale factor (coordinates from the datablock will be multiplied by that factor before being displayed).
+     */
+    double imageRescale() const;
+    /*!
+     * \brief setImageRescale set the image rescale factor
+     * \param newImageRescale the image rescale factor to apply
+     * \see imageRescale()
+     */
+    void setImageRescale(double newImageRescale);
+
 Q_SIGNALS:
 
     void newPointClick(QPointF imagePos);
     void menuPointClick(qint64 id, QImageDisplay::ImageWidget* widget, QPoint const& pos);
 
     void activePointChanged(qint64 activePt);
+
+    void imageRescaleChanged();
 
 protected:
 
@@ -80,6 +95,7 @@ protected:
 
 
     InputDtm* _currentDataBlock;
+    double _imageRescale;
 
     qint64 _activePoint;
     qint64 _drawOnlyPoint;

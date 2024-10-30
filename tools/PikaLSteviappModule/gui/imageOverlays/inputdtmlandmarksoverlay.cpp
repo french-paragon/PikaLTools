@@ -15,6 +15,7 @@ namespace PikaLTools {
 InputDtmLandmarksOverlay::InputDtmLandmarksOverlay(QWidget *parent) :
     QImageDisplay::Overlay(parent),
     _currentDataBlock(nullptr),
+    _imageRescale(1),
     _activePoint(0),
     _drawOnlyPoint(-1)
 {
@@ -204,7 +205,7 @@ void InputDtmLandmarksOverlay::drawLandmark(QPainter* painter,
         ptName = "No name";
     }
 
-    QPointF wCoord = img2paint.map(imagePoint);
+    QPointF wCoord = img2paint.map(_imageRescale*imagePoint);
     int hPw = 12;
     QPointF hExtend(hPw, hPw);
 
@@ -267,7 +268,7 @@ void InputDtmLandmarksOverlay::drawOuterLandmark(QPainter* painter, QPointF cons
         ptName = "No name";
     }
 
-    QPointF wCoord = img2paint.map(imagePoint);
+    QPointF wCoord = img2paint.map(_imageRescale*imagePoint);
 
     QPointF constrained = wCoord;
 
@@ -478,6 +479,7 @@ bool InputDtmLandmarksOverlay::mouseMoveEvent(QImageDisplay::ImageWidget* intera
                 if (ilm != nullptr) {
 
                     QPointF pos = interactionWidget->widgetToImageCoordinates(e->pos());
+                    pos /= _imageRescale;
 
                     ilm->setImageCoordinates(pos);
                     requestFullRepainting();
@@ -502,8 +504,22 @@ qint64 InputDtmLandmarksOverlay::pointAt(QImageDisplay::ImageWidget* interaction
     }
 
     QPointF imCoord = interactionWidget->widgetToImageCoordinates(widgetCoordinate);
+    imCoord /= _imageRescale;
 
-    return _currentDataBlock->getDtmLandmarkAt(imCoord, 600./interactionWidget->zoom());
+    return _currentDataBlock->getDtmLandmarkAt(imCoord, (1200./interactionWidget->zoom())/_imageRescale);
+}
+
+double InputDtmLandmarksOverlay::imageRescale() const
+{
+    return _imageRescale;
+}
+
+void InputDtmLandmarksOverlay::setImageRescale(double newImageRescale)
+{
+    if (qFuzzyCompare(_imageRescale, newImageRescale))
+        return;
+    _imageRescale = newImageRescale;
+    emit imageRescaleChanged();
 }
 
 } // namespace PikaLTools

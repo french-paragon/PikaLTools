@@ -26,6 +26,7 @@ namespace PikaLTools {
 DTMRasterViewEditor::DTMRasterViewEditor(QWidget *parent)
     : StereoVisionApp::Editor(parent),
       _currentDtm(nullptr),
+      _dtm_data_scale(1),
       _displayAdapter(nullptr),
       _current_landmark_id(-1)
 {
@@ -153,7 +154,28 @@ void DTMRasterViewEditor::setDtm(InputDtm* dtm) {
             return;
         }
 
-        _bil_data = std::move(dtmDataOpt.value().raster);
+        constexpr int maxDtmSide = 10000; //We admit that we do not want a DTM/DSM with higher resolution
+        //TODO: make that a configurable option somewhere
+
+        bool fitSize = true;
+        int maxSize = maxDtmSide;
+
+        for (int i = 0; i < 2; i++) {
+            if (dtmDataOpt.value().raster.shape()[i] > maxSize) {
+                fitSize = false;
+                maxSize = dtmDataOpt.value().raster.shape()[i];
+            }
+        }
+
+        if (fitSize) {
+            _dtm_data = std::move(dtmDataOpt.value().raster);
+            _dtm_data_scale = 1;
+            _displayOverlay->setImageRescale(1);
+        } else {
+            _dtm_data = downScaleDtmDataRaster(dtmDataOpt.value().raster, maxSize, maxDtmSide);
+            _dtm_data_scale = double(maxDtmSide)/maxSize;
+            _displayOverlay->setImageRescale(_dtm_data_scale);
+        }
 
         _blackLevel = 0;
         _whiteLevel = 1;
@@ -198,7 +220,7 @@ void DTMRasterViewEditor::setDtm(InputDtm* dtm) {
 
         };
 
-        _displayAdapter = new StereoVision::Gui::GrayscaleArrayDisplayAdapter<float>(&_bil_data, _blackLevel, _whiteLevel);
+        _displayAdapter = new StereoVision::Gui::GrayscaleArrayDisplayAdapter<float>(&_dtm_data, _blackLevel, _whiteLevel);
         _displayAdapter->setColorMap(colorFunc);
 
         recomputeBlackAndWhiteLevel();
@@ -287,11 +309,13 @@ void DTMRasterViewEditor::addPoint(QPointF const& imageCoordinates) {
 
     DtmLandmark* lm = _currentDtm->getDtmLandmarkByLandmarkId(lmId);
 
+    QPointF scaledImgCoordinates = imageCoordinates/_dtm_data_scale;
+
     if (lm == nullptr) {
         bool isUncertain = true; //TODO: add input
-        _currentDtm->addDtmLandmark(imageCoordinates, lmId, isUncertain, 1);
+        _currentDtm->addDtmLandmark(scaledImgCoordinates, lmId, isUncertain, 1);
     } else {
-        lm->setImageCoordinates(imageCoordinates);
+        lm->setImageCoordinates(scaledImgCoordinates);
     }
 
 }
@@ -416,8 +440,8 @@ void DTMRasterViewEditor::recomputeBlackAndWhiteLevel(bool all) {
         i0 = 0;
         j0 = 0;
 
-        in = _bil_data.shape()[0];
-        jn = _bil_data.shape()[1];
+        in = _dtm_data.shape()[0];
+        jn = _dtm_data.shape()[1];
 
     } else {
         QPoint origin(0,0);
@@ -441,12 +465,12 @@ void DTMRasterViewEditor::recomputeBlackAndWhiteLevel(bool all) {
         j0 = 0;
     }
 
-    if (in > _bil_data.shape()[0]) {
-        in = _bil_data.shape()[0];
+    if (in > _dtm_data.shape()[0]) {
+        in = _dtm_data.shape()[0];
     }
 
-    if (jn > _bil_data.shape()[1]) {
-        jn = _bil_data.shape()[1];
+    if (jn > _dtm_data.shape()[1]) {
+        jn = _dtm_data.shape()[1];
     }
 
     if (in <= i0) {
@@ -467,7 +491,7 @@ void DTMRasterViewEditor::recomputeBlackAndWhiteLevel(bool all) {
         for (int i = i0; i < in; i++) {
             for (int j = j0; j < jn; j++) {
 
-                float value = _bil_data.valueUnchecked(i,j);
+                float value = _dtm_data.valueUnchecked(i,j);
 
                 if (!std::isfinite(value)) {
                     continue;
@@ -503,6 +527,54 @@ void DTMRasterViewEditor::recomputeBlackAndWhiteLevel(bool all) {
 
     _displayAdapter->setBWLevel(_blackLevel, _whiteLevel);
     _displayAdapter->update();
+
+}
+
+
+Multidim::Array<float, 2> DTMRasterViewEditor::downScaleDtmDataRaster(Multidim::Array<float, 2> const& fullRes, int currentSize, int targetSize) {
+
+    if (currentSize <= targetSize) {
+        return fullRes;
+    }
+
+    double invScale = double(currentSize)/targetSize;
+
+    std::array<int,2> shape;
+
+    for (int i = 0; i < 2; i++) {
+        long s = fullRes.shape()[i];
+        s *= targetSize;
+        s /= currentSize;
+        shape[i] = s;
+    }
+
+    Multidim::Array<float, 2> ret(shape);
+
+    for (int i = 0; i < shape[0]; i++) {
+        for (int j = 0; j < shape[1]; j++) {
+            double si = invScale*i;
+            double sj = invScale*j;
+
+            std::array<int,2> is = {int(std::floor(si)), int(std::ceil(si))};
+            std::array<int,2> js = {int(std::floor(sj)), int(std::ceil(sj))};
+
+            float data = fullRes.valueOrAlt({is[0], js[0]}, 0);
+
+            for (int i : is) {
+                for (int j : js) {
+                    float cand = fullRes.valueOrAlt({i, j}, 0);
+
+                    if (cand > data) {
+                        data = cand;
+                    }
+                }
+            }
+
+            ret.atUnchecked(i,j) = data;
+        }
+    }
+
+    return ret;
 
 }
 
