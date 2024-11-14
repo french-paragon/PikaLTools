@@ -9,6 +9,7 @@
 #include <steviapp/gui/imageviewer.h>
 #include <steviapp/gui/imageadapters/imagedatadisplayadapter.h>
 
+#include <steviapp/datablocks/project.h>
 #include <steviapp/datablocks/landmark.h>
 #include <steviapp/datablocks/trajectory.h>
 
@@ -329,7 +330,7 @@ bool computeOrthophoto(BilSequenceAcquisitionData *bilSequence, InputDtm* pInput
         StereoVisionApp::StepProcessMonitorBox* box = new StereoVisionApp::StepProcessMonitorBox(mw);
         box->setWindowFlag(Qt::Dialog);
         box->setWindowModality(Qt::WindowModal);
-        box->setWindowTitle(QObject::tr("Sparse optimization"));
+        box->setWindowTitle(QObject::tr("Exporting orthophoto"));
 
         box->setProcess(processor);
 

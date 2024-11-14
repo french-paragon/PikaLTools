@@ -2,12 +2,16 @@
 #define PIKALTOOLS_RECTIFYBILSEQTOORTHOSTEPPEDPROCESS_H
 
 #include <steviapp/processing/steppedprocess.h>
+#include <steviapp/geo/terrainProjector.h>
+#include <steviapp/vision/indexed_timed_sequence.h>
 
 #include <MultidimArrays/MultidimArrays.h>
 
 #include <StereoVision/geometry/rotations.h>
 
 #include "io/georasterreader.h"
+
+#include <QTemporaryDir>
 
 namespace PikaLTools {
 
@@ -19,6 +23,7 @@ class RectifyBilSeqToOrthoSteppedProcess : public StereoVisionApp::SteppedProces
     Q_OBJECT
 public:
     RectifyBilSeqToOrthoSteppedProcess(QObject* parent = nullptr);
+    ~RectifyBilSeqToOrthoSteppedProcess();
 
     virtual int numberOfSteps() override;
     virtual QString currentStepName() override;
@@ -34,61 +39,82 @@ public:
         _maxBilLine = max;
     }
 
-    /*!
-     * \brief getFinalPatchBand return a move reference to the final patch band raster
-     * \return a r-value reference to the patch band raster
-     */
-    inline Multidim::Array<float,3>&& getFinalPatchBand() {
-        return std::move(_patchBand);
-    }
-    /*!
-     * \brief getFinalSamplesInPatch return a move reference to the samples in patch raster
-     * \return a r-value refence to the samples in patch raster
-     */
-    inline Multidim::Array<float,2>&& getFinalSamplesInPatch() {
-        return std::move(_samplesInPatch);
-    }
-
     inline void setOutFile(QString const& outFile) {
         _outFile = outFile;
     }
 
 protected:
+
+    template<typename CT>
+    using Trajectory = StereoVisionApp::IndexedTimeSequence<StereoVision::Geometry::RigidBodyTransform<CT>, CT>;
+
     virtual bool doNextStep() override;
 
     virtual bool init() override;
     virtual void cleanup() override;
 
+    bool computeBilProjection(int bilId);
+    bool computeProjectedGrid();
+    bool computeNextTile(int tileId);
+
     InputDtm* _inputDtm;
-    StereoVisionApp::Geo::GeoRasterData<float, 2> _rasterData;
-    float _maxHeight;
-    float _minHeight;
+    StereoVisionApp::Geo::GeoRasterData<double,2> _terrain;
+    StereoVisionApp::Geo::TerrainProjector<double>* _terrain_projector;
+
+    double _map_scale; //scale between the map coordinates in the dsm and the reprojected grid
 
     BilSequenceAcquisitionData* _bilSequence;
     QList<QString> _bilPaths;
 
-    std::vector<StereoVision::Geometry::AffineTransform<float>> _ecefTrajectory;
-    std::vector<double> _ecefTimes;
+    struct BilROI {
+        double minX;
+        double maxX;
+        double minY;
+        double maxY;
+    };
+    std::vector<BilROI> _bilFilesROI;
 
-    StereoVision::Geometry::AffineTransform<float> _img2ecef_lin;
-    StereoVision::Geometry::AffineTransform<float> _ecef2img_lin;
+    Trajectory<double> _bil_trajectory;
+
+    struct GridBlock {
+        int height; //height in pixel
+        int width; //width in pixel
+
+        //Index of the tile in the tile grid
+        int pi;
+        int pj;
+
+        //min corner (in terrain raster pixels coordinates)
+        double i0;
+        double j0;
+
+        //max corner (in terrain raster pixels coordinates)
+        double in;
+        double jn;
+    };
+
+    std::vector<GridBlock> _exportGrid;
 
     int _bilStartIdx; //the start index in the bil sequence.
-    int _lcfStartIdx; //the start index in the lcf sequence.
 
-    int _bands;
-
-    Multidim::Array<float,3> _patchBand;
-    Multidim::Array<float,2> _samplesInPatch;
-    Multidim::Array<float,3> _minVal;
-    Multidim::Array<float,3> _maxVal;
-
-    double _normalizedSensorSize;
-
+    QTemporaryDir* _tmp_folder;
     QString _outFile;
 
     int _minBilLine;
     int _maxBilLine;
+
+    int _nSamples; //number of pixels in a line.
+    int _bands; //number of spectral bands in the sequence.
+
+    double _target_gsd;
+    double _max_tile_width;
+
+    int _redChannel;
+    int _greenChannel;
+    int _blueChannel;
+
+    double _f_len_pix;
+    double _optical_center;
 
     int _processedLines;
 };

@@ -308,6 +308,70 @@ double BilSequenceAcquisitionData::getTimeFromPixCoord(double yPos) const {
     return wp*pTime + wn*nTime;
 }
 
+std::vector<std::array<double, 3>> BilSequenceAcquisitionData::getSensorViewDirections(bool optimized) {
+
+    int nSamples = std::ceil(getBilWidth());
+
+    double optical_center;
+    double f_len_pix;
+
+    double a0 = 0;
+    double a1 = 0;
+    double a2 = 0;
+    double a3 = 0;
+    double a4 = 0;
+    double a5 = 0;
+
+    double b0 = 0;
+    double b1 = 0;
+    double b2 = 0;
+    double b3 = 0;
+    double b4 = 0;
+    double b5 = 0;
+
+    if (optimized) {
+        optical_center = optimizedOpticalCenterX().value();
+        f_len_pix = optimizedFLen().value();
+
+        a0 = optimizedA0().value();
+        a1 = optimizedA1().value();
+        a2 = optimizedA2().value();
+        a3 = optimizedA3().value();
+        a4 = optimizedA4().value();
+        a5 = optimizedA5().value();
+
+        b0 = optimizedB0().value();
+        b1 = optimizedB1().value();
+        b2 = optimizedB2().value();
+        b3 = optimizedB3().value();
+        b4 = optimizedB4().value();
+        b5 = optimizedB5().value();
+
+    } else {
+        optical_center = getBilWidth()/2;
+        f_len_pix = getFocalLen();
+    }
+
+    std::vector<std::array<double, 3>> viewDirectionsSensor(nSamples);
+
+    for (int i = 0; i < nSamples; i++) {
+
+        double s = static_cast<double>(i)/nSamples;
+        double s2 = s*s;
+        double s3 = s2*s;
+        double s4 = s3*s;
+        double s5 = s4*s;
+
+        double du = a0 + a1*s + a2*s2 + a3*s3 + a4*s4 + a5*s5;
+        double dv = b0 + b1*s + b2*s2 + b3*s3 + b4*s4 + b5*s5;
+
+        viewDirectionsSensor[i] = std::array<double, 3>{0 + dv, i - optical_center + du, f_len_pix};
+    }
+
+    return viewDirectionsSensor;
+
+}
+
 double BilSequenceAcquisitionData::getFocalLen() const {
 
     if (isInfosOnly()) {
@@ -1031,8 +1095,8 @@ void BilSequenceAcquisitionData::configureFromJson(QJsonObject const& data) {
         _o_b1 = StereoVisionApp::floatParameter::fromJson(data.value("ob1").toObject());
     }
 
-    if (data.contains("oa2")) {
-        _o_a2 = StereoVisionApp::floatParameter::fromJson(data.value("oa2").toObject());
+    if (data.contains("ob2")) {
+        _o_b2 = StereoVisionApp::floatParameter::fromJson(data.value("ob2").toObject());
     }
 
     if (data.contains("ob3")) {
