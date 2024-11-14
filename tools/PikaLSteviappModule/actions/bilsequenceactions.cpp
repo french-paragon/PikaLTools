@@ -1232,4 +1232,363 @@ bool refineTrajectoryUsingDn() {
 
 }
 
+
+bool estimateTimeDeltaRough(BilSequenceAcquisitionData *bilSequence) {
+
+    QTextStream out(stdout);
+
+    out << "Estimate bil sequence time delta:" << Qt::endl;
+
+    if (bilSequence == nullptr) {
+        out << "\tNull sequence provided, aborting!" << Qt::endl;
+        return false;
+    }
+
+    StereoVisionApp::Project* project = bilSequence->getProject();
+
+    if (project == nullptr) {
+        out << "\tSequence provided not in a project, aborting!" << Qt::endl;
+        return false;
+    }
+
+    StereoVisionApp::Trajectory* trajectory = bilSequence->getAssignedTrajectory();
+
+    if (trajectory == nullptr) {
+        out << "\tSequence provided has no assigned trajectory, aborting!" << Qt::endl;
+        return false;
+    }
+
+    StereoVisionApp::StatusOptionalReturn<StereoVisionApp::Trajectory::TimeTrajectorySequence> optTrajData =
+            trajectory->loadTrajectoryProjectLocalFrameSequence();
+
+    if (!optTrajData.isValid()) {
+        out << "\t Could not load trajectory data! Message is: " << optTrajData.errorMessage() << Qt::endl;
+        return false;
+    }
+
+    StereoVisionApp::Trajectory::TimeTrajectorySequence& trajData = optTrajData.value();
+
+    bool optimized = true;
+    std::vector<std::array<double, 3>> viewDirectionsSensor = bilSequence->getSensorViewDirections(optimized);
+
+    if (viewDirectionsSensor.empty()) {
+        out << "\t Could not load sensor view direction, aborting!" << Qt::endl;
+        return false;
+    }
+
+    auto optPos = bilSequence->optPos();
+    auto optRot = bilSequence->optRot();
+
+    StereoVision::Geometry::RigidBodyTransform<double> sensor2body;
+
+    if (!optPos.isSet() or !optRot.isSet()) {
+        sensor2body.r.setZero();
+        sensor2body.t.setZero();
+    } else {
+        sensor2body.r.x() = optRot.value(0);
+        sensor2body.r.y() = optRot.value(1);
+        sensor2body.r.z() = optRot.value(2);
+
+        sensor2body.t.x() = optPos.value(0);
+        sensor2body.t.y() = optPos.value(1);
+        sensor2body.t.z() = optPos.value(2);
+    }
+
+    QVector<qint64> imlmids = bilSequence->listTypedSubDataBlocks(BilSequenceLandmark::staticMetaObject.className());
+
+    struct TimingPair {
+        double bilSeqY;
+        double time;
+        double dist;
+    };
+
+    QMap<qint64, TimingPair> optTimes;
+
+    for (qint64 imlmid : imlmids) {
+
+        BilSequenceLandmark* blm = bilSequence->getBilSequenceLandmark(imlmid);
+
+        if (blm == nullptr) {
+            continue;
+        }
+
+        TimingPair timingInfo;
+        timingInfo.bilSeqY = blm->y().value();
+        timingInfo.time = std::nan("");
+
+        timingInfo.dist = std::numeric_limits<double>::infinity();
+
+        qint64 lmid = blm->attachedLandmarkid();
+
+        StereoVisionApp::Landmark* lm = project->getDataBlock<StereoVisionApp::Landmark>(lmid);
+
+        if (lm == nullptr) {
+            out << "\tSkipping missing landmark (id = " << lmid << ")" << Qt::endl;
+            continue;
+        }
+
+        constexpr bool optimized = true;
+        constexpr bool applyProjectLocalTransform = true;
+        std::optional<Eigen::Vector3f> optLmPos = lm->getOptimizableCoordinates(optimized, applyProjectLocalTransform);
+
+        if (!optLmPos.has_value()) {
+            out << "\tSkipping landmark without optimized position (id = " << lmid << ")" << Qt::endl;
+            continue;
+        }
+
+        Eigen::Vector3d lmPos = optLmPos.value().cast<double>();
+
+        out << "\tStart treating bil landmark " << imlmid << " (lmid = " << lmid << " pos = " << lmPos.x() << " " << lmPos.y() << " " << lmPos.z() << ")" << Qt::endl;
+
+        Eigen::Vector3d viewDirection;
+        double x = blm->x().value();
+        int xm = std::floor(x);
+        int xp = std::ceil(x);
+
+        double wm = 1;
+        double wp = 0;
+
+        if (xp < 0) {
+            continue;
+        }
+
+        if (xm >= viewDirectionsSensor.size()) {
+            continue;
+        }
+
+        if (xm < 0) {
+            xm = xp;
+        }
+
+        if (xp >= viewDirectionsSensor.size()) {
+            xp = xm;
+        }
+
+        if (xm != xp) {
+            wm = xp - x;
+            wp = x - xm;
+        }
+
+        for (int i = 0; i < 3; i++) {
+            viewDirection[i] = wm*viewDirectionsSensor[xm][i] + wp*viewDirectionsSensor[xp][i];
+        }
+
+        for (int i = 0; i < trajData.nPoints(); i++) {
+            auto trajNode = trajData[i];
+
+            double& time = trajNode.time;
+            StereoVision::Geometry::RigidBodyTransform<double>& body2local = trajNode.val;
+            StereoVision::Geometry::RigidBodyTransform<double> sensor2local = body2local*sensor2body;
+
+            Eigen::Vector3d viewDirectionLocal = StereoVision::Geometry::angleAxisRotate(sensor2local.r, viewDirection);
+            Eigen::Vector3d initialPositionLocal = sensor2local.t;
+
+            //We try to solve initialPositionLocal + l * viewDirectionLocal = lmPos
+
+            double l = viewDirectionLocal.dot(lmPos - initialPositionLocal)/viewDirectionLocal.dot(viewDirectionLocal);
+
+            Eigen::Vector3d approx = initialPositionLocal + l * viewDirectionLocal;
+            double dist = (approx - lmPos).norm();
+
+            if (dist < timingInfo.dist) {
+                timingInfo.dist = dist;
+                timingInfo.time = time;
+            }
+
+        }
+
+        if (std::isfinite(timingInfo.time)) {
+            optTimes[imlmid] = timingInfo;
+        }
+
+    }
+
+    out << "\tSelected timing points: ";
+    for (qint64 imlmid : imlmids) {
+        if (!optTimes.contains(imlmid)) {
+            continue;
+        }
+
+        out << "\n" << "\t\tLandmark " << imlmid << " y = " << optTimes[imlmid].bilSeqY << " t = " << optTimes[imlmid].time << " d = " << optTimes[imlmid].dist;
+    }
+
+    out << Qt::endl;
+
+    Eigen::Matrix<double,Eigen::Dynamic,2> A;
+    Eigen::Matrix<double,Eigen::Dynamic,1> b;
+
+    A.resize(optTimes.size(),2);
+    b.resize(optTimes.size(),1);
+
+    int i = 0;
+
+    for (qint64 imlmid : imlmids) {
+        if (!optTimes.contains(imlmid)) {
+            continue;
+        }
+
+        A(i,0) = 1;
+        A(i,1) = optTimes[imlmid].bilSeqY;
+
+        b[i] = optTimes[imlmid].time;
+
+        i++;
+    }
+
+    Eigen::Vector2d solution = A.fullPivHouseholderQr().solve(b);
+
+    out << "\n\t" << "t = " << solution[1] << " * y + " << solution[0] << "\n" << Qt::endl;
+
+    int nLines = bilSequence->nLinesInSequence();
+
+    constexpr int maxTestLines = 20;
+    int step = nLines / maxTestLines;
+
+    for (int i = 0; i < nLines; i += step) {
+        double timePredicted = solution[1]*i + solution[0];
+        double timeObserved = bilSequence->getTimeFromPixCoord(i);
+        out << "\t" << "Line " << (i+1) << " predicted time = " << timePredicted << " observed time = " << timeObserved << " delta = " << (timePredicted - timeObserved) << Qt::endl;
+    }
+
+    out << Qt::endl;
+
+    return true;
+
+}
+
+
+bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
+
+    QTextStream out(stdout);
+
+    out << "Estimate bil sequence time delta:";
+
+    if (bilSequence == nullptr) {
+        out << "\tNull sequence provided, aborting!" << Qt::endl;
+        return false;
+    }
+
+    StereoVisionApp::Project* project = bilSequence->getProject();
+
+    if (project == nullptr) {
+        out << "\tSequence provided not in a project, aborting!" << Qt::endl;
+        return false;
+    }
+
+    double sensorWidth = bilSequence->getBilWidth();
+
+    StereoVisionApp::Trajectory* trajectory = bilSequence->getAssignedTrajectory();
+
+    if (trajectory == nullptr) {
+        out << "\tSequence provided has no assigned trajectory, aborting!" << Qt::endl;
+        return false;
+    }
+
+    StereoVisionApp::StatusOptionalReturn<StereoVisionApp::Trajectory::TimeTrajectorySequence> optTrajData =
+            trajectory->optimizedTrajectory();
+
+    if (!optTrajData.isValid()) {
+        out << "\t Could not load trajectory data! Message is: " << optTrajData.errorMessage() << Qt::endl;
+        return false;
+    }
+
+    StereoVisionApp::Trajectory::TimeTrajectorySequence& trajData = optTrajData.value();
+
+    bool optimized = true;
+    std::vector<std::array<double, 3>> viewDirectionsSensor = bilSequence->getSensorViewDirections(optimized);
+
+    if (viewDirectionsSensor.empty()) {
+        out << "\t Could not load sensor view direction, aborting!" << Qt::endl;
+        return false;
+    }
+
+    auto optPos = bilSequence->optPos();
+    auto optRot = bilSequence->optRot();
+
+    StereoVision::Geometry::RigidBodyTransform<double> sensor2body;
+
+    if (!optPos.isSet() or !optRot.isSet()) {
+        sensor2body.r.setZero();
+        sensor2body.t.setZero();
+    } else {
+        sensor2body.r.x() = optRot.value(0);
+        sensor2body.r.y() = optRot.value(1);
+        sensor2body.r.z() = optRot.value(2);
+
+        sensor2body.t.x() = optPos.value(0);
+        sensor2body.t.y() = optPos.value(1);
+        sensor2body.t.z() = optPos.value(2);
+    }
+
+    StereoVision::Geometry::RigidBodyTransform<double> body2sensor = sensor2body.inverse();
+
+    QVector<qint64> imlmids = bilSequence->listTypedSubDataBlocks(BilSequenceLandmark::staticMetaObject.className());
+
+    for (qint64 imlmid : imlmids) {
+
+        BilSequenceLandmark* blm = bilSequence->getBilSequenceLandmark(imlmid);
+
+        if (blm == nullptr) {
+            continue;
+        }
+
+        double time = bilSequence->getTimeFromPixCoord(blm->y().value());
+
+        qint64 lmid = blm->attachedLandmarkid();
+
+        StereoVisionApp::Landmark* lm = project->getDataBlock<StereoVisionApp::Landmark>(lmid);
+
+        if (lm == nullptr) {
+            out << "\tSkipping missing landmark (id = " << lmid << ")" << Qt::endl;
+            continue;
+        }
+
+        constexpr bool optimized = true;
+        std::optional<Eigen::Vector3f> optLmPos = lm->getOptimizableCoordinates(optimized);
+
+        if (!optLmPos.has_value()) {
+            out << "\tSkipping landmark without optimized position (id = " << lmid << ")" << Qt::endl;
+        }
+
+        auto interpolablePose = trajData.getValueAtTime(time);
+
+        StereoVision::Geometry::RigidBodyTransform<double> pose1topose2 = interpolablePose.valUpper*interpolablePose.valLower.inverse();
+        double w = interpolablePose.weigthUpper/(interpolablePose.weigthLower + interpolablePose.weigthUpper);
+
+        StereoVision::Geometry::RigidBodyTransform<double> body2world = (w*pose1topose2)*interpolablePose.valLower;
+
+        StereoVision::Geometry::RigidBodyTransform<double> world2sensor = body2sensor*body2world.inverse();
+
+        Eigen::Vector3d projected = world2sensor*optLmPos.value().cast<double>();
+
+        projected /= projected.z();
+
+        double s = blm->x().value()/sensorWidth;
+        double s2 = s*s;
+        double s3 = s*s2;
+        double s4 = s*s3;
+        double s5 = s*s4;
+
+        double a0 = 0;
+        double a1 = 0;
+        double a2 = 0;
+        double a3 = 0;
+        double a4 = 0;
+        double a5 = 0;
+
+        double b0 = 0;
+        double b1 = 0;
+        double b2 = 0;
+        double b3 = 0;
+        double b4 = 0;
+        double b5 = 0;
+
+        double du = a0 * a1*s + a2*s2 + a3*s3 + a4*s4 + a5*s5;
+        double dv = b0 * b1*s + b2*s2 + b3*s3 + b4*s4 + b5*s5;
+
+    }
+
+    return true;
+}
+
 } // namespace PikaLTools

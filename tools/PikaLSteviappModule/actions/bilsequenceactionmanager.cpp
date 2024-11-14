@@ -98,7 +98,12 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
         setBilSequenceTrajectory(bilSeq, -1);
     });
 
-    return {view_trajectory, assignTraj2Seq, view_bil_cube, export_landmarks, compute_orthophoto, compute_corrMat};
+    QAction* estimateTime = new QAction(tr("Estimate time"), parent);
+    connect(estimateTime, &QAction::triggered, [bilSeq] () {
+        estimateTimeDeltaRough(bilSeq);
+    });
+
+    return {view_trajectory, assignTraj2Seq, view_bil_cube, export_landmarks, compute_orthophoto, compute_corrMat, estimateTime};
 }
 
 QList<QAction*> BilSequenceActionManager::factorizeMultiItemsContextActions(QObject* parent, StereoVisionApp::Project* p, QModelIndexList const& projectIndex) const {

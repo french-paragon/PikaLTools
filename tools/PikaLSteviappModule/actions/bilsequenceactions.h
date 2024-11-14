@@ -31,6 +31,20 @@ bool initBilSequencesTiePoints();
 bool simulatePseudoPushBroomData();
 bool refineTrajectoryUsingDn();
 
+/*!
+ * \brief estimateTimeDeltaRough gives a rough estimate of the time the bil sequence was acquired at (in the form of affine coefficients a*y+b)
+ * \param bilSequence the sequence to analyze.
+ * \return true on succes, false otherwise.
+ */
+bool estimateTimeDeltaRough(BilSequenceAcquisitionData *bilSequence);
+
+/*!
+ * \brief analyzeReprojections print the errors for all landmarks in the sequences to stdout
+ * \param bilSequence the sequence to analyze
+ * \return true on success, false in case of error
+ */
+bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence);
+
 } // namespace PikaLTools
 
 #endif // BILSEQUENCEACTIONS_H

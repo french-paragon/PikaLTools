@@ -199,6 +199,12 @@ public:
      * \return the time, or -infinity if no time could be extracted
      */
     double getTimeFromPixCoord(double yPos) const;
+    /*!
+     * \brief getSensorViewDirections return the view vector, in sensor frame, for all pixels
+     * \param optimized if true use optimized parameters, else used basic parameters.
+     * \return the list of view directions (in sensor frame).
+     */
+    std::vector<std::array<double, 3>> getSensorViewDirections(bool optimized=true);
 
     double getFocalLen() const;
     double getBilWidth() const;
