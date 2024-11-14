@@ -21,7 +21,7 @@ public:
     void clearViewRessources();
 
     void setDtm(const Multidim::Array<float, 3> &points, Multidim::Array<bool,2> const* validPixels = nullptr);
-    void setDtm(InputDtm* bilSequence);
+    void setDtm(InputDtm* inputDtmBlock);
     void clearDtm();
 
     void setSceneScale(float newSceneScale);

@@ -316,9 +316,9 @@ void OpenGlDrawableDtm::setDtm(Multidim::Array<float,3> const& points, Multidim:
 
 }
 
-void OpenGlDrawableDtm::setDtm(InputDtm* bilSequence) {
+void OpenGlDrawableDtm::setDtm(InputDtm* inputDtmBlock) {
 
-    StereoVisionApp::Project* project = bilSequence->getProject();
+    StereoVisionApp::Project* project = inputDtmBlock->getProject();
 
     if (project == nullptr) {
         return;
@@ -329,42 +329,95 @@ void OpenGlDrawableDtm::setDtm(InputDtm* bilSequence) {
         return;
     }
 
-    auto rasterDataOpt = readGeoRasterData<float,2>(bilSequence->getDataSource().toStdString());
+    auto rasterDataOpt = readGeoRasterData<float,2>(inputDtmBlock->getDataSource().toStdString());
 
     if (!rasterDataOpt.has_value()) {
         return;
     }
 
+    constexpr int maxSideVertices = 5000;
+
     StereoVisionApp::Geo::GeoRasterData<float,2>& rasterData = rasterDataOpt.value();
 
-    int nPoints = rasterData.raster.flatLenght();
 
     auto inShape = rasterData.raster.shape();
+    float scale = 1;
+    int max = maxSideVertices;
 
-    Multidim::Array<double,3> vertices_pos({inShape[0], inShape[1], 3}, {3*inShape[1],3,1});
-    Multidim::Array<bool,2> vertices_valid(inShape);
+    for (int i = 0; i < inShape.size(); i++) {
+        if (inShape[i] > max) {
+            max = inShape[i];
+        }
+    }
 
-    for (int i = 0; i < rasterData.raster.shape()[0]; i++) {
-        for (int j = 0; j < rasterData.raster.shape()[1]; j++) {
+    auto outShape = inShape;
 
-            float h = rasterData.raster.valueUnchecked(i,j);
+    if (max > maxSideVertices) {
+
+        scale = float(max)/maxSideVertices;
+
+        for (int i = 0; i < inShape.size(); i++) {
+            long s = inShape[i];
+            s *= maxSideVertices;
+            s /= max;
+
+            outShape[i] = s;
+        }
+    }
+
+    int nPoints = outShape[0]*outShape[1];
+
+    Multidim::Array<double,3> vertices_pos({outShape[0], outShape[1], 3}, {3*outShape[1],3,1});
+    Multidim::Array<bool,2> vertices_valid(outShape);
+
+    int nValid = 0;
+
+    for (int i = 0; i < outShape[0]; i++) {
+        for (int j = 0; j < outShape[1]; j++) {
+
+            float in_i = scale*i;
+            float in_j = scale*j;
+
+            std::array<int, 2> in_is = {int(std::floor(in_i)), int(std::ceil(in_i))};
+            std::array<int, 2> in_js = {int(std::floor(in_j)), int(std::ceil(in_j))};
+
+            float h = std::nanf("");
+
+            for (int in_i : in_is) {
+                for (int in_j : in_js) {
+                    float cand = rasterData.raster.valueOrAlt({in_i, in_j}, std::nanf(""));
+
+                    if (!std::isfinite(cand)) {
+                        continue;
+                    }
+
+                    if (!std::isfinite(h) or cand > h) {
+                        h = cand;
+                    }
+                }
+            }
+
+            if (!std::isfinite(h)) {
+                vertices_valid.atUnchecked(i,j) = false;
+                continue;
+            }
 
             bool ok;
-            float thresh = bilSequence->minHeight().toFloat(&ok);
+            float thresh = inputDtmBlock->minHeight().toFloat(&ok);
 
             if (ok and h < thresh) {
                 vertices_valid.atUnchecked(i,j) = false;
                 continue;
             }
 
-            thresh = bilSequence->maxHeight().toFloat(&ok);
+            thresh = inputDtmBlock->maxHeight().toFloat(&ok);
 
             if (ok and h > thresh) {
                 vertices_valid.atUnchecked(i,j) = false;
                 continue;
             }
 
-            Eigen::Vector3d homogeneousImgCoord(j,i,1);
+            Eigen::Vector3d homogeneousImgCoord(in_j,in_i,1);
             Eigen::Vector2d geoCoord = rasterData.geoTransform*homogeneousImgCoord;
 
             vertices_pos.atUnchecked(i,j,0) = geoCoord.x();
@@ -373,6 +426,7 @@ void OpenGlDrawableDtm::setDtm(InputDtm* bilSequence) {
             vertices_pos.atUnchecked(i,j,2) = h;
 
             vertices_valid.atUnchecked(i,j) = true;
+            nValid++;
 
         }
     }
@@ -398,10 +452,10 @@ void OpenGlDrawableDtm::setDtm(InputDtm* bilSequence) {
     StereoVision::Geometry::AffineTransform<float> transformation = project->ecef2local();
 
 
-    Multidim::Array<float,3> vertices_local_pos({inShape[0], inShape[1], 3}, {3*inShape[1],3,1});
+    Multidim::Array<float,3> vertices_local_pos({outShape[0], outShape[1], 3}, {3*outShape[1],3,1});
 
-    for (int i = 0; i < rasterData.raster.shape()[0]; i++) {
-        for (int j = 0; j < rasterData.raster.shape()[1]; j++) {
+    for (int i = 0; i < outShape[0]; i++) {
+        for (int j = 0; j < outShape[1]; j++) {
 
             if (!vertices_valid.valueUnchecked(i,j)) {
                 continue;
