@@ -81,6 +81,12 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
         exportBilLandmarks(bilSeq);
     });
 
+    QAction* view_files = new QAction(tr("View files on disk"), parent);
+
+    connect(view_files, &QAction::triggered, [bilSeq] () {
+        openBilSequenceFolder(bilSeq);
+    });
+
     QAction* compute_orthophoto = new QAction(tr("Compute orthophoto"), parent);
 
     connect(compute_orthophoto, &QAction::triggered, [bilSeq] () {
@@ -103,7 +109,7 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
         estimateTimeDeltaRough(bilSeq);
     });
 
-    return {view_trajectory, assignTraj2Seq, view_bil_cube, export_landmarks, compute_orthophoto, compute_corrMat, estimateTime};
+    return {view_trajectory, assignTraj2Seq, view_bil_cube, view_files, export_landmarks, compute_orthophoto, compute_corrMat, estimateTime};
 }
 
 QList<QAction*> BilSequenceActionManager::factorizeMultiItemsContextActions(QObject* parent, StereoVisionApp::Project* p, QModelIndexList const& projectIndex) const {

@@ -28,6 +28,13 @@ bool setBilSequenceTrajectory(BilSequenceAcquisitionData *bilSequence, qint64 tr
 
 bool initBilSequencesTiePoints();
 
+/*!
+ * \brief openBilSequenceFolder open the  folder where the bil files are located (if a GUI is active)
+ * \param bilSequence the bil sequence
+ * \return true on success
+ */
+bool openBilSequenceFolder(BilSequenceAcquisitionData *bilSequence);
+
 bool simulatePseudoPushBroomData();
 bool refineTrajectoryUsingDn();
 

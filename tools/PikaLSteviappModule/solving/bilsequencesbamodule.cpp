@@ -206,6 +206,14 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
             StereoVisionApp::Landmark* lm = currentProject->getDataBlock<StereoVisionApp::Landmark>(lmid);
 
             if (lm == nullptr) {
+
+                QString message = QObject::tr("[Warning] Bil landmark %3 attached lanmark id (%4) in bil sequence %1 (\"%2\") is not a landmark in project, skipping!")
+                        .arg(seqId)
+                        .arg(seq->objectName())
+                        .arg(imlmid)
+                        .arg(lmid);
+
+                solver->logMessage(message);
                 continue;
             }
 
@@ -216,6 +224,15 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
             StereoVisionApp::ModularSBASolver::LandmarkNode* lmNode = solver->getNodeForLandmark(lmid, true);
 
             if (lmNode == nullptr) {
+
+                QString message = QObject::tr("[Warning] Could not get node for landmark %3 (%4)(\"%5\") in bil sequence %1 (\"%2\"), skipping!")
+                        .arg(seqId)
+                        .arg(seq->objectName())
+                        .arg(imlmid)
+                        .arg(lmid)
+                        .arg(lm->objectName());
+
+                solver->logMessage(message);
                 continue;
             }
 
@@ -226,6 +243,15 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
             int trajNodeId = trajNode->getNodeForTime(time);
 
             if (trajNodeId < 0 or trajNodeId+1 >= trajNode->nodes.size()) {
+
+                QString message = QObject::tr("[Warning] Could not get timing for bil sequence %1 (\"%2\"), bil landmark %3 (%4)(\"%5\"), skipping!")
+                        .arg(seqId)
+                        .arg(seq->objectName())
+                        .arg(imlmid)
+                        .arg(lmid)
+                        .arg(lm->objectName());
+
+                solver->logMessage(message);
                 continue;
             }
 

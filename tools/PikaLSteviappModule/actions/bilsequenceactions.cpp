@@ -54,6 +54,7 @@
 #include <QMessageBox>
 #include <QInputDialog>
 #include <QFileInfo>
+#include <QDesktopServices>
 
 #include <algorithm>
 #include <random>
@@ -764,6 +765,40 @@ bool initBilSequencesTiePoints() {
     out << Qt::endl;
 
     return true;
+}
+
+bool openBilSequenceFolder(BilSequenceAcquisitionData *bilSequence) {
+
+    StereoVisionApp::MainWindow* mw = StereoVisionApp::MainWindow::getActiveMainWindow();
+
+    if (mw == nullptr) {
+        return false;
+    }
+
+    if (bilSequence == nullptr) {
+        QMessageBox::warning(mw,
+                             QObject::tr("Could not open bil sequence directory"),
+                             QObject::tr("Null bil sequence"));
+        return false;
+    }
+
+    QStringList files = bilSequence->getBilFiles();
+
+    QFileInfo fileInfo(files[0]);
+
+    QDir dir = fileInfo.absoluteDir();
+
+    if (!dir.exists()) {
+        QMessageBox::warning(mw,
+                             QObject::tr("Could not open bil sequence directory"),
+                             QObject::tr("Directory %1 does not exist").arg(dir.absolutePath()));
+        return false;
+    }
+
+    QDesktopServices::openUrl(dir.absolutePath());
+
+    return true;
+
 }
 
 bool simulatePseudoPushBroomData() {
