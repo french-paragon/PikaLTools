@@ -109,7 +109,12 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
         estimateTimeDeltaRough(bilSeq);
     });
 
-    return {view_trajectory, assignTraj2Seq, view_bil_cube, view_files, export_landmarks, compute_orthophoto, compute_corrMat, estimateTime};
+    QAction* analyzeProj = new QAction(tr("Analyze reprojections"), parent);
+    connect(analyzeProj, &QAction::triggered, [bilSeq] () {
+        analyzeReprojections(bilSeq);
+    });
+
+    return {view_trajectory, assignTraj2Seq, view_bil_cube, view_files, export_landmarks, compute_orthophoto, compute_corrMat, estimateTime, analyzeProj};
 }
 
 QList<QAction*> BilSequenceActionManager::factorizeMultiItemsContextActions(QObject* parent, StereoVisionApp::Project* p, QModelIndexList const& projectIndex) const {

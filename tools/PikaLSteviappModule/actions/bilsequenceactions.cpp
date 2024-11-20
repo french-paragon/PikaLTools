@@ -1174,16 +1174,6 @@ bool refineTrajectoryUsingDn() {
     bool sparse = true;
     bool verbose = true;
 
-    Eigen::Matrix3d Rcam2frame = Eigen::Matrix3d::Zero();
-
-    Rcam2frame(0,0) = 1;
-    Rcam2frame(1,1) = -1;
-    Rcam2frame(2,2) = -1;
-
-    Eigen::Vector3d tcam2frame(0,0,0);
-
-    StereoVision::Geometry::AffineTransform<double> frame2cam(Rcam2frame.transpose(), -Rcam2frame.transpose()*tcam2frame);
-
     StereoVisionApp::ModularSBASolver* solver =
             new StereoVisionApp::ModularSBASolver(project, computeUncertainty, sparse, verbose);
 
@@ -1498,7 +1488,7 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
 
     QTextStream out(stdout);
 
-    out << "Estimate bil sequence time delta:";
+    out << "Estimate bil sequence reprojections errors:" << Qt::endl;
 
     if (bilSequence == nullptr) {
         out << "\tNull sequence provided, aborting!" << Qt::endl;
@@ -1542,22 +1532,45 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
     auto optPos = bilSequence->optPos();
     auto optRot = bilSequence->optRot();
 
-    StereoVision::Geometry::RigidBodyTransform<double> sensor2body;
+    StereoVision::Geometry::RigidBodyTransform<double> body2sensor;
 
     if (!optPos.isSet() or !optRot.isSet()) {
-        sensor2body.r.setZero();
-        sensor2body.t.setZero();
+        body2sensor.r.setZero();
+        body2sensor.t.setZero();
     } else {
-        sensor2body.r.x() = optRot.value(0);
-        sensor2body.r.y() = optRot.value(1);
-        sensor2body.r.z() = optRot.value(2);
+        body2sensor.r.x() = optRot.value(0);
+        body2sensor.r.y() = optRot.value(1);
+        body2sensor.r.z() = optRot.value(2);
 
-        sensor2body.t.x() = optPos.value(0);
-        sensor2body.t.y() = optPos.value(1);
-        sensor2body.t.z() = optPos.value(2);
+        body2sensor.t.x() = optPos.value(0);
+        body2sensor.t.y() = optPos.value(1);
+        body2sensor.t.z() = optPos.value(2);
     }
 
-    StereoVision::Geometry::RigidBodyTransform<double> body2sensor = sensor2body.inverse();
+    double focalLenght = bilSequence->optimizedFLen().value();
+    double pp = bilSequence->optimizedOpticalCenterX().value();
+
+    if (!bilSequence->optimizedFLen().isSet()) {
+        focalLenght = bilSequence->getFocalLen();
+    }
+
+    if (!bilSequence->optimizedOpticalCenterX().isSet()) {
+        pp = bilSequence->getBilWidth()/2;
+    }
+
+    double a0 = bilSequence->optimizedA0().isSet() ? bilSequence->optimizedA0().value() : 0;
+    double a1 = bilSequence->optimizedA1().isSet() ? bilSequence->optimizedA1().value() : 0;
+    double a2 = bilSequence->optimizedA2().isSet() ? bilSequence->optimizedA2().value() : 0;
+    double a3 = bilSequence->optimizedA3().isSet() ? bilSequence->optimizedA3().value() : 0;
+    double a4 = bilSequence->optimizedA4().isSet() ? bilSequence->optimizedA4().value() : 0;
+    double a5 = bilSequence->optimizedA5().isSet() ? bilSequence->optimizedA5().value() : 0;
+
+    double b0 = bilSequence->optimizedB0().isSet() ? bilSequence->optimizedB0().value() : 0;
+    double b1 = bilSequence->optimizedB1().isSet() ? bilSequence->optimizedB1().value() : 0;
+    double b2 = bilSequence->optimizedB2().isSet() ? bilSequence->optimizedB2().value() : 0;
+    double b3 = bilSequence->optimizedB3().isSet() ? bilSequence->optimizedB3().value() : 0;
+    double b4 = bilSequence->optimizedB4().isSet() ? bilSequence->optimizedB4().value() : 0;
+    double b5 = bilSequence->optimizedB5().isSet() ? bilSequence->optimizedB5().value() : 0;
 
     QVector<qint64> imlmids = bilSequence->listTypedSubDataBlocks(BilSequenceLandmark::staticMetaObject.className());
 
@@ -1581,18 +1594,21 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
         }
 
         constexpr bool optimized = true;
-        std::optional<Eigen::Vector3f> optLmPos = lm->getOptimizableCoordinates(optimized);
+        constexpr bool applyProjectLocalTransform = true;
+        std::optional<Eigen::Vector3f> optLmPos = lm->getOptimizableCoordinates(optimized, applyProjectLocalTransform);
 
         if (!optLmPos.has_value()) {
-            out << "\tSkipping landmark without optimized position (id = " << lmid << ")" << Qt::endl;
+            out << "\tSkipping landmark without optimized position " << lm->objectName() << " (id = " << lmid << ")" << Qt::endl;
+            continue;
         }
 
         auto interpolablePose = trajData.getValueAtTime(time);
 
-        StereoVision::Geometry::RigidBodyTransform<double> pose1topose2 = interpolablePose.valUpper*interpolablePose.valLower.inverse();
-        double w = interpolablePose.weigthUpper/(interpolablePose.weigthLower + interpolablePose.weigthUpper);
+        StereoVision::Geometry::RigidBodyTransform<double> pose1topose2 = interpolablePose.valLower.inverse()*interpolablePose.valUpper;
+        double w = interpolablePose.weigthUpper;
 
-        StereoVision::Geometry::RigidBodyTransform<double> body2world = (w*pose1topose2)*interpolablePose.valLower;
+        StereoVision::Geometry::RigidBodyTransform<double> body2world = interpolablePose.valLower*(w*pose1topose2);
+        body2world.t = interpolablePose.weigthLower*interpolablePose.valLower.t + interpolablePose.weigthUpper*interpolablePose.valUpper.t;
 
         StereoVision::Geometry::RigidBodyTransform<double> world2sensor = body2sensor*body2world.inverse();
 
@@ -1600,28 +1616,22 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
 
         projected /= projected.z();
 
+        projected *= focalLenght;
+        projected[1] += pp;
+
         double s = blm->x().value()/sensorWidth;
         double s2 = s*s;
         double s3 = s*s2;
         double s4 = s*s3;
         double s5 = s*s4;
 
-        double a0 = 0;
-        double a1 = 0;
-        double a2 = 0;
-        double a3 = 0;
-        double a4 = 0;
-        double a5 = 0;
-
-        double b0 = 0;
-        double b1 = 0;
-        double b2 = 0;
-        double b3 = 0;
-        double b4 = 0;
-        double b5 = 0;
-
         double du = a0 * a1*s + a2*s2 + a3*s3 + a4*s4 + a5*s5;
         double dv = b0 * b1*s + b2*s2 + b3*s3 + b4*s4 + b5*s5;
+
+        double errorU = blm->x().value() + du - projected[1];
+        double errorV = dv - projected[0];
+
+        out << "\tLandmark " << lm->objectName() << "(" << lmid << "): error u = " << errorU << " error V = " << errorV << Qt::endl;
 
     }
 

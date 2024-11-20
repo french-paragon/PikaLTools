@@ -77,16 +77,16 @@ public:
         double s4 = s3*s;
         double s5 = s4*s;
 
-        T dx = as[0] + as[1]*s + as[2]*s2 + as[3]*s3 + as[4]*s4 + as[5]*s5; //compute corrections backwards for numerical stability
-        T dy = bs[0] + bs[1]*s + bs[2]*s2 + bs[3]*s3 + bs[4]*s4 + bs[5]*s5;
+        T du = as[0] + as[1]*s + as[2]*s2 + as[3]*s3 + as[4]*s4 + as[5]*s5; //compute corrections backwards for numerical stability
+        T dv = bs[0] + bs[1]*s + bs[2]*s2 + bs[3]*s3 + bs[4]*s4 + bs[5]*s5;
 
         proj *= f[0];
 
-        proj[0] += pp[0];
+        proj[1] += pp[0];
 
         V2T error = proj;
-        error[0] -= _uv[0] + dx;
-        error[1] -= _uv[1] + dy;
+        error[1] -= _uv[0] + du;
+        error[0] -= _uv[1] + dv;
 
         residual[0] = error[0];
         residual[1] = error[1];

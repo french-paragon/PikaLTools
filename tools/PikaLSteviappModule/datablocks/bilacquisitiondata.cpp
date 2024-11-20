@@ -410,7 +410,7 @@ double BilSequenceAcquisitionData::getBilWidth() const {
     }
 
     if (headerData.value().count("samples") < 1) {
-
+        return -1;
     }
 
     //TODO: add a cache
