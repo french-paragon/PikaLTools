@@ -19,6 +19,7 @@ public:
     virtual bool addGraphReductorObservations(StereoVisionApp::Project *currentProject,
                                               StereoVisionApp::GenericSBAGraphReductor* graphReductor) override;
 
+    virtual bool setupParameters(StereoVisionApp::ModularSBASolver* solver) override;
     virtual bool init(StereoVisionApp::ModularSBASolver* solver, ceres::Problem & problem) override;
     virtual bool writeResults(StereoVisionApp::ModularSBASolver* solver) override;
     virtual bool writeUncertainty(StereoVisionApp::ModularSBASolver* solver) override;

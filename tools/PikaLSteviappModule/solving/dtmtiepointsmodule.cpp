@@ -83,6 +83,10 @@ bool DtmTiePointsModule::addGraphReductorObservations(StereoVisionApp::Project *
 
 }
 
+bool DtmTiePointsModule::setupParameters(StereoVisionApp::ModularSBASolver* solver) {
+    return true;
+}
+
 bool DtmTiePointsModule::init(StereoVisionApp::ModularSBASolver* solver, ceres::Problem & problem) {
 
     StereoVisionApp::Project* currentProject = solver->currentProject();
@@ -139,7 +143,7 @@ bool DtmTiePointsModule::init(StereoVisionApp::ModularSBASolver* solver, ceres::
 
             qint64 lmid = dtmLm->attachedLandmarkid();
 
-            StereoVisionApp::ModularSBASolver::LandmarkNode* lmNode = solver->getNodeForLandmark(lmid, true);
+            StereoVisionApp::ModularSBASolver::PositionNode* lmNode = solver->getNodeForLandmark(lmid, true);
 
             if (lmNode == nullptr) {
                 continue;
@@ -237,7 +241,7 @@ bool DtmTiePointsModule::init(StereoVisionApp::ModularSBASolver* solver, ceres::
 
             QString lmName = "Missing Landmark";
 
-            StereoVisionApp::Landmark* lm = currentProject->getDataBlock<StereoVisionApp::Landmark>(lmNode->lmId);
+            StereoVisionApp::Landmark* lm = currentProject->getDataBlock<StereoVisionApp::Landmark>(lmNode->datablockId);
 
             if (lm != nullptr) {
                 lmName = lm->objectName();
