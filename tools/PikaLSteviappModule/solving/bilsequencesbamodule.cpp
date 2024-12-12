@@ -68,7 +68,7 @@ bool BilSequenceSBAModule::addGraphReductorObservations(StereoVisionApp::Project
     return true;
 }
 
-bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres::Problem & problem) {
+bool BilSequenceSBAModule::setupParameters(StereoVisionApp::ModularSBASolver* solver) {
 
     _sensorsParameters.clear();
     _sensorParametersIndex.clear();
@@ -81,8 +81,6 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
     }
 
     QVector<qint64> bilSeqsIdxs = currentProject->getIdsByClass(BilSequenceAcquisitionData::staticMetaObject.className());
-
-
 
     _sensorsParameters.reserve(bilSeqsIdxs.size());
 
@@ -116,6 +114,8 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
 
             BilCameraParameters parameters;
 
+            parameters.sensorId = seqSensorIndex;
+
             parameters.tLeverArm = {0,0,0};
             parameters.rLeverArm = {0,0,0};
 
@@ -128,69 +128,103 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
             int pos = _sensorsParameters.size()-1;
             _sensorParametersIndex.insert(seqId, pos);
 
-            BilCameraParameters& sensorParameters = _sensorsParameters[pos];
-
-            problem.AddParameterBlock(sensorParameters.tLeverArm.data(), sensorParameters.tLeverArm.size());
-            problem.AddParameterBlock(sensorParameters.rLeverArm.data(), sensorParameters.rLeverArm.size());
-
-            problem.AddParameterBlock(sensorParameters.fLen.data(), sensorParameters.fLen.size());
-            problem.AddParameterBlock(sensorParameters.principalPoint.data(), sensorParameters.principalPoint.size());
-            problem.AddParameterBlock(sensorParameters.frontalDistortion.data(), sensorParameters.frontalDistortion.size());
-            problem.AddParameterBlock(sensorParameters.lateralDistortion.data(), sensorParameters.lateralDistortion.size());
-
-            solver->addLogger(QString("Intrisic for BilSensor%1 - Lever arm").arg(seqSensorIndex),
-                              new StereoVisionApp::ModularSBASolver::ParamsValsLogger<3>(sensorParameters.tLeverArm.data()));
-
-            solver->addLogger(QString("Intrisic for BilSensor%1 - Boresight").arg(seqSensorIndex),
-                              new StereoVisionApp::ModularSBASolver::ParamsValsLogger<3>(sensorParameters.rLeverArm.data()));
-
-            solver->addLogger(QString("Intrisic for BilSensor%1 - Focal lenght").arg(seqSensorIndex),
-                              new StereoVisionApp::ModularSBASolver::ParamsValsLogger<1>(sensorParameters.fLen.data()));
-
-            solver->addLogger(QString("Intrisic for BilSensor%1 - Principal point").arg(seqSensorIndex),
-                              new StereoVisionApp::ModularSBASolver::ParamsValsLogger<1>(sensorParameters.principalPoint.data()));
-
-            solver->addLogger(QString("Intrisic for BilSensor%1 - Frontal distortion").arg(seqSensorIndex),
-                              new StereoVisionApp::ModularSBASolver::ParamsValsLogger<6>(sensorParameters.frontalDistortion.data()));
-
-            solver->addLogger(QString("Intrisic for BilSensor%1 - Lateral distortion").arg(seqSensorIndex),
-                              new StereoVisionApp::ModularSBASolver::ParamsValsLogger<6>(sensorParameters.lateralDistortion.data()));
-
-            //priors
-
-            //lever arm
-            Eigen::Matrix3d leverArmStiffness = Eigen::Matrix3d::Identity();
-
-            leverArmStiffness(0,0) = 10;
-            leverArmStiffness(1,1) = 10;
-            leverArmStiffness(2,2) = 10;
-
-            ceres::NormalPrior* leverArmPrior = new ceres::NormalPrior(leverArmStiffness, Eigen::Vector3d::Zero());
-
-            problem.AddResidualBlock(leverArmPrior, nullptr, sensorParameters.tLeverArm.data());
-
-            Eigen::Matrix<double,6,6> distortionStiffness = Eigen::Matrix<double,6,6>::Identity();
-
-            distortionStiffness(0,0) = 1;
-            distortionStiffness(1,1) = 2;
-            distortionStiffness(2,2) = 5;
-            distortionStiffness(3,3) = 10;
-            distortionStiffness(4,4) = 20;
-            distortionStiffness(5,5) = 50; //larger cooefficients are expected to be smaller
-
-            ceres::NormalPrior* distortionPrior = new ceres::NormalPrior(distortionStiffness, Eigen::Matrix<double,6,1>::Zero());
-
-            problem.AddResidualBlock(distortionPrior, nullptr, sensorParameters.frontalDistortion.data());
-            problem.AddResidualBlock(distortionPrior, nullptr, sensorParameters.lateralDistortion.data());
-
-            if (seqSensorIndex >= 0) {
-                _sensorIndexMap[seqSensorIndex] = seqId;
-            }
-
         } else {
             //set the sensor to the parameters already set for the previous line with the same sensor id.
             _sensorParametersIndex.insert(seqId, _sensorParametersIndex[_sensorIndexMap[seqSensorIndex]]);
         }
+
+    }
+
+    return true;
+}
+
+bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres::Problem & problem) {
+
+    StereoVisionApp::Project* currentProject = solver->currentProject();
+
+    if (currentProject == nullptr) {
+        return false;
+    }
+
+    for (BilCameraParameters& sensorParameters : _sensorsParameters) {
+
+        problem.AddParameterBlock(sensorParameters.tLeverArm.data(), sensorParameters.tLeverArm.size());
+        problem.AddParameterBlock(sensorParameters.rLeverArm.data(), sensorParameters.rLeverArm.size());
+
+        problem.AddParameterBlock(sensorParameters.fLen.data(), sensorParameters.fLen.size());
+        problem.AddParameterBlock(sensorParameters.principalPoint.data(), sensorParameters.principalPoint.size());
+        problem.AddParameterBlock(sensorParameters.frontalDistortion.data(), sensorParameters.frontalDistortion.size());
+        problem.AddParameterBlock(sensorParameters.lateralDistortion.data(), sensorParameters.lateralDistortion.size());
+
+        solver->addLogger(QString("Intrisic for BilSensor%1 - Lever arm").arg(sensorParameters.sensorId),
+                          new StereoVisionApp::ModularSBASolver::ParamsValsLogger<3>(sensorParameters.tLeverArm.data()));
+
+        solver->addLogger(QString("Intrisic for BilSensor%1 - Boresight").arg(sensorParameters.sensorId),
+                          new StereoVisionApp::ModularSBASolver::ParamsValsLogger<3>(sensorParameters.rLeverArm.data()));
+
+        solver->addLogger(QString("Intrisic for BilSensor%1 - Focal lenght").arg(sensorParameters.sensorId),
+                          new StereoVisionApp::ModularSBASolver::ParamsValsLogger<1>(sensorParameters.fLen.data()));
+
+        solver->addLogger(QString("Intrisic for BilSensor%1 - Principal point").arg(sensorParameters.sensorId),
+                          new StereoVisionApp::ModularSBASolver::ParamsValsLogger<1>(sensorParameters.principalPoint.data()));
+
+        solver->addLogger(QString("Intrisic for BilSensor%1 - Frontal distortion").arg(sensorParameters.sensorId),
+                          new StereoVisionApp::ModularSBASolver::ParamsValsLogger<6>(sensorParameters.frontalDistortion.data()));
+
+        solver->addLogger(QString("Intrisic for BilSensor%1 - Lateral distortion").arg(sensorParameters.sensorId),
+                          new StereoVisionApp::ModularSBASolver::ParamsValsLogger<6>(sensorParameters.lateralDistortion.data()));
+
+        //priors
+
+        //lever arm
+        Eigen::Matrix3d leverArmStiffness = Eigen::Matrix3d::Identity();
+
+        leverArmStiffness(0,0) = 10;
+        leverArmStiffness(1,1) = 10;
+        leverArmStiffness(2,2) = 10;
+
+        ceres::NormalPrior* leverArmPrior = new ceres::NormalPrior(leverArmStiffness, Eigen::Vector3d::Zero());
+
+        problem.AddResidualBlock(leverArmPrior, nullptr, sensorParameters.tLeverArm.data());
+
+        Eigen::Matrix<double,6,6> distortionStiffness = Eigen::Matrix<double,6,6>::Identity();
+
+        distortionStiffness(0,0) = 1;
+        distortionStiffness(1,1) = 2;
+        distortionStiffness(2,2) = 5;
+        distortionStiffness(3,3) = 10;
+        distortionStiffness(4,4) = 20;
+        distortionStiffness(5,5) = 50; //larger cooefficients are expected to be smaller
+
+        ceres::NormalPrior* distortionPrior = new ceres::NormalPrior(distortionStiffness, Eigen::Matrix<double,6,1>::Zero());
+
+        problem.AddResidualBlock(distortionPrior, nullptr, sensorParameters.frontalDistortion.data());
+        problem.AddResidualBlock(distortionPrior, nullptr, sensorParameters.lateralDistortion.data());
+
+    }
+
+    QVector<qint64> bilSeqsIdxs = currentProject->getIdsByClass(BilSequenceAcquisitionData::staticMetaObject.className());
+
+    for (qint64 seqId : bilSeqsIdxs) {
+
+        BilSequenceAcquisitionData* seq = currentProject->getDataBlock<BilSequenceAcquisitionData>(seqId);
+
+        if (seq == nullptr) {
+            continue;
+        }
+
+        qint64 trajId = seq->assignedTrajectory();
+
+        StereoVisionApp::ModularSBASolver::TrajectoryNode* trajNode = solver->getNodeForTrajectory(trajId, false);
+
+        //no trajectory node
+        if (trajNode == nullptr) {
+            continue;
+        }
+
+        QMap<QString, QString> sequence_header = seq->getBilInfos()[0].headerData();
+
+        double sensorWidth = sequence_header.value("samples").toDouble();
 
         int paramIdxs = _sensorParametersIndex[seqId];
         BilCameraParameters& sensorParameters = _sensorsParameters[paramIdxs];
@@ -221,7 +255,7 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
                 continue; //skip uninitialized landmarks.
             }
 
-            StereoVisionApp::ModularSBASolver::LandmarkNode* lmNode = solver->getNodeForLandmark(lmid, true);
+            StereoVisionApp::ModularSBASolver::PositionNode* lmNode = solver->getPositionNode(lmid);
 
             if (lmNode == nullptr) {
 
