@@ -43,6 +43,9 @@ public:
         _outFile = outFile;
     }
 
+    inline void setTargetGSD(double gsd) {
+        _target_gsd = gsd;
+    }
 protected:
 
     template<typename CT>

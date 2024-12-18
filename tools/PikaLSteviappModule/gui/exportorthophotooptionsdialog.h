@@ -27,6 +27,8 @@ public:
 
     void setLineFileId(int nLines);
 
+    double getTargetGSD() const;
+
 private:
 
     void configureDtmList();

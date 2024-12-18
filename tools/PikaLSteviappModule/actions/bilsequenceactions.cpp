@@ -18,7 +18,10 @@
 #include <steviapp/sparsesolver/sbagraphreductor.h>
 #include <steviapp/sparsesolver/modularsbasolver.h>
 #include <steviapp/sparsesolver/sbamodules/trajectorybasesbamodule.h>
+#include <steviapp/sparsesolver/sbamodules/landmarkssbamodule.h>
 #include <steviapp/sparsesolver/sbamodules/imagealignementsbamodule.h>
+#include <steviapp/sparsesolver/sbamodules/correspondencessetsbamodule.h>
+#include <steviapp/sparsesolver/sbamodules/localcoordinatesystemsbamodule.h>
 
 #include <StereoVision/geometry/core.h>
 #include <StereoVision/geometry/rotations.h>
@@ -286,6 +289,8 @@ bool computeOrthophoto(BilSequenceAcquisitionData *bilSequence, InputDtm* pInput
     InputDtm* inputDtm = pInputDtm;
     QString outFile = pOutFile;
 
+    double targetGsd = 2.0;
+
     int minBilLine = -1;
     int maxBilLine = -1;
 
@@ -307,6 +312,8 @@ bool computeOrthophoto(BilSequenceAcquisitionData *bilSequence, InputDtm* pInput
 
         minBilLine = dialog.minLineId();
         maxBilLine = dialog.maxLineId();
+
+        targetGsd = dialog.getTargetGSD();
     }
 
     if (inputDtm == nullptr) {
@@ -320,6 +327,7 @@ bool computeOrthophoto(BilSequenceAcquisitionData *bilSequence, InputDtm* pInput
     RectifyBilSeqToOrthoSteppedProcess* processor = new RectifyBilSeqToOrthoSteppedProcess();
     processor->configure(bilSequence, inputDtm, outFile);
     processor->setMinAndMaxLineId(minBilLine, maxBilLine);
+    processor->setTargetGSD(targetGsd);
 
     QThread* t = new QThread();
 
@@ -1205,16 +1213,25 @@ bool refineTrajectoryUsingDn() {
 
     solver->addModule(trajectoryModule);
 
-    StereoVisionApp::SBAGraphReductor selector(3,2,true,true);
+    StereoVisionApp::LandmarksSBAModule* landmarkModule =
+                 new StereoVisionApp::LandmarksSBAModule();
 
-    StereoVisionApp::SBAGraphReductor::elementsSet selection = selector(project, false);
+     solver->addModule(landmarkModule);
 
-    if (!selection.imgs.isEmpty() and !selection.pts.isEmpty()) {
-        StereoVisionApp::ImageAlignementSBAModule* imageModule =
-                new StereoVisionApp::ImageAlignementSBAModule();
+     StereoVisionApp::ImageAlignementSBAModule* imageModule =
+                  new StereoVisionApp::ImageAlignementSBAModule();
 
-        solver->addModule(imageModule);
-    }
+      solver->addModule(imageModule);
+
+      StereoVisionApp::LocalCoordinateSystemSBAModule* lcsModule =
+                   new StereoVisionApp::LocalCoordinateSystemSBAModule();
+
+       solver->addModule(lcsModule);
+
+     StereoVisionApp::CorrespondencesSetSBAModule * correspModule =
+                  new StereoVisionApp::CorrespondencesSetSBAModule();
+
+      solver->addModule(correspModule);
 
     BilSequenceSBAModule* bilSequenceModule =
             new BilSequenceSBAModule();
@@ -1559,20 +1576,6 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
         pp = bilSequence->getBilWidth()/2;
     }
 
-    double a0 = bilSequence->optimizedA0().isSet() ? bilSequence->optimizedA0().value() : 0;
-    double a1 = bilSequence->optimizedA1().isSet() ? bilSequence->optimizedA1().value() : 0;
-    double a2 = bilSequence->optimizedA2().isSet() ? bilSequence->optimizedA2().value() : 0;
-    double a3 = bilSequence->optimizedA3().isSet() ? bilSequence->optimizedA3().value() : 0;
-    double a4 = bilSequence->optimizedA4().isSet() ? bilSequence->optimizedA4().value() : 0;
-    double a5 = bilSequence->optimizedA5().isSet() ? bilSequence->optimizedA5().value() : 0;
-
-    double b0 = bilSequence->optimizedB0().isSet() ? bilSequence->optimizedB0().value() : 0;
-    double b1 = bilSequence->optimizedB1().isSet() ? bilSequence->optimizedB1().value() : 0;
-    double b2 = bilSequence->optimizedB2().isSet() ? bilSequence->optimizedB2().value() : 0;
-    double b3 = bilSequence->optimizedB3().isSet() ? bilSequence->optimizedB3().value() : 0;
-    double b4 = bilSequence->optimizedB4().isSet() ? bilSequence->optimizedB4().value() : 0;
-    double b5 = bilSequence->optimizedB5().isSet() ? bilSequence->optimizedB5().value() : 0;
-
     QVector<qint64> imlmids = bilSequence->listTypedSubDataBlocks(BilSequenceLandmark::staticMetaObject.className());
 
     for (qint64 imlmid : imlmids) {
@@ -1613,26 +1616,27 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
 
         StereoVision::Geometry::RigidBodyTransform<double> world2sensor = body2sensor*body2world.inverse();
 
+        int low = std::floor(blm->x().value());
+        int high = std::ceil(blm->x().value());
+
+        low = std::clamp<int>(low, 0, viewDirectionsSensor.size()-1);
+        high = std::clamp<int>(high, 0, viewDirectionsSensor.size()-1);
+
+        double alpha = 1 - (blm->x().value() - low);
+
+        Eigen::Vector3d expectedLow = Eigen::Vector3d(viewDirectionsSensor[low][0], viewDirectionsSensor[low][1], viewDirectionsSensor[low][2]);
+        Eigen::Vector3d expectedHigh = Eigen::Vector3d(viewDirectionsSensor[high][0], viewDirectionsSensor[high][1], viewDirectionsSensor[high][2]);
+        Eigen::Vector3d expected = alpha*expectedLow + (1-alpha)*expectedHigh;
         Eigen::Vector3d projected = world2sensor*optLmPos.value().cast<double>();
 
         projected /= projected.z();
 
         projected *= focalLenght;
-        projected[1] += pp;
 
-        double s = blm->x().value()/sensorWidth;
-        double s2 = s*s;
-        double s3 = s*s2;
-        double s4 = s*s3;
-        double s5 = s*s4;
+        double errorU = expected[0] - projected[0];
+        double errorV = expected[1] - projected[1];
 
-        double du = a0 * a1*s + a2*s2 + a3*s3 + a4*s4 + a5*s5;
-        double dv = b0 * b1*s + b2*s2 + b3*s3 + b4*s4 + b5*s5;
-
-        double errorU = blm->x().value() + du - projected[1];
-        double errorV = dv - projected[0];
-
-        out << "\tLandmark " << lm->objectName() << "(" << lmid << "): error u = " << errorU << " error V = " << errorV << Qt::endl;
+        out << "\tLandmark " << lm->objectName() << "(" << lmid << "): error u = " << errorU << " error v = " << errorV << Qt::endl;
 
     }
 

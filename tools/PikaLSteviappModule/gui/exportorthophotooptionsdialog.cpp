@@ -50,6 +50,10 @@ int ExportOrthoPhotoOptionsDialog::maxLineId() const {
     return -1;
 }
 
+double ExportOrthoPhotoOptionsDialog::getTargetGSD() const {
+    return ui->gsdSpinBox->value();
+}
+
 void ExportOrthoPhotoOptionsDialog::setLineFileId(int nLines) {
     ui->minLineSpinBox->setMaximum(nLines-1);
     ui->maxLineSpinBox->setMaximum(nLines);

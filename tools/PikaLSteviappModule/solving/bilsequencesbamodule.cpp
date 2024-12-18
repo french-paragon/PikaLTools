@@ -2,11 +2,16 @@
 
 #include "datablocks/bilacquisitiondata.h"
 
-#include "cost_functors/parametrizedxyz2pushbroom.h"
+#include <steviapp/sparsesolver/costfunctors/modularuvprojection.h>
+
+#include "cost_functors/pinholepushbroomuvprojector.h"
 
 #include <ceres/normal_prior.h>
 
 namespace PikaLTools {
+
+using PushBroomUVProj = PinholePushbroomUVProjector;
+using PushBroomUVCost = StereoVisionApp::UV2ParametrizedXYZCostInterpPose<PushBroomUVProj,1,1,6,6>;
 
 BilSequenceSBAModule::BilSequenceSBAModule()
 {
@@ -295,21 +300,14 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
             double w1 = (nextPose.time - time)/(nextPose.time - previousPose.time);
             double w2 = (time - previousPose.time)/(nextPose.time - previousPose.time);
 
-            ParametrizedInterpolatedXYZ2PushBroom* cost =
-                    new ParametrizedInterpolatedXYZ2PushBroom(uv, sensorWidth, w1, w2);
+            Eigen::Matrix2d info = Eigen::Matrix2d::Identity();
+            //TODO find a way to build the info matrix for pushbroom.
 
-            using ceresFunc = ceres::AutoDiffCostFunction<ParametrizedInterpolatedXYZ2PushBroom,2,3,3,3,3,3,3,3,1,1,6,6>;
+            PushBroomUVCost* cost =
+                    new PushBroomUVCost(new PushBroomUVProj(sensorWidth), w1, w2, uv, info);
+
+            using ceresFunc = ceres::AutoDiffCostFunction<PushBroomUVCost,2,3,3,3,3,3,3,3,1,1,6,6>;
             ceresFunc* costFunc = new ceresFunc(cost);
-
-            problem.AddResidualBlock(costFunc, nullptr,
-                                     lmNode->pos.data(),
-                                     sensorParameters.rLeverArm.data(), sensorParameters.tLeverArm.data(),
-                                     previousPose.rAxis.data(), previousPose.t.data(),
-                                     nextPose.rAxis.data(), nextPose.t.data(),
-                                     sensorParameters.fLen.data(),
-                                     sensorParameters.principalPoint.data(),
-                                     sensorParameters.frontalDistortion.data(),
-                                     sensorParameters.lateralDistortion.data());
 
             QString lmName = "Fantom landmark";
             if (lm != nullptr) {
@@ -318,9 +316,9 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
             QString loggerName = QString("Projection Bil %1 Landmark %2").arg(seq->objectName()).arg(lmName);
             StereoVisionApp::ModularSBASolver::AutoErrorBlockLogger<11, 2>::ParamsType params =
                 {lmNode->pos.data(),
-                 sensorParameters.rLeverArm.data(), sensorParameters.tLeverArm.data(),
                  previousPose.rAxis.data(), previousPose.t.data(),
                  nextPose.rAxis.data(), nextPose.t.data(),
+                 sensorParameters.rLeverArm.data(), sensorParameters.tLeverArm.data(),
                  sensorParameters.fLen.data(),
                  sensorParameters.principalPoint.data(),
                  sensorParameters.frontalDistortion.data(),
@@ -329,6 +327,8 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
 
             solver->addLogger(loggerName, new StereoVisionApp::ModularSBASolver::AutoErrorBlockLogger<11, 2>(costFunc, params));
 
+
+            problem.AddResidualBlock(costFunc, nullptr, params.data(), params.size());
         }
 
     }

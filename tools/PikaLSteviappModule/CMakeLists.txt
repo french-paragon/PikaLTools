@@ -53,6 +53,8 @@ set(MODULE_SRC
     solving/bilsequencesbamodule.cpp
     solving/dtmtiepointsmodule.h
     solving/dtmtiepointsmodule.cpp
+    solving/cost_functors/pinholepushbroomuvprojector.h
+    solving/cost_functors/pinholepushbroomuvprojector.cpp
     solving/cost_functors/parametrizedxyz2pushbroom.h
     solving/cost_functors/parametrizedxyz2pushbroom.cpp
     solving/cost_functors/orientationspeedconsistency.h

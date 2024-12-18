@@ -2,6 +2,9 @@
 
 #include <StereoVision/io/image_io.h>
 #include <StereoVision/imageProcessing/pixelsLines.h>
+#include <StereoVision/imageProcessing/convolutions.h>
+#include <StereoVision/imageProcessing/standardConvolutionFilters.h>
+#include <StereoVision/imageProcessing/inpainting.h>
 
 #include <steviapp/datablocks/trajectory.h>
 
@@ -121,6 +124,12 @@ bool RectifyBilSeqToOrthoSteppedProcess::doNextStep() {
     }
 
     if (step == nBils) {
+
+        if (_terrain_projector != nullptr) {
+            delete _terrain_projector; //clean up memory
+            _terrain_projector = nullptr;
+        }
+
         out << "\tComputing projection grid" << Qt::endl;
         return computeProjectedGrid();
     }
@@ -211,10 +220,10 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeBilProjection(int bilId) {
         double targetTime = times[i];
 
         Trajectory<double>::TimeInterpolableVals vals = _bil_trajectory.getValueAtTime(targetTime);
-        StereoVision::Geometry::RigidBodyTransform<double> delta = vals.valUpper*vals.valLower.inverse();
+        StereoVision::Geometry::RigidBodyTransform<double> delta = vals.valLower.inverse()*vals.valUpper;
 
-        double w = vals.weigthUpper/(vals.weigthUpper+vals.weigthLower);
-        StereoVision::Geometry::RigidBodyTransform<double> body2ecef = (w*delta)*vals.valLower;
+        double w = vals.weigthUpper;
+        StereoVision::Geometry::RigidBodyTransform<double> body2ecef = vals.valLower*(w*delta);
 
         StereoVision::Geometry::RigidBodyTransform<double> sensor2ecef = body2ecef*sensor2body;
 
@@ -402,7 +411,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeNextTile(int tileId) {
 
     GridBlock const& tile =  _exportGrid[tileId];
 
-    out << "Exporting tile: " << tile.i0 << " " << tile.j0 << " -> " << tile.in << " " << tile.jn << " (" << tile.pi << " " << tile.pj << " " << tile.height << " " << tile.width << ")" << Qt::endl;
+    out << "\tExporting tile: " << tile.i0 << " " << tile.j0 << " -> " << tile.in << " " << tile.jn << " (" << tile.pi << " " << tile.pj << " " << tile.height << " " << tile.width << ")" << Qt::endl;
 
     Eigen::Matrix<double,3,3> dsmToMap;
     dsmToMap.block<2,3>(0,0) = _terrain.geoTransform;
@@ -426,11 +435,27 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeNextTile(int tileId) {
     Multidim::Array<float,3> samples(tile.height, tile.width, _bands);
     Multidim::Array<float, 3> geotiff(tile.height, tile.width, 3);
 
+    #pragma omp parallel for
+    for (int i = 0; i < samples.shape()[0]; i++) {
+        for (int j = 0; j < samples.shape()[1]; j++) {
+
+            for (int b = 0; b < samples.shape()[2]; b++) {
+                samples.atUnchecked(i,j,b) = 0;
+            }
+
+            nSamples.atUnchecked(i,j) = 0;
+        }
+    }
+
+    out << "\t" << "Memory reserved!" << Qt::endl;
+
     bool anyWritten = false;
 
     for (int i = 0; i < _bilFilesROI.size(); i++) {
 
         int bilId = i;
+
+        out << "\t\t" << "Considering bil " << bilId << Qt::endl;
 
         QString tmpFileName = QString("bilProj%1.bin").arg(bilId);
 
@@ -444,7 +469,11 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeNextTile(int tileId) {
             return false;
         }
 
+        out << "\t\t" << "Reading bil " << _bilPaths[i] << Qt::endl;
+
         Multidim::Array<float, 3> bilFile = read_envi_bil_to_float(_bilPaths[i].toStdString());
+
+        out << "\t\t" << "Read bil " << _bilPaths[i] << " Shape: " << bilFile.shape()[0] << " " << bilFile.shape()[1] << " " << bilFile.shape()[2] << Qt::endl;
 
         if (bilFile.empty()) {
             continue;
@@ -461,6 +490,8 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeNextTile(int tileId) {
                 out << "Projection read error" << Qt::endl;
                 continue;
             }
+
+            out << "\t\t" << "Read bil coordinates projections for line " << i << "  in " << tmpFilePath << "!" << Qt::endl;
 
             for (int j = 0; j < bilFile.shape()[1]; j++) { //samples
 
@@ -538,6 +569,8 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeNextTile(int tileId) {
     if (!anyWritten) {
         out << "\tNo pixels written for tile" << Qt::endl;
         return true;
+    } else {
+        out << "\t" << "Finished integrating the file" << Qt::endl;
     }
 
     for (int i = 0; i < samples.shape()[0]; i++) {
@@ -555,15 +588,35 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeNextTile(int tileId) {
 
         }
     }
+    out << "\t" << "Finished computing the file" << Qt::endl;
 
-    for (int i = 0; i < tile.height; i++) {
-        for (int j = 0; j < tile.width; j++) {
+    int redChannel = _redChannel;
+    int greenChannel = _greenChannel;
+    int blueChannel = _blueChannel;
 
-            geotiff.atUnchecked(i,j,0) = samples.atUnchecked(i,j,_redChannel);
-            geotiff.atUnchecked(i,j,1) = samples.atUnchecked(i,j,_greenChannel);
-            geotiff.atUnchecked(i,j,2) = samples.atUnchecked(i,j,_blueChannel);
+    if (redChannel >= samples.shape()[2]) {
+        redChannel = 0;
+    }
+
+    if (greenChannel >= samples.shape()[2]) {
+        greenChannel = samples.shape()[2]/2;
+    }
+
+    if (blueChannel >= samples.shape()[2]) {
+        blueChannel = samples.shape()[2]-1;
+    }
+
+    out << "\t" << "Start computing geotiff with channels r = " << redChannel << " g = " << greenChannel << " b = " << blueChannel << Qt::endl;
+
+    for (int i = 0; i < samples.shape()[0]; i++) {
+        for (int j = 0; j < samples.shape()[1]; j++) {
+
+            geotiff.atUnchecked(i,j,0) = samples.atUnchecked(i,j,redChannel);
+            geotiff.atUnchecked(i,j,1) = samples.atUnchecked(i,j,greenChannel);
+            geotiff.atUnchecked(i,j,2) = samples.atUnchecked(i,j,blueChannel);
         }
     }
+    out << "\t" << "Finished computing the geotiff" << Qt::endl;
 
     std::stringstream streamName;
     streamName << "_tile_" << tile.pi << "_" << tile.pj << ".stevimg";
@@ -723,7 +776,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::init() {
     //load bill data
 
     StereoVisionApp::StatusOptionalReturn<Trajectory<double>> trajOpt =
-            trajectory->loadTrajectorySequence();
+            trajectory->optimizedTrajectoryECEF();
 
     if (!trajOpt.isValid()) {
         return false;

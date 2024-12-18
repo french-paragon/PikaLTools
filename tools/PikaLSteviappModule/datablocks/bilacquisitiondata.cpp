@@ -8,6 +8,8 @@
 
 #include "geo/coordinate_conversions.h"
 
+#include "solving/cost_functors/pinholepushbroomuvprojector.h"
+
 #include <QJsonArray>
 
 #include <QFile>
@@ -315,37 +317,26 @@ std::vector<std::array<double, 3>> BilSequenceAcquisitionData::getSensorViewDire
     double optical_center;
     double f_len_pix;
 
-    double a0 = 0;
-    double a1 = 0;
-    double a2 = 0;
-    double a3 = 0;
-    double a4 = 0;
-    double a5 = 0;
-
-    double b0 = 0;
-    double b1 = 0;
-    double b2 = 0;
-    double b3 = 0;
-    double b4 = 0;
-    double b5 = 0;
+    std::array<double,6> as = {0,0,0,0,0,0};
+    std::array<double,6> bs = {0,0,0,0,0,0};
 
     if (optimized) {
         optical_center = optimizedOpticalCenterX().value();
         f_len_pix = optimizedFLen().value();
 
-        a0 = optimizedA0().value();
-        a1 = optimizedA1().value();
-        a2 = optimizedA2().value();
-        a3 = optimizedA3().value();
-        a4 = optimizedA4().value();
-        a5 = optimizedA5().value();
+        as[0] = optimizedA0().value();
+        as[1] = optimizedA1().value();
+        as[2] = optimizedA2().value();
+        as[3] = optimizedA3().value();
+        as[4] = optimizedA4().value();
+        as[5] = optimizedA5().value();
 
-        b0 = optimizedB0().value();
-        b1 = optimizedB1().value();
-        b2 = optimizedB2().value();
-        b3 = optimizedB3().value();
-        b4 = optimizedB4().value();
-        b5 = optimizedB5().value();
+        bs[0] = optimizedB0().value();
+        bs[1] = optimizedB1().value();
+        bs[2] = optimizedB2().value();
+        bs[3] = optimizedB3().value();
+        bs[4] = optimizedB4().value();
+        bs[5] = optimizedB5().value();
 
     } else {
         optical_center = getBilWidth()/2;
@@ -353,19 +344,18 @@ std::vector<std::array<double, 3>> BilSequenceAcquisitionData::getSensorViewDire
     }
 
     std::vector<std::array<double, 3>> viewDirectionsSensor(nSamples);
+    PinholePushbroomUVProjector projector(nSamples);
+
+    std::array<double*,4> params = {&f_len_pix, &optical_center, as.data(), bs.data()};
+
+    std::array<double,2> uv = {0,0};
 
     for (int i = 0; i < nSamples; i++) {
 
-        double s = static_cast<double>(i)/nSamples;
-        double s2 = s*s;
-        double s3 = s2*s;
-        double s4 = s3*s;
-        double s5 = s4*s;
+        uv[0] = i;
 
-        double du = a0 + a1*s + a2*s2 + a3*s3 + a4*s4 + a5*s5;
-        double dv = b0 + b1*s + b2*s2 + b3*s3 + b4*s4 + b5*s5;
-
-        viewDirectionsSensor[i] = std::array<double, 3>{0 + dv, i - optical_center + du, f_len_pix};
+        Eigen::Vector3d dir = projector.dirFromUV(uv.data(), params.data());
+        viewDirectionsSensor[i] = {dir.x(), dir.y(), dir.z()};
     }
 
     return viewDirectionsSensor;
@@ -481,7 +471,7 @@ StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedFLen() cons
 }
 void BilSequenceAcquisitionData::setOptimizedFLen(StereoVisionApp::floatParameter const& o_f_pix) {
 
-    if (!_o_f_pix.isApproximatlyEqual(o_f_pix, 1e-4)) {
+    if (_o_f_pix != o_f_pix) {
         _o_f_pix = o_f_pix;
         Q_EMIT optimizedFLenChanged(_o_f_pix);
         isChanged();
@@ -492,7 +482,7 @@ StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedOpticalCent
 }
 void BilSequenceAcquisitionData::setOptimizedOpticalCenterX(StereoVisionApp::floatParameter const& o_c_x) {
 
-    if (!_o_c_x.isApproximatlyEqual(o_c_x, 1e-4)) {
+    if (_o_c_x != o_c_x) {
         _o_c_x = o_c_x;
         Q_EMIT optimizedOpticalCenterXChanged(_o_c_x);
         isChanged();
@@ -503,7 +493,7 @@ StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedA0() const 
     return _o_a0;
 }
 void BilSequenceAcquisitionData::setOptimizedA0(StereoVisionApp::floatParameter const& o_a0) {
-    if (!_o_a0.isApproximatlyEqual(o_a0, 1e-8)) {
+    if (_o_a0 != o_a0) {
         _o_a0 = o_a0;
         Q_EMIT optimizedA0Changed(_o_a0);
         isChanged();
@@ -513,7 +503,7 @@ StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedA1() const 
     return _o_a1;
 }
 void BilSequenceAcquisitionData::setOptimizedA1(StereoVisionApp::floatParameter const& o_a1) {
-    if (!_o_a1.isApproximatlyEqual(o_a1, 1e-8)) {
+    if (_o_a1 != o_a1) {
         _o_a1 = o_a1;
         Q_EMIT optimizedA1Changed(_o_a1);
         isChanged();
@@ -523,7 +513,7 @@ StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedA2() const 
     return _o_a2;
 }
 void BilSequenceAcquisitionData::setOptimizedA2(StereoVisionApp::floatParameter const& o_a2) {
-    if (!_o_a2.isApproximatlyEqual(o_a2, 1e-8)) {
+    if (_o_a2 != o_a2) {
         _o_a2 = o_a2;
         Q_EMIT optimizedA2Changed(_o_a2);
         isChanged();
@@ -533,7 +523,7 @@ StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedA3() const 
     return _o_a3;
 }
 void BilSequenceAcquisitionData::setOptimizedA3(StereoVisionApp::floatParameter const& o_a3) {
-    if (!_o_a3.isApproximatlyEqual(o_a3, 1e-8)) {
+    if ( _o_a3 != o_a3) {
         _o_a3 = o_a3;
         Q_EMIT optimizedA3Changed(_o_a3);
         isChanged();
@@ -543,7 +533,7 @@ StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedA4() const 
     return _o_a4;
 }
 void BilSequenceAcquisitionData::setOptimizedA4(StereoVisionApp::floatParameter const& o_a4) {
-    if (!_o_a4.isApproximatlyEqual(o_a4, 1e-8)) {
+    if (_o_a4 != o_a4) {
         _o_a4 = o_a4;
         Q_EMIT optimizedA4Changed(_o_a4);
         isChanged();
@@ -553,7 +543,7 @@ StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedA5() const 
     return _o_a5;
 }
 void BilSequenceAcquisitionData::setOptimizedA5(StereoVisionApp::floatParameter const& o_a5) {
-    if (!_o_a5.isApproximatlyEqual(o_a5, 1e-8)) {
+    if (_o_a5 != o_a5) {
         _o_a5 = o_a5;
         Q_EMIT optimizedA5Changed(_o_a5);
         isChanged();
@@ -564,7 +554,7 @@ StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedB0() const 
     return _o_b0;
 }
 void BilSequenceAcquisitionData::setOptimizedB0(StereoVisionApp::floatParameter const& o_b0) {
-    if (!_o_b0.isApproximatlyEqual(o_b0, 1e-8)) {
+    if (_o_b0 != o_b0) {
         _o_b0 = o_b0;
         Q_EMIT optimizedB0Changed(_o_b0);
         isChanged();
@@ -574,7 +564,7 @@ StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedB1() const 
     return _o_b1;
 }
 void BilSequenceAcquisitionData::setOptimizedB1(StereoVisionApp::floatParameter const& o_b1) {
-    if (!_o_b1.isApproximatlyEqual(o_b1, 1e-8)) {
+    if (_o_b1 != o_b1) {
         _o_b1 = o_b1;
         Q_EMIT optimizedB1Changed(_o_b1);
         isChanged();
@@ -584,7 +574,7 @@ StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedB2() const 
     return _o_b2;
 }
 void BilSequenceAcquisitionData::setOptimizedB2(StereoVisionApp::floatParameter const& o_b2) {
-    if (!_o_b2.isApproximatlyEqual(o_b2, 1e-8)) {
+    if (_o_b2 != o_b2) {
         _o_b2 = o_b2;
         Q_EMIT optimizedB2Changed(_o_b2);
         isChanged();
@@ -594,7 +584,7 @@ StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedB3() const 
     return _o_b3;
 }
 void BilSequenceAcquisitionData::setOptimizedB3(StereoVisionApp::floatParameter const& o_b3) {
-    if (!_o_b3.isApproximatlyEqual(o_b3, 1e-8)) {
+    if (_o_b3 != o_b3) {
         _o_b3 = o_b3;
         Q_EMIT optimizedB3Changed(_o_b3);
         isChanged();
@@ -604,7 +594,7 @@ StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedB4() const 
     return _o_b4;
 }
 void BilSequenceAcquisitionData::setOptimizedB4(StereoVisionApp::floatParameter const& o_b4) {
-    if (!_o_b4.isApproximatlyEqual(o_b4, 1e-8)) {
+    if (_o_b4 != o_b4) {
         _o_b4 = o_b4;
         Q_EMIT optimizedB4Changed(_o_b4);
         isChanged();
@@ -614,7 +604,7 @@ StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedB5() const 
     return _o_b5;
 }
 void BilSequenceAcquisitionData::setOptimizedB5(StereoVisionApp::floatParameter const& o_b5) {
-    if (!_o_b5.isApproximatlyEqual(o_b5, 1e-8)) {
+    if (_o_b5 != o_b5) {
         _o_b5 = o_b5;
         Q_EMIT optimizedB5Changed(_o_b5);
         isChanged();
