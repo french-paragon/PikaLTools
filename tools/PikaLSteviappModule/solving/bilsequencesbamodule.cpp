@@ -10,6 +10,8 @@
 
 namespace PikaLTools {
 
+const char* BilSequenceSBAModule::ModuleName = "PikaLTools::SBAModule::BilSequence";
+
 using PushBroomUVProj = PinholePushbroomUVProjector;
 using PushBroomUVCost = StereoVisionApp::UV2ParametrizedXYZCostInterpPose<PushBroomUVProj,1,1,6,6>;
 

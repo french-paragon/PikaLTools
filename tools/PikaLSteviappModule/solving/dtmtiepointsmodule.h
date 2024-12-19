@@ -12,6 +12,8 @@ namespace PikaLTools {
 class DtmTiePointsModule : public StereoVisionApp::ModularSBASolver::SBAModule
 {
 public:
+
+    static const char* ModuleName;
     DtmTiePointsModule();
 
     virtual bool addGraphReductorVariables(StereoVisionApp::Project *currentProject,

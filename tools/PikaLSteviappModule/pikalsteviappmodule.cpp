@@ -6,6 +6,11 @@
 #include <steviapp/control/actionmanager.h>
 #include <steviapp/control/mainwindow.h>
 
+#include <steviapp/sparsesolver/modularsbasolver.h>
+
+#include "solving/bilsequencesbamodule.h"
+#include "solving/dtmtiepointsmodule.h"
+
 #include <steviapp/datablocks/project.h>
 
 #include "datablocks/bilacquisitiondata.h"
@@ -52,6 +57,22 @@ int PikaLSteviappModule::loadModule(StereoVisionApp::StereoVisionApplication* ap
         w->installEditor(new TrajectoryViewEditorFactory(app));
         w->installEditor(new BilCubeViewEditorFactory(app));
         w->installEditor(new DTMRasterViewEditorFactory(app));
+    }
+
+    QObject* interface = app->getAdditionalInterface(StereoVisionApp::SBASolverModulesInterface::AppInterfaceName);
+
+    StereoVisionApp::SBASolverModulesInterface* sbaModuleInterface =
+            qobject_cast<StereoVisionApp::SBASolverModulesInterface*>(interface);
+
+    if (sbaModuleInterface != nullptr) {
+
+        sbaModuleInterface->registerSBAModule(BilSequenceSBAModule::ModuleName, [] (StereoVisionApp::ModularSBASolver* solver) -> StereoVisionApp::ModularSBASolver::SBAModule* {
+            return new BilSequenceSBAModule();
+        });
+
+        sbaModuleInterface->registerSBAModule(DtmTiePointsModule::ModuleName, [] (StereoVisionApp::ModularSBASolver* solver) -> StereoVisionApp::ModularSBASolver::SBAModule* {
+            return new DtmTiePointsModule();
+        });
     }
 
     out << "PikaL Steviapp module loaded!" << Qt::endl;

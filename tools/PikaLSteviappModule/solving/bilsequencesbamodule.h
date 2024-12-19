@@ -11,6 +11,8 @@ namespace PikaLTools {
 class BilSequenceSBAModule : public StereoVisionApp::ModularSBASolver::SBAModule
 {
 public:
+
+    static const char* ModuleName;
     BilSequenceSBAModule();
 
     virtual bool addGraphReductorVariables(StereoVisionApp::Project *currentProject,

@@ -9,6 +9,8 @@
 
 namespace PikaLTools {
 
+const char* DtmTiePointsModule::ModuleName = "PikaLTools::SBAModule::DtmTiePoints";
+
 DtmTiePointsModule::DtmTiePointsModule()
 {
 
@@ -232,6 +234,8 @@ bool DtmTiePointsModule::init(StereoVisionApp::ModularSBASolver* solver, ceres::
 
             ceres::NormalPrior* normalPrior = new ceres::NormalPrior(stiffness, m);
 
+            ceres::NormalPrior* errorFunc = new ceres::NormalPrior(Eigen::Matrix3d::Identity(), m);
+
             lmNode->pos[0] = m[0];
             lmNode->pos[1] = m[1];
             lmNode->pos[2] = m[2];
@@ -249,7 +253,7 @@ bool DtmTiePointsModule::init(StereoVisionApp::ModularSBASolver* solver, ceres::
 
             QString loggerName = QString("DsmPrior Landmark %1").arg(lmName);
 
-            solver->addLogger(loggerName, new StereoVisionApp::ModularSBASolver::AutoErrorBlockLogger<1, 3>(normalPrior, params));
+            solver->addLogger(loggerName, new StereoVisionApp::ModularSBASolver::AutoErrorBlockLogger<1, 3>(errorFunc, params, true));
 
             problem.AddResidualBlock(normalPrior, nullptr, lmNode->pos.data());
 
