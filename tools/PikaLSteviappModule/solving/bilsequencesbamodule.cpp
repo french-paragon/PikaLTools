@@ -135,9 +135,11 @@ bool BilSequenceSBAModule::setupParameters(StereoVisionApp::ModularSBASolver* so
             int pos = _sensorsParameters.size()-1;
             _sensorParametersIndex.insert(seqId, pos);
 
+            _sensorIndexMap.insert(seqSensorIndex, pos);
+
         } else {
             //set the sensor to the parameters already set for the previous line with the same sensor id.
-            _sensorParametersIndex.insert(seqId, _sensorParametersIndex[_sensorIndexMap[seqSensorIndex]]);
+            _sensorParametersIndex.insert(seqId, _sensorIndexMap[seqSensorIndex]);
         }
 
     }
@@ -186,9 +188,9 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
         //lever arm
         Eigen::Matrix3d leverArmStiffness = Eigen::Matrix3d::Identity();
 
-        leverArmStiffness(0,0) = 10;
-        leverArmStiffness(1,1) = 10;
-        leverArmStiffness(2,2) = 10;
+        leverArmStiffness(0,0) = 0.1;
+        leverArmStiffness(1,1) = 0.1;
+        leverArmStiffness(2,2) = 0.1;
 
         ceres::NormalPrior* leverArmPrior = new ceres::NormalPrior(leverArmStiffness, Eigen::Vector3d::Zero());
 
@@ -197,11 +199,11 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
         Eigen::Matrix<double,6,6> distortionStiffness = Eigen::Matrix<double,6,6>::Identity();
 
         distortionStiffness(0,0) = 1;
-        distortionStiffness(1,1) = 2;
-        distortionStiffness(2,2) = 5;
-        distortionStiffness(3,3) = 10;
-        distortionStiffness(4,4) = 20;
-        distortionStiffness(5,5) = 50; //larger cooefficients are expected to be smaller
+        distortionStiffness(1,1) = 1;
+        distortionStiffness(2,2) = 0.001;
+        distortionStiffness(3,3) = 0.01;
+        distortionStiffness(4,4) = 0.2;
+        distortionStiffness(5,5) = 0.5; //larger cooefficients are expected to be smaller
 
         ceres::NormalPrior* distortionPrior = new ceres::NormalPrior(distortionStiffness, Eigen::Matrix<double,6,1>::Zero());
 
@@ -308,8 +310,13 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
             PushBroomUVCost* cost =
                     new PushBroomUVCost(new PushBroomUVProj(sensorWidth), w1, w2, uv, info);
 
+            PushBroomUVCost* error =
+                    new PushBroomUVCost(new PushBroomUVProj(sensorWidth), w1, w2, uv, Eigen::Matrix2d::Identity());
+
             using ceresFunc = ceres::AutoDiffCostFunction<PushBroomUVCost,2,3,3,3,3,3,3,3,1,1,6,6>;
             ceresFunc* costFunc = new ceresFunc(cost);
+
+            ceresFunc* errorFunc = new ceresFunc(error);
 
             QString lmName = "Fantom landmark";
             if (lm != nullptr) {
@@ -327,7 +334,7 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
                  sensorParameters.lateralDistortion.data()
                 };
 
-            solver->addLogger(loggerName, new StereoVisionApp::ModularSBASolver::AutoErrorBlockLogger<11, 2>(costFunc, params));
+            solver->addLogger(loggerName, new StereoVisionApp::ModularSBASolver::AutoErrorBlockLogger<11, 2>(errorFunc, params, true));
 
 
             problem.AddResidualBlock(costFunc, nullptr, params.data(), params.size());

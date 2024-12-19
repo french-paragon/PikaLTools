@@ -19,7 +19,7 @@ public:
         const T* as = params[2];
         const T* bs = params[3];
 
-        T s = uv[0]/T(_sensorWidth);
+        T s = (uv[0] - T(_sensorWidth)/T(2)) /T(_sensorWidth); //set 0 at the center (usefull to decorrelate the coefficients 0 and 1.
         T s2 = s*s;
         T s3 = s2*s;
         T s4 = s3*s;
