@@ -346,7 +346,7 @@ std::vector<std::array<double, 3>> BilSequenceAcquisitionData::getSensorViewDire
     std::vector<std::array<double, 3>> viewDirectionsSensor(nSamples);
     PinholePushbroomUVProjector projector(nSamples);
 
-    std::array<double*,4> params = {&f_len_pix, &optical_center, as.data(), bs.data()};
+    std::array<double*,4> params = {&f_len_pix, &optical_center, bs.data(), as.data()};
 
     std::array<double,2> uv = {0,0};
 
