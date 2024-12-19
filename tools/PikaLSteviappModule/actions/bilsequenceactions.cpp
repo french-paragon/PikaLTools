@@ -1567,14 +1567,9 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
     }
 
     double focalLenght = bilSequence->optimizedFLen().value();
-    double pp = bilSequence->optimizedOpticalCenterX().value();
 
     if (!bilSequence->optimizedFLen().isSet()) {
         focalLenght = bilSequence->getFocalLen();
-    }
-
-    if (!bilSequence->optimizedOpticalCenterX().isSet()) {
-        pp = bilSequence->getBilWidth()/2;
     }
 
     QVector<qint64> imlmids = bilSequence->listTypedSubDataBlocks(BilSequenceLandmark::staticMetaObject.className());
@@ -1609,11 +1604,11 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
 
         auto interpolablePose = trajData.getValueAtTime(time);
 
-        StereoVision::Geometry::RigidBodyTransform<double> pose1topose2 = interpolablePose.valLower.inverse()*interpolablePose.valUpper;
-        double w = interpolablePose.weigthUpper;
-
-        StereoVision::Geometry::RigidBodyTransform<double> body2world = interpolablePose.valLower*(w*pose1topose2);
-        body2world.t = interpolablePose.weigthLower*interpolablePose.valLower.t + interpolablePose.weigthUpper*interpolablePose.valUpper.t;
+        StereoVision::Geometry::RigidBodyTransform<double> body2world =
+                StereoVision::Geometry::interpolateRigidBodyTransformOnManifold(interpolablePose.weigthLower,
+                                                                                interpolablePose.valLower,
+                                                                                interpolablePose.weigthUpper,
+                                                                                interpolablePose.valUpper);
 
         StereoVision::Geometry::RigidBodyTransform<double> world2sensor = body2sensor*body2world.inverse();
 
