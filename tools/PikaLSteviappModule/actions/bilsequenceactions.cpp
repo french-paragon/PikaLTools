@@ -195,7 +195,8 @@ bool showBilImage(BilSequenceAcquisitionData *bilSequence) {
         return false; //need main windows to display trajectory
     }
 
-    StereoVisionApp::Editor* e = mw->openEditor(BilCubeViewEditor::staticMetaObject.className());
+    StereoVisionApp::Editor* e = mw->openEditor(BilCubeViewEditor::staticMetaObject.className(),
+                                                QString("%1").arg(bilSequence->internalId()));
 
     BilCubeViewEditor* bcve = qobject_cast<BilCubeViewEditor*>(e);
 
