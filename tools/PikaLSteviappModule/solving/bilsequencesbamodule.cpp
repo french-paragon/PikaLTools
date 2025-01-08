@@ -3,6 +3,7 @@
 #include "datablocks/bilacquisitiondata.h"
 
 #include <steviapp/sparsesolver/costfunctors/modularuvprojection.h>
+#include <steviapp/sparsesolver/costfunctors/posedecoratorfunctors.h>
 
 #include "cost_functors/pinholepushbroomuvprojector.h"
 
@@ -13,7 +14,25 @@ namespace PikaLTools {
 const char* BilSequenceSBAModule::ModuleName = "PikaLTools::SBAModule::BilSequence";
 
 using PushBroomUVProj = PinholePushbroomUVProjector;
-using PushBroomUVCost = StereoVisionApp::UV2ParametrizedXYZCostInterpPose<PushBroomUVProj,1,1,6,6>;
+using PushBroomUVCostInterpolated =
+StereoVisionApp::InterpolatedPose< //need to interpolate
+StereoVisionApp::LeverArm< //need to add lever arm
+StereoVisionApp::InvertPose< //UV2ParametrizedXYZCost takes mapping2sensor but we parametrize the trajectory as body2mapping
+StereoVisionApp::UV2ParametrizedXYZCost<PushBroomUVProj,1,1,6,6>
+>,
+StereoVisionApp::Body2World | StereoVisionApp::Body2Sensor
+>
+>;
+using PushBroomUVCostTransformed =
+StereoVisionApp::PoseTransform< //or use a rigid transform to the nearest node
+StereoVisionApp::LeverArm< //need to add lever arm
+StereoVisionApp::InvertPose< //UV2ParametrizedXYZCost takes mapping2sensor but we parametrize the trajectory as body2mapping
+StereoVisionApp::UV2ParametrizedXYZCost<PushBroomUVProj,1,1,6,6>
+>,
+StereoVisionApp::Body2World | StereoVisionApp::Body2Sensor
+>,
+StereoVisionApp::PoseTransformDirection::SourceToInitial
+>;
 
 BilSequenceSBAModule::BilSequenceSBAModule()
 {
@@ -301,43 +320,99 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
             StereoVisionApp::ModularSBASolver::TrajectoryPoseNode& previousPose = trajNode->nodes[trajNodeId];
             StereoVisionApp::ModularSBASolver::TrajectoryPoseNode& nextPose = trajNode->nodes[trajNodeId+1];
 
-            double w1 = (nextPose.time - time)/(nextPose.time - previousPose.time);
-            double w2 = (time - previousPose.time)/(nextPose.time - previousPose.time);
-
             Eigen::Matrix2d info = Eigen::Matrix2d::Identity();
             //TODO find a way to build the info matrix for pushbroom.
 
-            PushBroomUVCost* cost =
-                    new PushBroomUVCost(new PushBroomUVProj(sensorWidth), w1, w2, uv, info);
+            if (trajNode->initialTrajectory.nPoints() > 0) {
 
-            PushBroomUVCost* error =
-                    new PushBroomUVCost(new PushBroomUVProj(sensorWidth), w1, w2, uv, Eigen::Matrix2d::Identity());
+                StereoVisionApp::ModularSBASolver::TrajectoryPoseNode& closest =
+                        (time - previousPose.time < nextPose.time - time) ? previousPose : nextPose;
 
-            using ceresFunc = ceres::AutoDiffCostFunction<PushBroomUVCost,2,3,3,3,3,3,3,3,1,1,6,6>;
-            ceresFunc* costFunc = new ceresFunc(cost);
+                auto nodeInitialPose = trajNode->initialTrajectory.getValueAtTime(closest.time);
+                auto measureInitialPose = trajNode->initialTrajectory.getValueAtTime(time);
 
-            ceresFunc* errorFunc = new ceresFunc(error);
+                StereoVision::Geometry::RigidBodyTransform<double> node2worldInitial =
+                        StereoVision::Geometry::interpolateRigidBodyTransformOnManifold
+                        (nodeInitialPose.weigthLower, nodeInitialPose.valLower,
+                         nodeInitialPose.weigthUpper, nodeInitialPose.valUpper);
 
-            QString lmName = "Fantom landmark";
-            if (lm != nullptr) {
-                lmName = lm->objectName();
+                StereoVision::Geometry::RigidBodyTransform<double> measure2worldInitial =
+                        StereoVision::Geometry::interpolateRigidBodyTransformOnManifold
+                        (measureInitialPose.weigthLower, measureInitialPose.valLower,
+                         measureInitialPose.weigthUpper, measureInitialPose.valUpper);
+
+                StereoVision::Geometry::RigidBodyTransform<double> measure2node =
+                        node2worldInitial.inverse()*measure2worldInitial;
+
+                PushBroomUVCostTransformed* cost =
+                        new PushBroomUVCostTransformed(measure2node, new PushBroomUVProj(sensorWidth), uv, info);
+
+                PushBroomUVCostTransformed* error =
+                        new PushBroomUVCostTransformed(measure2node, new PushBroomUVProj(sensorWidth), uv, Eigen::Matrix2d::Identity());
+
+
+                using ceresFunc = ceres::AutoDiffCostFunction<PushBroomUVCostTransformed,2,3,3,3,3,3,1,1,6,6>;
+                ceresFunc* costFunc = new ceresFunc(cost);
+
+                ceresFunc* errorFunc = new ceresFunc(error);
+
+                QString lmName = "Fantom landmark";
+                if (lm != nullptr) {
+                    lmName = lm->objectName();
+                }
+                QString loggerName = QString("Projection Bil %1 Landmark %2 (transformed)").arg(seq->objectName()).arg(lmName);
+                StereoVisionApp::ModularSBASolver::AutoErrorBlockLogger<9, 2>::ParamsType params =
+                    {closest.rAxis.data(), closest.t.data(),
+                     sensorParameters.rLeverArm.data(), sensorParameters.tLeverArm.data(),
+                     lmNode->pos.data(),
+                     sensorParameters.fLen.data(),
+                     sensorParameters.principalPoint.data(),
+                     sensorParameters.frontalDistortion.data(),
+                     sensorParameters.lateralDistortion.data()
+                    };
+
+                solver->addLogger(loggerName, new StereoVisionApp::ModularSBASolver::AutoErrorBlockLogger<9, 2>(errorFunc, params, true));
+
+                problem.AddResidualBlock(costFunc, nullptr, params.data(), params.size());
+
+
+            } else {
+
+                double w1 = (nextPose.time - time)/(nextPose.time - previousPose.time);
+                double w2 = (time - previousPose.time)/(nextPose.time - previousPose.time);
+
+                PushBroomUVCostInterpolated* cost =
+                        new PushBroomUVCostInterpolated(w1, w2, new PushBroomUVProj(sensorWidth), uv, info);
+
+                PushBroomUVCostInterpolated* error =
+                        new PushBroomUVCostInterpolated(w1, w2, new PushBroomUVProj(sensorWidth), uv, Eigen::Matrix2d::Identity());
+
+                using ceresFunc = ceres::AutoDiffCostFunction<PushBroomUVCostInterpolated,2,3,3,3,3,3,3,3,1,1,6,6>;
+                ceresFunc* costFunc = new ceresFunc(cost);
+
+                ceresFunc* errorFunc = new ceresFunc(error);
+
+                QString lmName = "Fantom landmark";
+                if (lm != nullptr) {
+                    lmName = lm->objectName();
+                }
+                QString loggerName = QString("Projection Bil %1 Landmark %2 (interpolated)").arg(seq->objectName()).arg(lmName);
+                StereoVisionApp::ModularSBASolver::AutoErrorBlockLogger<11, 2>::ParamsType params =
+                    {previousPose.rAxis.data(), previousPose.t.data(),
+                     nextPose.rAxis.data(), nextPose.t.data(),
+                     sensorParameters.rLeverArm.data(), sensorParameters.tLeverArm.data(),
+                     lmNode->pos.data(),
+                     sensorParameters.fLen.data(),
+                     sensorParameters.principalPoint.data(),
+                     sensorParameters.frontalDistortion.data(),
+                     sensorParameters.lateralDistortion.data()
+                    };
+
+                solver->addLogger(loggerName, new StereoVisionApp::ModularSBASolver::AutoErrorBlockLogger<11, 2>(errorFunc, params, true));
+
+
+                problem.AddResidualBlock(costFunc, nullptr, params.data(), params.size());
             }
-            QString loggerName = QString("Projection Bil %1 Landmark %2").arg(seq->objectName()).arg(lmName);
-            StereoVisionApp::ModularSBASolver::AutoErrorBlockLogger<11, 2>::ParamsType params =
-                {lmNode->pos.data(),
-                 previousPose.rAxis.data(), previousPose.t.data(),
-                 nextPose.rAxis.data(), nextPose.t.data(),
-                 sensorParameters.rLeverArm.data(), sensorParameters.tLeverArm.data(),
-                 sensorParameters.fLen.data(),
-                 sensorParameters.principalPoint.data(),
-                 sensorParameters.frontalDistortion.data(),
-                 sensorParameters.lateralDistortion.data()
-                };
-
-            solver->addLogger(loggerName, new StereoVisionApp::ModularSBASolver::AutoErrorBlockLogger<11, 2>(errorFunc, params, true));
-
-
-            problem.AddResidualBlock(costFunc, nullptr, params.data(), params.size());
         }
 
     }
