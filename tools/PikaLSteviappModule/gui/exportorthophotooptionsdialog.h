@@ -22,6 +22,8 @@ public:
 
     QString outFile() const;
 
+    bool useOptimizedTrajectory() const;
+
     int minLineId() const;
     int maxLineId() const;
 
@@ -32,6 +34,7 @@ public:
 private:
 
     void configureDtmList();
+    void configureTrajectoryExportOption();
     void selectOutFile();
 
     QVector<qint64> _dtm_idxs;

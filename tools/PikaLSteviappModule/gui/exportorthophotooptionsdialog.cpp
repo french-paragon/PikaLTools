@@ -16,6 +16,7 @@ ExportOrthoPhotoOptionsDialog::ExportOrthoPhotoOptionsDialog(QWidget *parent) :
 {
     ui->setupUi(this);
     configureDtmList();
+    configureTrajectoryExportOption();
 
     ui->outFileLineEdit->setReadOnly(true);
     connect(ui->openOutFileButton, &QPushButton::clicked, this, &ExportOrthoPhotoOptionsDialog::selectOutFile);
@@ -35,6 +36,10 @@ qint64 ExportOrthoPhotoOptionsDialog::selectedDtmIdx() const {
 
 QString ExportOrthoPhotoOptionsDialog::outFile() const {
     return ui->outFileLineEdit->text();
+}
+
+bool ExportOrthoPhotoOptionsDialog::useOptimizedTrajectory() const {
+    return ui->selectedTrajectoryComboBox->currentData().toBool();
 }
 
 int ExportOrthoPhotoOptionsDialog::minLineId() const {
@@ -97,6 +102,20 @@ void ExportOrthoPhotoOptionsDialog::configureDtmList() {
     }
 
     ui->dtmComboBox->addItems(_dtm_names.toList());
+
+}
+
+
+void ExportOrthoPhotoOptionsDialog::configureTrajectoryExportOption() {
+
+    ui->selectedTrajectoryComboBox->clear();
+
+    ui->selectedTrajectoryComboBox->addItem(tr("Use optimized trajectory"), QVariant(true));
+    ui->selectedTrajectoryComboBox->addItem(tr("Use initial trajectory"), QVariant(false));
+
+    ui->selectedTrajectoryComboBox->setCurrentIndex(0);
+
+    ui->selectedTrajectoryComboBox->setEditable(false);
 
 }
 

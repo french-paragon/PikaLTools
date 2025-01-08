@@ -27,6 +27,7 @@ RectifyBilSeqToOrthoSteppedProcess::RectifyBilSeqToOrthoSteppedProcess(QObject *
     _bilSequence(nullptr),
     _minBilLine(-1),
     _maxBilLine(-1),
+    _useOptimzedTrajectory(true),
     _terrain_projector(nullptr),
     _tmp_folder(nullptr)
 {
@@ -775,14 +776,31 @@ bool RectifyBilSeqToOrthoSteppedProcess::init() {
 
     //load bill data
 
-    StereoVisionApp::StatusOptionalReturn<Trajectory<double>> trajOpt =
-            trajectory->optimizedTrajectoryECEF();
+    if (_useOptimzedTrajectory) {
 
-    if (!trajOpt.isValid()) {
-        return false;
+        constexpr bool resample = true;
+
+        StereoVisionApp::StatusOptionalReturn<Trajectory<double>> trajOpt =
+                trajectory->optimizedTrajectoryECEF(resample);
+
+        if (!trajOpt.isValid()) {
+            return false;
+        }
+
+        _bil_trajectory = trajOpt.value();
+
+    } else {
+
+        StereoVisionApp::StatusOptionalReturn<Trajectory<double>> trajOpt =
+                trajectory->loadTrajectorySequence();
+
+        if (!trajOpt.isValid()) {
+            return false;
+        }
+
+        _bil_trajectory = trajOpt.value();
+
     }
-
-    _bil_trajectory = trajOpt.value();
 
     _bilPaths = _bilSequence->getBilFiles();
 

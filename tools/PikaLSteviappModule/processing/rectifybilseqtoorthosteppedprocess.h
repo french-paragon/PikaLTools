@@ -39,6 +39,10 @@ public:
         _maxBilLine = max;
     }
 
+    inline void useOptimizedTrajectory(bool useOptimized) {
+        _useOptimzedTrajectory = useOptimized;
+    }
+
     inline void setOutFile(QString const& outFile) {
         _outFile = outFile;
     }
@@ -111,6 +115,8 @@ protected:
 
     double _target_gsd;
     double _max_tile_width;
+
+    bool _useOptimzedTrajectory;
 
     int _redChannel;
     int _greenChannel;
