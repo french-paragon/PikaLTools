@@ -175,6 +175,11 @@ void BilSequenceLandmarksOverlay::paintItemImpl(QPainter* painter) const {
 }
 
 void BilSequenceLandmarksOverlay::registerLandmark(qint64 id) {
+
+    if (_currentDataBlock == nullptr) {
+        return;
+    }
+
     BilSequenceLandmark* imlm = _currentDataBlock->getBilSequenceLandmark(id);
     StereoVisionApp::Landmark* lm = imlm->attachedLandmark();
 

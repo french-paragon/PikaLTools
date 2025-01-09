@@ -148,21 +148,19 @@ void InputDtmLandmarksOverlay::registerLandmark(qint64 id) {
     DtmLandmark* dtmlm = _currentDataBlock->getDtmLandmark(id);
     StereoVisionApp::Landmark* lm = dtmlm->attachedLandmark();
 
-    connect(dtmlm, &DtmLandmark::coordsChanged, this, &InputDtmLandmarksOverlay::requestFullRepainting);
-    connect(lm, &QObject::objectNameChanged, this, &InputDtmLandmarksOverlay::requestFullRepainting);
+    QMetaObject::Connection c = connect(dtmlm, &DtmLandmark::coordsChanged, this, &InputDtmLandmarksOverlay::requestFullRepainting);
+    QMetaObject::Connection n = connect(lm, &QObject::objectNameChanged, this, &InputDtmLandmarksOverlay::requestFullRepainting);
+
+    _landmarkConnections.insert(id, {c, n});
 
 }
 void InputDtmLandmarksOverlay::unregisterLandmark(qint64 id) {
 
-    if (_currentDataBlock == nullptr) {
-        return;
+    for (QMetaObject::Connection & co : _landmarkConnections[id]) {
+        disconnect(co);
     }
 
-    DtmLandmark* dtmlm = _currentDataBlock->getDtmLandmark(id);
-    StereoVisionApp::Landmark* lm = dtmlm->attachedLandmark();
-
-    disconnect(dtmlm, nullptr, this, nullptr);
-    disconnect(lm, nullptr, this, nullptr);
+    _landmarkConnections.remove(id);
 
 }
 void InputDtmLandmarksOverlay::unregisterAllLandmark() {

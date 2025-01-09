@@ -97,6 +97,8 @@ protected:
     InputDtm* _currentDataBlock;
     double _imageRescale;
 
+    QMap<qint64, QList<QMetaObject::Connection>> _landmarkConnections;
+
     qint64 _activePoint;
     qint64 _drawOnlyPoint;
 
