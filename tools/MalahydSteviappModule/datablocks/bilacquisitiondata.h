@@ -28,6 +28,7 @@ namespace StereoVisionApp {
 class Landmark;
 class ImageLandmark;
 class Trajectory;
+class PushBroomPinholeCamera;
 
 }
 
@@ -102,6 +103,11 @@ public:
 
     void clearOptimized() override;
     bool hasOptimizedParameters() const override;
+
+    qint64 assignedCamera() const;
+    StereoVisionApp::PushBroomPinholeCamera* getAssignedCamera() const;
+    QString getAssignedCameraName() const;
+    void assignCamera(qint64 camId);
 
     qint64 assignedTrajectory() const;
     StereoVisionApp::Trajectory* getAssignedTrajectory() const;
@@ -224,68 +230,19 @@ public:
     QString timeDeltaStr() const;
     void setTimeDeltaStr(QString timeDelta);
 
-
-    StereoVisionApp::floatParameter optimizedFLen() const;
-    void setOptimizedFLen(StereoVisionApp::floatParameter const& o_f_pix);
-    StereoVisionApp::floatParameter optimizedOpticalCenterX() const;
-    void setOptimizedOpticalCenterX(StereoVisionApp::floatParameter const& o_c_x);
-
-    StereoVisionApp::floatParameter optimizedA0() const;
-    void setOptimizedA0(StereoVisionApp::floatParameter const& o_a0);
-    StereoVisionApp::floatParameter optimizedA1() const;
-    void setOptimizedA1(StereoVisionApp::floatParameter const& o_a1);
-    StereoVisionApp::floatParameter optimizedA2() const;
-    void setOptimizedA2(StereoVisionApp::floatParameter const& o_a2);
-    StereoVisionApp::floatParameter optimizedA3() const;
-    void setOptimizedA3(StereoVisionApp::floatParameter const& o_a3);
-    StereoVisionApp::floatParameter optimizedA4() const;
-    void setOptimizedA4(StereoVisionApp::floatParameter const& o_a4);
-    StereoVisionApp::floatParameter optimizedA5() const;
-    void setOptimizedA5(StereoVisionApp::floatParameter const& o_a5);
-
-    StereoVisionApp::floatParameter optimizedB0() const;
-    void setOptimizedB0(StereoVisionApp::floatParameter const& o_b0);
-    StereoVisionApp::floatParameter optimizedB1() const;
-    void setOptimizedB1(StereoVisionApp::floatParameter const& o_b1);
-    StereoVisionApp::floatParameter optimizedB2() const;
-    void setOptimizedB2(StereoVisionApp::floatParameter const& o_b2);
-    StereoVisionApp::floatParameter optimizedB3() const;
-    void setOptimizedB3(StereoVisionApp::floatParameter const& o_b3);
-    StereoVisionApp::floatParameter optimizedB4() const;
-    void setOptimizedB4(StereoVisionApp::floatParameter const& o_b4);
-    StereoVisionApp::floatParameter optimizedB5() const;
-    void setOptimizedB5(StereoVisionApp::floatParameter const& o_b5);
-
 Q_SIGNALS:
 
     void pointAdded(qint64 pt);
     void pointRemoved(qint64 pt);
 
     void bilSequenceChanged();
+    void assignedCameraChanged();
     void assignedTrajectoryChanged();
 
     void sensorIndexChanged(int sensorIndex);
 
     void timeScaleChanged();
     void timeDeltaChanged();
-
-
-    void optimizedFLenChanged(StereoVisionApp::floatParameter);
-    void optimizedOpticalCenterXChanged(StereoVisionApp::floatParameter);
-
-    void optimizedA0Changed(StereoVisionApp::floatParameter);
-    void optimizedA1Changed(StereoVisionApp::floatParameter);
-    void optimizedA2Changed(StereoVisionApp::floatParameter);
-    void optimizedA3Changed(StereoVisionApp::floatParameter);
-    void optimizedA4Changed(StereoVisionApp::floatParameter);
-    void optimizedA5Changed(StereoVisionApp::floatParameter);
-
-    void optimizedB0Changed(StereoVisionApp::floatParameter);
-    void optimizedB1Changed(StereoVisionApp::floatParameter);
-    void optimizedB2Changed(StereoVisionApp::floatParameter);
-    void optimizedB3Changed(StereoVisionApp::floatParameter);
-    void optimizedB4Changed(StereoVisionApp::floatParameter);
-    void optimizedB5Changed(StereoVisionApp::floatParameter);
 
 protected:
 
@@ -312,32 +269,13 @@ protected:
     double _timeScale; //scaling factor to convert the stored times to reference times in second.
     double _timeDelta;
 
+    qint64 _assignedCamera;
     qint64 _assignedTrajectory; //the trajectory the bil sequence has been taken from.
 
     mutable std::vector<bool> _loadedTimes;
     mutable std::vector<double> _linesTimes;
 
     mutable std::vector<bool> _mask;
-
-
-    StereoVisionApp::floatParameter _o_f_pix;
-    StereoVisionApp::floatParameter _o_c_x;
-
-    //Horizontal distortions
-    StereoVisionApp::floatParameter _o_a0;
-    StereoVisionApp::floatParameter _o_a1;
-    StereoVisionApp::floatParameter _o_a2;
-    StereoVisionApp::floatParameter _o_a3;
-    StereoVisionApp::floatParameter _o_a4;
-    StereoVisionApp::floatParameter _o_a5;
-
-    //vertical distortions
-    StereoVisionApp::floatParameter _o_b0;
-    StereoVisionApp::floatParameter _o_b1;
-    StereoVisionApp::floatParameter _o_b2;
-    StereoVisionApp::floatParameter _o_b3;
-    StereoVisionApp::floatParameter _o_b4;
-    StereoVisionApp::floatParameter _o_b5;
 };
 
 class BilSequenceAcquisitionDataFactory : public StereoVisionApp::DataBlockFactory

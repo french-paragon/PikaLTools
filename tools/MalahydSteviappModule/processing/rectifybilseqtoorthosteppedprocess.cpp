@@ -7,6 +7,7 @@
 #include <StereoVision/imageProcessing/inpainting.h>
 
 #include <steviapp/datablocks/trajectory.h>
+#include <steviapp/datablocks/cameras/pushbroompinholecamera.h>
 
 #include "../datablocks/bilacquisitiondata.h"
 #include "../datablocks/inputdtm.h"
@@ -492,7 +493,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeNextTile(int tileId) {
                 continue;
             }
 
-            out << "\t\t" << "Read bil coordinates projections for line " << i << "  in " << tmpFilePath << "!" << Qt::endl;
+            out << "\r\t\t" << "Read bil coordinates projections for line " << i << "  in " << tmpFilePath << "!" << Qt::flush;
 
             for (int j = 0; j < bilFile.shape()[1]; j++) { //samples
 
@@ -566,6 +567,8 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeNextTile(int tileId) {
         }
 
     }
+
+    out << "\n";
 
     if (!anyWritten) {
         out << "\tNo pixels written for tile" << Qt::endl;
@@ -671,6 +674,12 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeNextTile(int tileId) {
 bool RectifyBilSeqToOrthoSteppedProcess::init() {
 
     if (_bilSequence == nullptr) {
+        return false;
+    }
+
+    StereoVisionApp::PushBroomPinholeCamera* cam = _bilSequence->getAssignedCamera();
+
+    if (cam == nullptr) {
         return false;
     }
 
@@ -837,35 +846,15 @@ bool RectifyBilSeqToOrthoSteppedProcess::init() {
         return false;
     }
 
-    if (_bilSequence->optimizedFLen().isSet() and _bilSequence->optimizedOpticalCenterX().isSet()) {
+    if (cam->optimizedFLen().isSet() and cam->optimizedOpticalCenterX().isSet()) {
 
-        _f_len_pix = _bilSequence->optimizedFLen().value();
-        _optical_center = _bilSequence->optimizedOpticalCenterX().value();
+        _f_len_pix = cam->optimizedFLen().value();
+        _optical_center = cam->optimizedOpticalCenterX().value();
 
     } else {
 
-        float fieldOfView;
-
-        if (header->count("field of view") <= 0) {
-            return false;
-        }
-
-        try {
-            fieldOfView = std::stof(header.value()["field of view"]);
-        }
-        catch(std::invalid_argument const& e) {
-            return false;
-        }
-
-        float fov_rad = fieldOfView/180*M_PI;
-        float normalizedSensorSize = 2*std::tan(fov_rad/2);
-
-        if (header->count("samples") <= 0) {
-            return false;
-        }
-
-        _f_len_pix = _nSamples*normalizedSensorSize;
-        _optical_center = double(_nSamples)/2;
+        _f_len_pix = cam->fLen().value();
+        _optical_center = cam->opticalCenterX().value();
     }
 
     return true;

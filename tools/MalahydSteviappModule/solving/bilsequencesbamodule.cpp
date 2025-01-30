@@ -2,6 +2,10 @@
 
 #include "datablocks/bilacquisitiondata.h"
 
+#include <steviapp/datablocks/cameras/pushbroompinholecamera.h>
+
+#include <steviapp/sparsesolver/sbamodules/pinholecameraprojectormodule.h>
+
 #include <steviapp/sparsesolver/costfunctors/modularuvprojection.h>
 #include <steviapp/sparsesolver/costfunctors/posedecoratorfunctors.h>
 
@@ -118,6 +122,29 @@ bool BilSequenceSBAModule::setupParameters(StereoVisionApp::ModularSBASolver* so
             continue;
         }
 
+        //check if a previous module assigned a projection module already to the frame.
+        StereoVisionApp::ModularSBASolver::ProjectorModule* projectionModule = solver->getProjectorForFrame(seqId);
+
+        if (projectionModule == nullptr) {
+
+            StereoVisionApp::PushBroomPinholeCamera* cam = seq->getAssignedCamera();
+
+            if (cam == nullptr) {
+                continue;
+            }
+
+            projectionModule = solver->getProjectorForCamera(cam->internalId());
+
+            if (projectionModule == nullptr) {
+                StereoVisionApp::PinholePushBroomCamProjectorModule* pcpm = new StereoVisionApp::PinholePushBroomCamProjectorModule(cam);
+                projectionModule = pcpm;
+
+                solver->addProjector(projectionModule);
+                solver->assignProjectorToCamera(projectionModule, cam->internalId());
+            }
+            solver->assignProjectorToFrame(projectionModule, seqId);
+        }
+
         qint64 trajId = seq->assignedTrajectory();
 
         StereoVisionApp::ModularSBASolver::TrajectoryNode* trajNode = solver->getNodeForTrajectory(trajId, false);
@@ -140,15 +167,11 @@ bool BilSequenceSBAModule::setupParameters(StereoVisionApp::ModularSBASolver* so
 
             BilCameraParameters parameters;
 
+            parameters.seqId = seq->internalId();
             parameters.sensorId = seqSensorIndex;
 
             parameters.tLeverArm = {0,0,0};
             parameters.rLeverArm = {0,0,0};
-
-            parameters.fLen[0] = sensorWidth*std::tan(M_PI_2-fov_rad/2.)/2.;
-            parameters.principalPoint[0] = sensorWidth/2;
-            parameters.frontalDistortion = {0,0,0,0,0,0};
-            parameters.lateralDistortion = {0,0,0,0,0,0};
 
             _sensorsParameters.push_back(parameters);
             int pos = _sensorsParameters.size()-1;
@@ -179,55 +202,55 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
         problem.AddParameterBlock(sensorParameters.tLeverArm.data(), sensorParameters.tLeverArm.size());
         problem.AddParameterBlock(sensorParameters.rLeverArm.data(), sensorParameters.rLeverArm.size());
 
-        problem.AddParameterBlock(sensorParameters.fLen.data(), sensorParameters.fLen.size());
-        problem.AddParameterBlock(sensorParameters.principalPoint.data(), sensorParameters.principalPoint.size());
-        problem.AddParameterBlock(sensorParameters.frontalDistortion.data(), sensorParameters.frontalDistortion.size());
-        problem.AddParameterBlock(sensorParameters.lateralDistortion.data(), sensorParameters.lateralDistortion.size());
-
         solver->addLogger(QString("Intrisic for BilSensor%1 - Lever arm").arg(sensorParameters.sensorId),
                           new StereoVisionApp::ModularSBASolver::ParamsValsLogger<3>(sensorParameters.tLeverArm.data()));
 
         solver->addLogger(QString("Intrisic for BilSensor%1 - Boresight").arg(sensorParameters.sensorId),
                           new StereoVisionApp::ModularSBASolver::ParamsValsLogger<3>(sensorParameters.rLeverArm.data()));
 
-        solver->addLogger(QString("Intrisic for BilSensor%1 - Focal lenght").arg(sensorParameters.sensorId),
-                          new StereoVisionApp::ModularSBASolver::ParamsValsLogger<1>(sensorParameters.fLen.data()));
-
-        solver->addLogger(QString("Intrisic for BilSensor%1 - Principal point").arg(sensorParameters.sensorId),
-                          new StereoVisionApp::ModularSBASolver::ParamsValsLogger<1>(sensorParameters.principalPoint.data()));
-
-        solver->addLogger(QString("Intrisic for BilSensor%1 - Frontal distortion").arg(sensorParameters.sensorId),
-                          new StereoVisionApp::ModularSBASolver::ParamsValsLogger<6>(sensorParameters.frontalDistortion.data()));
-
-        solver->addLogger(QString("Intrisic for BilSensor%1 - Lateral distortion").arg(sensorParameters.sensorId),
-                          new StereoVisionApp::ModularSBASolver::ParamsValsLogger<6>(sensorParameters.lateralDistortion.data()));
-
         //priors
 
+        BilSequenceAcquisitionData* seq = currentProject->getDataBlock<BilSequenceAcquisitionData>(sensorParameters.seqId);
+
         //lever arm
+
         Eigen::Matrix3d leverArmStiffness = Eigen::Matrix3d::Identity();
+        Eigen::Vector3d leverArmPrior = Eigen::Vector3d::Zero();
 
-        leverArmStiffness(0,0) = 0.1;
-        leverArmStiffness(1,1) = 0.1;
-        leverArmStiffness(2,2) = 0.1;
+        leverArmStiffness(0,0) = 10;
+        leverArmStiffness(1,1) = 10;
+        leverArmStiffness(2,2) = 10;
 
-        ceres::NormalPrior* leverArmPrior = new ceres::NormalPrior(leverArmStiffness, Eigen::Vector3d::Zero());
+        if (seq != nullptr) {
 
-        problem.AddResidualBlock(leverArmPrior, nullptr, sensorParameters.tLeverArm.data());
+            auto leverArmX = seq->xCoord();
+            auto leverArmY = seq->yCoord();
+            auto leverArmZ = seq->zCoord();
 
-        Eigen::Matrix<double,6,6> distortionStiffness = Eigen::Matrix<double,6,6>::Identity();
+            if (leverArmX.isSet() and leverArmX.isUncertain() and
+                    leverArmY.isSet() and leverArmY.isUncertain() and
+                    leverArmZ.isSet() and leverArmZ.isUncertain()) {
 
-        distortionStiffness(0,0) = 1;
-        distortionStiffness(1,1) = 1;
-        distortionStiffness(2,2) = 0.001;
-        distortionStiffness(3,3) = 0.01;
-        distortionStiffness(4,4) = 0.2;
-        distortionStiffness(5,5) = 0.5; //larger cooefficients are expected to be smaller
+                leverArmPrior.x() = leverArmX.value();
+                leverArmPrior.y() = leverArmY.value();
+                leverArmPrior.z() = leverArmZ.value();
 
-        ceres::NormalPrior* distortionPrior = new ceres::NormalPrior(distortionStiffness, Eigen::Matrix<double,6,1>::Zero());
+                leverArmStiffness(0,0) = 1/leverArmX.stddev();
+                leverArmStiffness(1,1) = 1/leverArmY.stddev();
+                leverArmStiffness(2,2) = 1/leverArmZ.stddev();
 
-        problem.AddResidualBlock(distortionPrior, nullptr, sensorParameters.frontalDistortion.data());
-        problem.AddResidualBlock(distortionPrior, nullptr, sensorParameters.lateralDistortion.data());
+                solver->logMessage(QString("Set hyperspectral sensor %1 lever arm prior stiffness %2, %3, %4")
+                                   .arg(sensorParameters.sensorId).arg(leverArmStiffness(0,0)).arg(leverArmStiffness(1,1)).arg(leverArmStiffness(2,2)));
+            }
+
+        }
+
+        ceres::NormalPrior* leverArmPriorCost = new ceres::NormalPrior(leverArmStiffness, leverArmPrior);
+
+        problem.AddResidualBlock(leverArmPriorCost, nullptr, sensorParameters.tLeverArm.data());
+
+        solver->addLogger(QString("Lever arm prior for BilSensor%1").arg(sensorParameters.sensorId),
+                          new StereoVisionApp::ModularSBASolver::AutoErrorBlockLogger<1, 3>(leverArmPriorCost, {sensorParameters.tLeverArm.data()}, false));
 
     }
 
@@ -238,6 +261,12 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
         BilSequenceAcquisitionData* seq = currentProject->getDataBlock<BilSequenceAcquisitionData>(seqId);
 
         if (seq == nullptr) {
+            continue;
+        }
+
+        StereoVisionApp::ModularSBASolver::ProjectorModule* projectionModule = solver->getProjectorForFrame(seqId);
+
+        if (projectionModule == nullptr) {
             continue;
         }
 
@@ -344,74 +373,24 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
                 StereoVision::Geometry::RigidBodyTransform<double> measure2node =
                         node2worldInitial.inverse()*measure2worldInitial;
 
-                PushBroomUVCostTransformed* cost =
-                        new PushBroomUVCostTransformed(measure2node, new PushBroomUVProj(sensorWidth), uv, info);
 
-                PushBroomUVCostTransformed* error =
-                        new PushBroomUVCostTransformed(measure2node, new PushBroomUVProj(sensorWidth), uv, Eigen::Matrix2d::Identity());
-
-
-                using ceresFunc = ceres::AutoDiffCostFunction<PushBroomUVCostTransformed,2,3,3,3,3,3,1,1,6,6>;
-                ceresFunc* costFunc = new ceresFunc(cost);
-
-                ceresFunc* errorFunc = new ceresFunc(error);
 
                 QString lmName = "Fantom landmark";
                 if (lm != nullptr) {
                     lmName = lm->objectName();
                 }
-                QString loggerName = QString("Projection Bil %1 Landmark %2 (transformed)").arg(seq->objectName()).arg(lmName);
-                StereoVisionApp::ModularSBASolver::AutoErrorBlockLogger<9, 2>::ParamsType params =
-                    {closest.rAxis.data(), closest.t.data(),
-                     sensorParameters.rLeverArm.data(), sensorParameters.tLeverArm.data(),
-                     lmNode->pos.data(),
-                     sensorParameters.fLen.data(),
-                     sensorParameters.principalPoint.data(),
-                     sensorParameters.frontalDistortion.data(),
-                     sensorParameters.lateralDistortion.data()
-                    };
 
-                solver->addLogger(loggerName, new StereoVisionApp::ModularSBASolver::AutoErrorBlockLogger<9, 2>(errorFunc, params, true));
-
-                problem.AddResidualBlock(costFunc, nullptr, params.data(), params.size());
+                projectionModule->addProjectionCostFunction(lmNode->pos.data(),
+                                                            closest.rAxis.data(),
+                                                            closest.t.data(),
+                                                            uv,
+                                                            info,
+                                                            problem,
+                                                            measure2node,
+                                                            sensorParameters.rLeverArm.data(),
+                                                            sensorParameters.tLeverArm.data());
 
 
-            } else {
-
-                double w1 = (nextPose.time - time)/(nextPose.time - previousPose.time);
-                double w2 = (time - previousPose.time)/(nextPose.time - previousPose.time);
-
-                PushBroomUVCostInterpolated* cost =
-                        new PushBroomUVCostInterpolated(w1, w2, new PushBroomUVProj(sensorWidth), uv, info);
-
-                PushBroomUVCostInterpolated* error =
-                        new PushBroomUVCostInterpolated(w1, w2, new PushBroomUVProj(sensorWidth), uv, Eigen::Matrix2d::Identity());
-
-                using ceresFunc = ceres::AutoDiffCostFunction<PushBroomUVCostInterpolated,2,3,3,3,3,3,3,3,1,1,6,6>;
-                ceresFunc* costFunc = new ceresFunc(cost);
-
-                ceresFunc* errorFunc = new ceresFunc(error);
-
-                QString lmName = "Fantom landmark";
-                if (lm != nullptr) {
-                    lmName = lm->objectName();
-                }
-                QString loggerName = QString("Projection Bil %1 Landmark %2 (interpolated)").arg(seq->objectName()).arg(lmName);
-                StereoVisionApp::ModularSBASolver::AutoErrorBlockLogger<11, 2>::ParamsType params =
-                    {previousPose.rAxis.data(), previousPose.t.data(),
-                     nextPose.rAxis.data(), nextPose.t.data(),
-                     sensorParameters.rLeverArm.data(), sensorParameters.tLeverArm.data(),
-                     lmNode->pos.data(),
-                     sensorParameters.fLen.data(),
-                     sensorParameters.principalPoint.data(),
-                     sensorParameters.frontalDistortion.data(),
-                     sensorParameters.lateralDistortion.data()
-                    };
-
-                solver->addLogger(loggerName, new StereoVisionApp::ModularSBASolver::AutoErrorBlockLogger<11, 2>(errorFunc, params, true));
-
-
-                problem.AddResidualBlock(costFunc, nullptr, params.data(), params.size());
             }
         }
 
@@ -453,23 +432,6 @@ bool BilSequenceSBAModule::writeResults(StereoVisionApp::ModularSBASolver* solve
 
         seq->setOptPos(optLeverArm);
         seq->setOptRot(optBoresight);
-
-        seq->setOptimizedFLen(camParams.fLen[0]);
-        seq->setOptimizedOpticalCenterX(camParams.principalPoint[0]);
-
-        seq->setOptimizedA0(camParams.lateralDistortion[0]);
-        seq->setOptimizedA1(camParams.lateralDistortion[1]);
-        seq->setOptimizedA2(camParams.lateralDistortion[2]);
-        seq->setOptimizedA3(camParams.lateralDistortion[3]);
-        seq->setOptimizedA4(camParams.lateralDistortion[4]);
-        seq->setOptimizedA5(camParams.lateralDistortion[5]);
-
-        seq->setOptimizedB0(camParams.frontalDistortion[0]);
-        seq->setOptimizedB1(camParams.frontalDistortion[1]);
-        seq->setOptimizedB2(camParams.frontalDistortion[2]);
-        seq->setOptimizedB3(camParams.frontalDistortion[3]);
-        seq->setOptimizedB4(camParams.frontalDistortion[4]);
-        seq->setOptimizedB5(camParams.frontalDistortion[5]);
 
     }
 

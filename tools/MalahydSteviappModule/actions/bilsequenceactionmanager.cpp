@@ -4,10 +4,12 @@
 
 #include "bilsequenceactions.h"
 
+#include <steviapp/datablocks/cameras/pushbroompinholecamera.h>
 #include <steviapp/control/mainwindow.h>
 
 #include <QAction>
 #include <QMessageBox>
+#include <QMenu>
 
 namespace PikaLTools {
 
@@ -63,17 +65,13 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
         return {};
     }
 
-    QAction* view_trajectory = new QAction(tr("View lcf trajectory"), parent);
-
-    connect(view_trajectory, &QAction::triggered, [bilSeq] () {
-        showLcfTrajectory(bilSeq);
-    });
-
     QAction* view_bil_cube = new QAction(tr("View hyperspectral cube"), parent);
 
     connect(view_bil_cube, &QAction::triggered, [bilSeq] () {
         showBilImage(bilSeq);
     });
+
+    QAction* assignToCamera = createAssignToCameraAction(parent, bilSeq->getProject(), {bilSeq});
 
     QAction* export_landmarks = new QAction(tr("Export landmarks to csv"), parent);
 
@@ -114,11 +112,41 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
         analyzeReprojections(bilSeq);
     });
 
-    return {view_trajectory, assignTraj2Seq, view_bil_cube, view_files, export_landmarks, compute_orthophoto, compute_corrMat, estimateTime, analyzeProj};
+    return {assignToCamera, assignTraj2Seq, view_bil_cube, view_files, export_landmarks, compute_orthophoto, compute_corrMat, estimateTime, analyzeProj};
 }
 
 QList<QAction*> BilSequenceActionManager::factorizeMultiItemsContextActions(QObject* parent, StereoVisionApp::Project* p, QModelIndexList const& projectIndex) const {
     return StereoVisionApp::DatablockActionManager::factorizeMultiItemsContextActions(parent, p, projectIndex);
+}
+
+QAction* BilSequenceActionManager::createAssignToCameraAction(QObject* parent,
+                                                              StereoVisionApp::Project* p,
+                                                              QVector<BilSequenceAcquisitionData*> const& seqs) const {
+
+    QAction* assignToCamera = new QAction(tr("Assign to camera"), parent);
+    QMenu* camMenu = new QMenu();
+    connect(assignToCamera, &QObject::destroyed, camMenu, &QObject::deleteLater);
+
+    QVector<qint64> camsIds = p->getIdsByClass(StereoVisionApp::PushBroomPinholeCamera::staticMetaObject.className());
+
+    for(qint64 camId : camsIds) {
+
+        StereoVisionApp::PushBroomPinholeCamera* c = qobject_cast<StereoVisionApp::PushBroomPinholeCamera*>(p->getById(camId));
+
+        if (c != nullptr) {
+            QAction* toCam = new QAction(c->objectName(), assignToCamera);
+            connect(toCam, &QAction::triggered, [camId, seqs] () {
+                for (BilSequenceAcquisitionData* seq : seqs) {
+                    seq->assignCamera(camId);
+                }
+            });
+            camMenu->addAction(toCam);
+        }
+    }
+    assignToCamera->setMenu(camMenu);
+
+    return assignToCamera;
+
 }
 
 } // namespace PikaLTools

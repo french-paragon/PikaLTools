@@ -3,6 +3,7 @@
 #include "io/read_envi_bil.h"
 #include <steviapp/datablocks/trajectory.h>
 #include <steviapp/datablocks/itemdatamodel.h>
+#include <steviapp/datablocks/cameras/pushbroompinholecamera.h>
 
 #include <StereoVision/geometry/rotations.h>
 
@@ -24,20 +25,8 @@ BilSequenceAcquisitionData::BilSequenceAcquisitionData(StereoVisionApp::Project 
     _sensorIndex(-1),
     _timeScale(1),
     _timeDelta(0),
-    _o_f_pix(),
-    _o_c_x(),
-    _o_a0(),
-    _o_a1(),
-    _o_a2(),
-    _o_a3(),
-    _o_a4(),
-    _o_a5(),
-    _o_b0(),
-    _o_b1(),
-    _o_b2(),
-    _o_b3(),
-    _o_b4(),
-    _o_b5()
+    _assignedCamera(-1),
+    _assignedTrajectory(-1)
 
 {
     connect(this, &BilSequenceAcquisitionData::bilSequenceChanged, this, [this] () {
@@ -312,6 +301,12 @@ double BilSequenceAcquisitionData::getTimeFromPixCoord(double yPos) const {
 
 std::vector<std::array<double, 3>> BilSequenceAcquisitionData::getSensorViewDirections(bool optimized) {
 
+    StereoVisionApp::PushBroomPinholeCamera* cam = getAssignedCamera();
+
+    if (cam == nullptr) {
+        return std::vector<std::array<double, 3>>();
+    }
+
     int nSamples = std::ceil(getBilWidth());
 
     double optical_center;
@@ -321,32 +316,32 @@ std::vector<std::array<double, 3>> BilSequenceAcquisitionData::getSensorViewDire
     std::array<double,6> bs = {0,0,0,0,0,0};
 
     if (optimized) {
-        optical_center = optimizedOpticalCenterX().value();
-        f_len_pix = optimizedFLen().value();
+        optical_center = cam->optimizedOpticalCenterX().value();
+        f_len_pix = cam->optimizedFLen().value();
 
-        as[0] = optimizedA0().value();
-        as[1] = optimizedA1().value();
-        as[2] = optimizedA2().value();
-        as[3] = optimizedA3().value();
-        as[4] = optimizedA4().value();
-        as[5] = optimizedA5().value();
+        as[0] = cam->optimizedA0().value();
+        as[1] = cam->optimizedA1().value();
+        as[2] = cam->optimizedA2().value();
+        as[3] = cam->optimizedA3().value();
+        as[4] = cam->optimizedA4().value();
+        as[5] = cam->optimizedA5().value();
 
-        bs[0] = optimizedB0().value();
-        bs[1] = optimizedB1().value();
-        bs[2] = optimizedB2().value();
-        bs[3] = optimizedB3().value();
-        bs[4] = optimizedB4().value();
-        bs[5] = optimizedB5().value();
+        bs[0] = cam->optimizedB0().value();
+        bs[1] = cam->optimizedB1().value();
+        bs[2] = cam->optimizedB2().value();
+        bs[3] = cam->optimizedB3().value();
+        bs[4] = cam->optimizedB4().value();
+        bs[5] = cam->optimizedB5().value();
 
     } else {
         optical_center = getBilWidth()/2;
-        f_len_pix = getFocalLen();
+        f_len_pix = cam->fLen().value();
     }
 
     std::vector<std::array<double, 3>> viewDirectionsSensor(nSamples);
     PinholePushbroomUVProjector projector(nSamples);
 
-    std::array<double*,4> params = {&f_len_pix, &optical_center, bs.data(), as.data()};
+    std::array<double*,4> params = {&f_len_pix, &optical_center, as.data(), bs.data()};
 
     std::array<double,2> uv = {0,0};
 
@@ -465,157 +460,38 @@ void BilSequenceAcquisitionData::setTimeDeltaStr(QString timeDelta) {
 
 }
 
-
-StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedFLen() const {
-    return _o_f_pix;
-}
-void BilSequenceAcquisitionData::setOptimizedFLen(StereoVisionApp::floatParameter const& o_f_pix) {
-
-    if (_o_f_pix != o_f_pix) {
-        _o_f_pix = o_f_pix;
-        Q_EMIT optimizedFLenChanged(_o_f_pix);
-        isChanged();
-    }
-}
-StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedOpticalCenterX() const {
-    return _o_c_x;
-}
-void BilSequenceAcquisitionData::setOptimizedOpticalCenterX(StereoVisionApp::floatParameter const& o_c_x) {
-
-    if (_o_c_x != o_c_x) {
-        _o_c_x = o_c_x;
-        Q_EMIT optimizedOpticalCenterXChanged(_o_c_x);
-        isChanged();
-    }
-}
-
-StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedA0() const {
-    return _o_a0;
-}
-void BilSequenceAcquisitionData::setOptimizedA0(StereoVisionApp::floatParameter const& o_a0) {
-    if (_o_a0 != o_a0) {
-        _o_a0 = o_a0;
-        Q_EMIT optimizedA0Changed(_o_a0);
-        isChanged();
-    }
-}
-StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedA1() const {
-    return _o_a1;
-}
-void BilSequenceAcquisitionData::setOptimizedA1(StereoVisionApp::floatParameter const& o_a1) {
-    if (_o_a1 != o_a1) {
-        _o_a1 = o_a1;
-        Q_EMIT optimizedA1Changed(_o_a1);
-        isChanged();
-    }
-}
-StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedA2() const {
-    return _o_a2;
-}
-void BilSequenceAcquisitionData::setOptimizedA2(StereoVisionApp::floatParameter const& o_a2) {
-    if (_o_a2 != o_a2) {
-        _o_a2 = o_a2;
-        Q_EMIT optimizedA2Changed(_o_a2);
-        isChanged();
-    }
-}
-StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedA3() const {
-    return _o_a3;
-}
-void BilSequenceAcquisitionData::setOptimizedA3(StereoVisionApp::floatParameter const& o_a3) {
-    if ( _o_a3 != o_a3) {
-        _o_a3 = o_a3;
-        Q_EMIT optimizedA3Changed(_o_a3);
-        isChanged();
-    }
-}
-StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedA4() const {
-    return _o_a4;
-}
-void BilSequenceAcquisitionData::setOptimizedA4(StereoVisionApp::floatParameter const& o_a4) {
-    if (_o_a4 != o_a4) {
-        _o_a4 = o_a4;
-        Q_EMIT optimizedA4Changed(_o_a4);
-        isChanged();
-    }
-}
-StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedA5() const {
-    return _o_a5;
-}
-void BilSequenceAcquisitionData::setOptimizedA5(StereoVisionApp::floatParameter const& o_a5) {
-    if (_o_a5 != o_a5) {
-        _o_a5 = o_a5;
-        Q_EMIT optimizedA5Changed(_o_a5);
-        isChanged();
-    }
-}
-
-StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedB0() const {
-    return _o_b0;
-}
-void BilSequenceAcquisitionData::setOptimizedB0(StereoVisionApp::floatParameter const& o_b0) {
-    if (_o_b0 != o_b0) {
-        _o_b0 = o_b0;
-        Q_EMIT optimizedB0Changed(_o_b0);
-        isChanged();
-    }
-}
-StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedB1() const {
-    return _o_b1;
-}
-void BilSequenceAcquisitionData::setOptimizedB1(StereoVisionApp::floatParameter const& o_b1) {
-    if (_o_b1 != o_b1) {
-        _o_b1 = o_b1;
-        Q_EMIT optimizedB1Changed(_o_b1);
-        isChanged();
-    }
-}
-StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedB2() const {
-    return _o_b2;
-}
-void BilSequenceAcquisitionData::setOptimizedB2(StereoVisionApp::floatParameter const& o_b2) {
-    if (_o_b2 != o_b2) {
-        _o_b2 = o_b2;
-        Q_EMIT optimizedB2Changed(_o_b2);
-        isChanged();
-    }
-}
-StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedB3() const {
-    return _o_b3;
-}
-void BilSequenceAcquisitionData::setOptimizedB3(StereoVisionApp::floatParameter const& o_b3) {
-    if (_o_b3 != o_b3) {
-        _o_b3 = o_b3;
-        Q_EMIT optimizedB3Changed(_o_b3);
-        isChanged();
-    }
-}
-StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedB4() const {
-    return _o_b4;
-}
-void BilSequenceAcquisitionData::setOptimizedB4(StereoVisionApp::floatParameter const& o_b4) {
-    if (_o_b4 != o_b4) {
-        _o_b4 = o_b4;
-        Q_EMIT optimizedB4Changed(_o_b4);
-        isChanged();
-    }
-}
-StereoVisionApp::floatParameter BilSequenceAcquisitionData::optimizedB5() const {
-    return _o_b5;
-}
-void BilSequenceAcquisitionData::setOptimizedB5(StereoVisionApp::floatParameter const& o_b5) {
-    if (_o_b5 != o_b5) {
-        _o_b5 = o_b5;
-        Q_EMIT optimizedB5Changed(_o_b5);
-        isChanged();
-    }
-}
-
 void BilSequenceAcquisitionData::clearOptimized() {
     return;
 }
 bool BilSequenceAcquisitionData::hasOptimizedParameters() const {
     return false;
+}
+
+qint64 BilSequenceAcquisitionData::assignedCamera() const {
+    return _assignedCamera;
+}
+StereoVisionApp::PushBroomPinholeCamera* BilSequenceAcquisitionData::getAssignedCamera() const {
+    return getProject()->getDataBlock<StereoVisionApp::PushBroomPinholeCamera>(_assignedCamera);
+}
+QString BilSequenceAcquisitionData::getAssignedCameraName() const {
+    StereoVisionApp::PushBroomPinholeCamera* cam = getAssignedCamera();
+
+    if (cam == nullptr) {
+        return tr("No camera assigned");
+    }
+
+    return cam->objectName();
+}
+void BilSequenceAcquisitionData::assignCamera(qint64 camId) {
+    if (camId == _assignedCamera) {
+        return;
+    }
+
+    if (_assignedCamera >= 0) removeRefered({_assignedCamera});
+    _assignedCamera = camId;
+    if (_assignedCamera >= 0) addRefered({_assignedCamera});
+    Q_EMIT assignedCameraChanged();
+    return;
 }
 
 qint64 BilSequenceAcquisitionData::assignedTrajectory() const {
@@ -942,30 +818,15 @@ QJsonObject BilSequenceAcquisitionData::encodeJson() const {
         obj.insert("sensorIdx", _sensorIndex);
     }
 
+    if (_assignedCamera >= 0) {
+        obj.insert("assignedCameraId", _assignedCamera);
+    }
     if (_assignedTrajectory >= 0) {
         obj.insert("assignedTrajectoryId", _assignedTrajectory);
     }
 
     obj.insert("timeScale", _timeScale);
     obj.insert("timeDelta", _timeDelta);
-
-
-    obj.insert("of", StereoVisionApp::floatParameter::toJson(optimizedFLen()));
-    obj.insert("ocx", StereoVisionApp::floatParameter::toJson(optimizedOpticalCenterX()));
-
-    obj.insert("oa0", StereoVisionApp::floatParameter::toJson(optimizedA0()));
-    obj.insert("oa1", StereoVisionApp::floatParameter::toJson(optimizedA1()));
-    obj.insert("oa2", StereoVisionApp::floatParameter::toJson(optimizedA2()));
-    obj.insert("oa3", StereoVisionApp::floatParameter::toJson(optimizedA3()));
-    obj.insert("oa4", StereoVisionApp::floatParameter::toJson(optimizedA4()));
-    obj.insert("oa5", StereoVisionApp::floatParameter::toJson(optimizedA5()));
-
-    obj.insert("ob0", StereoVisionApp::floatParameter::toJson(optimizedB0()));
-    obj.insert("ob1", StereoVisionApp::floatParameter::toJson(optimizedB1()));
-    obj.insert("ob2", StereoVisionApp::floatParameter::toJson(optimizedB2()));
-    obj.insert("ob3", StereoVisionApp::floatParameter::toJson(optimizedB3()));
-    obj.insert("ob4", StereoVisionApp::floatParameter::toJson(optimizedB4()));
-    obj.insert("ob5", StereoVisionApp::floatParameter::toJson(optimizedB5()));
 
     return obj;
 }
@@ -1022,6 +883,12 @@ void BilSequenceAcquisitionData::configureFromJson(QJsonObject const& data) {
         _sensorIndex = -1;
     }
 
+    if(data.contains("assignedCameraId")) {
+        _assignedCamera = data.value("assignedCameraId").toInt(-1);
+    } else {
+        _assignedCamera = -1;
+    }
+
     if(data.contains("assignedTrajectoryId")) {
         _assignedTrajectory = data.value("assignedTrajectoryId").toInt(-1);
     } else {
@@ -1040,75 +907,25 @@ void BilSequenceAcquisitionData::configureFromJson(QJsonObject const& data) {
         _timeDelta = 0;
     }
 
-
-    if (data.contains("of")) {
-        _o_f_pix = StereoVisionApp::floatParameter::fromJson(data.value("of").toObject());
-    }
-
-    if (data.contains("ocx")) {
-        _o_c_x = StereoVisionApp::floatParameter::fromJson(data.value("ocx").toObject());
-    }
-
-
-
-    if (data.contains("oa0")) {
-        _o_a0 = StereoVisionApp::floatParameter::fromJson(data.value("oa0").toObject());
-    }
-
-    if (data.contains("oa1")) {
-        _o_a1 = StereoVisionApp::floatParameter::fromJson(data.value("oa1").toObject());
-    }
-
-    if (data.contains("oa2")) {
-        _o_a2 = StereoVisionApp::floatParameter::fromJson(data.value("oa2").toObject());
-    }
-
-    if (data.contains("oa3")) {
-        _o_a3 = StereoVisionApp::floatParameter::fromJson(data.value("oa3").toObject());
-    }
-
-    if (data.contains("oa4")) {
-        _o_a4 = StereoVisionApp::floatParameter::fromJson(data.value("oa4").toObject());
-    }
-
-    if (data.contains("oa5")) {
-        _o_a5 = StereoVisionApp::floatParameter::fromJson(data.value("oa5").toObject());
-    }
-
-
-
-    if (data.contains("ob0")) {
-        _o_b0 = StereoVisionApp::floatParameter::fromJson(data.value("ob0").toObject());
-    }
-
-    if (data.contains("ob1")) {
-        _o_b1 = StereoVisionApp::floatParameter::fromJson(data.value("ob1").toObject());
-    }
-
-    if (data.contains("ob2")) {
-        _o_b2 = StereoVisionApp::floatParameter::fromJson(data.value("ob2").toObject());
-    }
-
-    if (data.contains("ob3")) {
-        _o_b3 = StereoVisionApp::floatParameter::fromJson(data.value("ob3").toObject());
-    }
-
-    if (data.contains("ob4")) {
-        _o_b4 = StereoVisionApp::floatParameter::fromJson(data.value("ob4").toObject());
-    }
-
-    if (data.contains("ob5")) {
-        _o_b5 = StereoVisionApp::floatParameter::fromJson(data.value("ob5").toObject());
-    }
 }
 
 void BilSequenceAcquisitionData::extendDataModel() {
     //TODO: add more options to extend the data model
 
 
-    StereoVisionApp::ItemDataModel::Category* tjg = _dataModel->addCategory(tr("Trajectory properties"));
+    StereoVisionApp::ItemDataModel::Category* ldbp = _dataModel->addCategory(tr("Linked datablocks"));
 
-    tjg->addCatProperty<QString,
+    ldbp->addCatProperty<QString,
+            BilSequenceAcquisitionData,
+            false,
+            StereoVisionApp::ItemDataModel::ItemPropertyDescription::NoValueSignal> (
+                tr("Camera"),
+                &BilSequenceAcquisitionData::getAssignedCameraName,
+                nullptr,
+                &BilSequenceAcquisitionData::assignedCameraChanged
+                );
+
+    ldbp->addCatProperty<QString,
             BilSequenceAcquisitionData,
             false,
             StereoVisionApp::ItemDataModel::ItemPropertyDescription::NoValueSignal> (
@@ -1165,9 +982,9 @@ void BilSequenceAcquisitionData::extendDataModel() {
             true,
             StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
             (tr("Z"),
-             &StereoVisionApp::RigidBody::yCoord,
-             &StereoVisionApp::RigidBody::setYCoord,
-             &StereoVisionApp::RigidBody::yCoordChanged);
+             &StereoVisionApp::RigidBody::zCoord,
+             &StereoVisionApp::RigidBody::setZCoord,
+             &StereoVisionApp::RigidBody::zCoordChanged);
 
     //Rotation
     g->addCatProperty<StereoVisionApp::floatParameter,
@@ -1259,137 +1076,6 @@ void BilSequenceAcquisitionData::extendDataModel() {
              &StereoVisionApp::RigidBody::setOptZRot,
              &StereoVisionApp::RigidBody::optRotChanged);
 
-    StereoVisionApp::ItemDataModel::Category* oip = _dataModel->addCategory(tr("Optimized intrisic parameters"));
-
-    oip->addCatProperty<StereoVisionApp::floatParameter,
-            BilSequenceAcquisitionData,
-            true,
-            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
-            (tr("Focal length [px]"),
-             &BilSequenceAcquisitionData::optimizedFLen,
-             nullptr,
-             &BilSequenceAcquisitionData::optimizedFLenChanged);
-
-    oip->addCatProperty<StereoVisionApp::floatParameter,
-            BilSequenceAcquisitionData,
-            true,
-            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
-            (tr("Optical center X"),
-             &BilSequenceAcquisitionData::optimizedOpticalCenterX,
-             nullptr,
-             &BilSequenceAcquisitionData::optimizedOpticalCenterXChanged);
-
-
-
-    oip->addCatProperty<StereoVisionApp::floatParameter,
-            BilSequenceAcquisitionData,
-            true,
-            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
-            (tr("a0"),
-             &BilSequenceAcquisitionData::optimizedA0,
-             nullptr,
-             &BilSequenceAcquisitionData::optimizedA0Changed);
-
-    oip->addCatProperty<StereoVisionApp::floatParameter,
-            BilSequenceAcquisitionData,
-            true,
-            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
-            (tr("a1"),
-             &BilSequenceAcquisitionData::optimizedA1,
-             nullptr,
-             &BilSequenceAcquisitionData::optimizedA1Changed);
-
-    oip->addCatProperty<StereoVisionApp::floatParameter,
-            BilSequenceAcquisitionData,
-            true,
-            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
-            (tr("a2"),
-             &BilSequenceAcquisitionData::optimizedA2,
-             nullptr,
-             &BilSequenceAcquisitionData::optimizedA2Changed);
-
-    oip->addCatProperty<StereoVisionApp::floatParameter,
-            BilSequenceAcquisitionData,
-            true,
-            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
-            (tr("a3"),
-             &BilSequenceAcquisitionData::optimizedA3,
-             nullptr,
-             &BilSequenceAcquisitionData::optimizedA3Changed);
-
-    oip->addCatProperty<StereoVisionApp::floatParameter,
-            BilSequenceAcquisitionData,
-            true,
-            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
-            (tr("a4"),
-             &BilSequenceAcquisitionData::optimizedA4,
-             nullptr,
-             &BilSequenceAcquisitionData::optimizedA4Changed);
-
-    oip->addCatProperty<StereoVisionApp::floatParameter,
-            BilSequenceAcquisitionData,
-            true,
-            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
-            (tr("a5"),
-             &BilSequenceAcquisitionData::optimizedA5,
-             nullptr,
-             &BilSequenceAcquisitionData::optimizedA5Changed);
-
-
-
-    oip->addCatProperty<StereoVisionApp::floatParameter,
-            BilSequenceAcquisitionData,
-            true,
-            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
-            (tr("b0"),
-             &BilSequenceAcquisitionData::optimizedB0,
-             nullptr,
-             &BilSequenceAcquisitionData::optimizedB0Changed);
-
-    oip->addCatProperty<StereoVisionApp::floatParameter,
-            BilSequenceAcquisitionData,
-            true,
-            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
-            (tr("b1"),
-             &BilSequenceAcquisitionData::optimizedB1,
-             nullptr,
-             &BilSequenceAcquisitionData::optimizedB1Changed);
-
-    oip->addCatProperty<StereoVisionApp::floatParameter,
-            BilSequenceAcquisitionData,
-            true,
-            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
-            (tr("b2"),
-             &BilSequenceAcquisitionData::optimizedB2,
-             nullptr,
-             &BilSequenceAcquisitionData::optimizedB2Changed);
-
-    oip->addCatProperty<StereoVisionApp::floatParameter,
-            BilSequenceAcquisitionData,
-            true,
-            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
-            (tr("b3"),
-             &BilSequenceAcquisitionData::optimizedB3,
-             nullptr,
-             &BilSequenceAcquisitionData::optimizedB3Changed);
-
-    oip->addCatProperty<StereoVisionApp::floatParameter,
-            BilSequenceAcquisitionData,
-            true,
-            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
-            (tr("b4"),
-             &BilSequenceAcquisitionData::optimizedB4,
-             nullptr,
-             &BilSequenceAcquisitionData::optimizedB4Changed);
-
-    oip->addCatProperty<StereoVisionApp::floatParameter,
-            BilSequenceAcquisitionData,
-            true,
-            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
-            (tr("b5"),
-             &BilSequenceAcquisitionData::optimizedB5,
-             nullptr,
-             &BilSequenceAcquisitionData::optimizedB5Changed);
 }
 
 

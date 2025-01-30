@@ -30,15 +30,11 @@ protected:
 
     struct BilCameraParameters {
 
+        qint64 seqId;
         qint64 sensorId;
 
         std::array<double, 3> tLeverArm; // lever arm t
         std::array<double, 3> rLeverArm; // lever arm r
-
-        std::array<double, 1> fLen; //f
-        std::array<double, 1> principalPoint; //pp
-        std::array<double, 6> lateralDistortion; //as
-        std::array<double, 6> frontalDistortion; //bs
     };
 
     std::vector<BilCameraParameters> _sensorsParameters;

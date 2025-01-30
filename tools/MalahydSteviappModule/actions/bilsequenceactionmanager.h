@@ -3,7 +3,11 @@
 
 #include <steviapp/control/actionmanager.h>
 
+class QAction;
+
 namespace PikaLTools {
+
+class BilSequenceAcquisitionData;
 
 class BilSequenceActionManager : public StereoVisionApp::DatablockActionManager
 {
@@ -20,6 +24,11 @@ public:
 
 Q_SIGNALS:
 
+protected:
+
+    QAction* createAssignToCameraAction(QObject* parent,
+                                        StereoVisionApp::Project* p,
+                                        QVector<BilSequenceAcquisitionData*> const& seqs) const;
 };
 
 } // namespace PikaLTools

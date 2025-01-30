@@ -3,6 +3,7 @@
 #include <steviapp/datablocks/project.h>
 #include <steviapp/datablocks/image.h>
 #include <steviapp/datablocks/trajectory.h>
+#include <steviapp/datablocks/cameras/pushbroompinholecamera.h>
 #include <steviapp/control/application.h>
 #include <steviapp/control/mainwindow.h>
 #include <steviapp/gui/stepprocessmonitorbox.h>
@@ -151,7 +152,6 @@ int loadBilSequenceFromFolder(StereoVisionApp::Project* p, QString const& pFolde
     return 0;
 
 }
-
 
 
 bool showLcfTrajectory(BilSequenceAcquisitionData* bilSequence) {
@@ -1571,10 +1571,17 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
         body2sensor.t.z() = optPos.value(2);
     }
 
-    double focalLenght = bilSequence->optimizedFLen().value();
+    StereoVisionApp::PushBroomPinholeCamera* cam = bilSequence->getAssignedCamera();
 
-    if (!bilSequence->optimizedFLen().isSet()) {
-        focalLenght = bilSequence->getFocalLen();
+    if (cam == nullptr) {
+        out << "\t Bil sequence has no assigned camera, aborting!" << Qt::endl;
+        return false;
+    }
+
+    double focalLenght = cam->optimizedFLen().value();
+
+    if (!cam->optimizedFLen().isSet()) {
+        focalLenght = cam->fLen().value();
     }
 
     QVector<qint64> imlmids = bilSequence->listTypedSubDataBlocks(BilSequenceLandmark::staticMetaObject.className());

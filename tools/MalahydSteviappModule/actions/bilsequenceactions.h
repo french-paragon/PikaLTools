@@ -14,6 +14,8 @@ class InputDtm;
 
 int loadBilSequenceFromFolder(StereoVisionApp::Project* p, QString const& folder = "");
 
+bool assignCamera(BilSequenceAcquisitionData *bilSequence);
+
 bool showLcfTrajectory(BilSequenceAcquisitionData *bilSequence);
 
 bool showBilImage(BilSequenceAcquisitionData *bilSequence);
