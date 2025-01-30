@@ -16,6 +16,8 @@ public:
     static const char* ModuleName;
     DtmTiePointsModule();
 
+    virtual QString moduleName() const override;
+
     virtual bool addGraphReductorVariables(StereoVisionApp::Project *currentProject,
                                            StereoVisionApp::GenericSBAGraphReductor* graphReductor) override;
     virtual bool addGraphReductorObservations(StereoVisionApp::Project *currentProject,

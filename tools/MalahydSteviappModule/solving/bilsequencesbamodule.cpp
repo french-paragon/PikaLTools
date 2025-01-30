@@ -43,6 +43,10 @@ BilSequenceSBAModule::BilSequenceSBAModule()
 
 }
 
+QString BilSequenceSBAModule::moduleName() const {
+    return QObject::tr("Bil Sequence SBA Module");
+}
+
 bool BilSequenceSBAModule::addGraphReductorVariables(StereoVisionApp::Project *currentProject,
                                                      StereoVisionApp::GenericSBAGraphReductor* graphReductor) {
 

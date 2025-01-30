@@ -16,6 +16,10 @@ DtmTiePointsModule::DtmTiePointsModule()
 
 }
 
+QString DtmTiePointsModule::moduleName() const {
+    return QObject::tr("Dtm Tie Points Module");
+}
+
 bool DtmTiePointsModule::addGraphReductorVariables(StereoVisionApp::Project *currentProject,
                                                    StereoVisionApp::GenericSBAGraphReductor* graphReductor) {
 
