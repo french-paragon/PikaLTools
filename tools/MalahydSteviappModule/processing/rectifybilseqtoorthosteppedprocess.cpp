@@ -34,6 +34,7 @@ RectifyBilSeqToOrthoSteppedProcess::RectifyBilSeqToOrthoSteppedProcess(QObject *
 {
     _target_gsd = 0.5;
     _max_tile_width = 2000;
+    _inPaintingRadius = 3;
 
     _redChannel = 43;
     _greenChannel = 27;
@@ -655,8 +656,36 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeNextTile(int tileId) {
     }
 
     out << "\t" << "Finished computing the preview" << Qt::endl;
+
+    if (_inPaintingRadius > 0) {
+
+        out << "\t" << "Start inpainting" << Qt::endl;
+
+        using AxisT = StereoVision::ImageProcessing::Convolution::MovingWindowAxis;
+        using PaddingT = StereoVision::ImageProcessing::Convolution::PaddingInfos;
+
+        auto filter = StereoVision::ImageProcessing::Convolution::constantFilter<float>
+                (1, _inPaintingRadius, AxisT(PaddingT(_inPaintingRadius)), AxisT(PaddingT(_inPaintingRadius)));
+        filter.setPaddingConstant(1);
+
+        Multidim::Array<float,2> extended = filter.convolve(nSamples);
+        Multidim::Array<bool,2> toPaint(nSamples.shape());
+
+        for (int i = 0; i < nSamples.shape()[0]; i++) {
+            for (int j = 0; j < nSamples.shape()[1]; j++) {
+                if (nSamples.valueUnchecked(i,j) <= 0 and extended.valueUnchecked(i,j) > 0) {
+                    toPaint.atUnchecked(i,j) = true;
+                } else {
+                    toPaint.atUnchecked(i,j) = false;
+                }
+            }
         }
+
+        samples = StereoVision::ImageProcessing::nearestInPaintingBatched<float,3,1>(samples, toPaint, {2});
+
+        out << "\t" << "End inpainting" << Qt::endl;
     }
+
     out << "\t" << "Start writing the data" << Qt::endl;
 
     std::stringstream streamName;

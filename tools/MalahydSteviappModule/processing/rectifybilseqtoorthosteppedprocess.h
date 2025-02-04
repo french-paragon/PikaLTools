@@ -50,6 +50,14 @@ public:
     inline void setTargetGSD(double gsd) {
         _target_gsd = gsd;
     }
+
+    inline int inPaintingRadius() const {
+        return _inPaintingRadius;
+    }
+    inline void setInPaintingRadius(int newInPaintingRadius) {
+        _inPaintingRadius = newInPaintingRadius;
+    }
+
 protected:
 
     template<typename CT>
@@ -121,6 +129,8 @@ protected:
     int _redChannel;
     int _greenChannel;
     int _blueChannel;
+
+    int _inPaintingRadius;
 
     double _f_len_pix;
     double _optical_center;
