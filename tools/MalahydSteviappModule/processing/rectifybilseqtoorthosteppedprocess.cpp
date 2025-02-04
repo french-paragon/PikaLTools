@@ -435,7 +435,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeNextTile(int tileId) {
 
     Multidim::Array<float,2> nSamples(tile.height, tile.width);
     Multidim::Array<float,3> samples(tile.height, tile.width, _bands);
-    Multidim::Array<float, 3> geotiff(tile.height, tile.width, 3);
+    Multidim::Array<float, 3> preview(tile.height, tile.width, 3);
 
     #pragma omp parallel for
     for (int i = 0; i < samples.shape()[0]; i++) {
@@ -610,39 +610,76 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeNextTile(int tileId) {
         blueChannel = samples.shape()[2]-1;
     }
 
-    out << "\t" << "Start computing geotiff with channels r = " << redChannel << " g = " << greenChannel << " b = " << blueChannel << Qt::endl;
+    out << "\t" << "Start computing preview image with channels r = " << redChannel << " g = " << greenChannel << " b = " << blueChannel << Qt::endl;
+
+    float maxPreviewRed = 0;
+    float maxPreviewGreen = 0;
+    float maxPreviewBlue = 0;
 
     for (int i = 0; i < samples.shape()[0]; i++) {
         for (int j = 0; j < samples.shape()[1]; j++) {
 
-            geotiff.atUnchecked(i,j,0) = samples.atUnchecked(i,j,redChannel);
-            geotiff.atUnchecked(i,j,1) = samples.atUnchecked(i,j,greenChannel);
-            geotiff.atUnchecked(i,j,2) = samples.atUnchecked(i,j,blueChannel);
+            float red = samples.atUnchecked(i,j,redChannel);
+            float green = samples.atUnchecked(i,j,greenChannel);
+            float blue = samples.atUnchecked(i,j,blueChannel);
+
+            maxPreviewRed = std::max(maxPreviewRed, red);
+            maxPreviewGreen = std::max(maxPreviewGreen, green);
+            maxPreviewBlue = std::max(maxPreviewBlue, blue);
+
+            preview.atUnchecked(i,j,0) = red;
+            preview.atUnchecked(i,j,1) = green;
+            preview.atUnchecked(i,j,2) = blue;
         }
     }
-    out << "\t" << "Finished computing the geotiff" << Qt::endl;
+
+    float scalingRed = 1/maxPreviewRed;
+    float scalingGreen = 1/maxPreviewGreen;
+    float scalingBlue = 1/maxPreviewBlue;
+
+    for (int i = 0; i < samples.shape()[0]; i++) {
+        for (int j = 0; j < samples.shape()[1]; j++) {
+
+            preview.atUnchecked(i,j,0) *= scalingRed;
+            preview.atUnchecked(i,j,1) *= scalingGreen;
+            preview.atUnchecked(i,j,2) *= scalingBlue;
+
+            preview.atUnchecked(i,j,0) = std::pow(preview.atUnchecked(i,j,0),1/2.2);
+            preview.atUnchecked(i,j,1) = std::pow(preview.atUnchecked(i,j,1),1/2.2);
+            preview.atUnchecked(i,j,2) = std::pow(preview.atUnchecked(i,j,2),1/2.2);
+
+            preview.atUnchecked(i,j,0) *= 255;
+            preview.atUnchecked(i,j,1) *= 255;
+            preview.atUnchecked(i,j,2) *= 255;
+        }
+    }
+
+    out << "\t" << "Finished computing the preview" << Qt::endl;
+        }
+    }
+    out << "\t" << "Start writing the data" << Qt::endl;
 
     std::stringstream streamName;
-    streamName << "_tile_" << tile.pi << "_" << tile.pj << ".stevimg";
+    streamName << "_tile_" << tile.pi << "_" << tile.pj << ".tiff";
 
     std::stringstream streamWld;
     streamWld << "_tile_" << tile.pi << "_" << tile.pj << ".wld";
 
-    std::stringstream streamTiff;
-    streamTiff << "_tile_" << tile.pi << "_" << tile.pj << ".tiff";
+    std::stringstream streamPreview;
+    streamPreview << "_tile_" << tile.pi << "_" << tile.pj << ".jpg";
 
-    bool ok = StereoVision::IO::writeStevimg<float>(_outFile.toStdString() + streamName.str(), samples);
+    bool ok = StereoVision::IO::writeImage<float>(_outFile.toStdString() + streamName.str(), samples);
     if (ok) {
         out << "\t" << "Written" << Qt::endl;
     } else {
         out << "\t" << "Failed to write" << Qt::endl;
     }
 
-    ok = StereoVision::IO::writeImage<float>(_outFile.toStdString() + streamTiff.str(), geotiff);
+    ok = StereoVision::IO::writeImage<uint8_t>(_outFile.toStdString() + streamPreview.str(), preview);
     if (ok) {
-        out << "\t" << "Tiff file Written" << Qt::endl;
+        out << "\t" << "Preview file Written" << Qt::endl;
     } else {
-        out << "\t" << "Failed to write tiff" << Qt::endl;
+        out << "\t" << "Failed to write preview" << Qt::endl;
     }
 
     QFile wldFile(QString::fromStdString(_outFile.toStdString() + streamWld.str()));
