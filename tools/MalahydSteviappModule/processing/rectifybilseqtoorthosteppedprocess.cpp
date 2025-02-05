@@ -5,6 +5,7 @@
 #include <StereoVision/imageProcessing/convolutions.h>
 #include <StereoVision/imageProcessing/standardConvolutionFilters.h>
 #include <StereoVision/imageProcessing/inpainting.h>
+#include <StereoVision/imageProcessing/morphologicalOperators.h>
 
 #include <steviapp/datablocks/trajectory.h>
 #include <steviapp/datablocks/cameras/pushbroompinholecamera.h>
@@ -34,7 +35,7 @@ RectifyBilSeqToOrthoSteppedProcess::RectifyBilSeqToOrthoSteppedProcess(QObject *
 {
     _target_gsd = 0.5;
     _max_tile_width = 2000;
-    _inPaintingRadius = 3;
+    _inPaintingRadius = 4;
 
     _redChannel = 43;
     _greenChannel = 27;
@@ -611,6 +612,58 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeNextTile(int tileId) {
         blueChannel = samples.shape()[2]-1;
     }
 
+    if (_inPaintingRadius > 0) {
+
+        int iPRadius = _inPaintingRadius;
+
+        out << "\t" << "Start inpainting" << Qt::endl;
+
+        using AxisT = StereoVision::ImageProcessing::Convolution::MovingWindowAxis;
+        using PaddingT = StereoVision::ImageProcessing::Convolution::PaddingInfos;
+
+        auto filter = StereoVision::ImageProcessing::Convolution::constantFilter<float>
+                (1, iPRadius, AxisT(PaddingT(iPRadius)), AxisT(PaddingT(iPRadius)));
+        filter.setPaddingConstant(1);
+
+        Multidim::Array<float,2> extended = filter.convolve(nSamples);
+        Multidim::Array<bool,2> toPaint(nSamples.shape());
+        Multidim::Array<bool,2> pixels(nSamples.shape());
+
+        for (int i = 0; i < nSamples.shape()[0]; i++) {
+            for (int j = 0; j < nSamples.shape()[1]; j++) {
+
+                pixels.atUnchecked(i,j) = nSamples.valueUnchecked(i,j) > 0;
+
+                if (nSamples.valueUnchecked(i,j) <= 0 and extended.valueUnchecked(i,j) > 0) {
+                    toPaint.atUnchecked(i,j) = true;
+                } else {
+                    toPaint.atUnchecked(i,j) = false;
+                }
+            }
+        }
+
+        Multidim::Array<bool,2> filteredPixels = StereoVision::ImageProcessing::erosion(2*iPRadius+1,2*iPRadius+1,
+                                                                                        StereoVision::ImageProcessing::dilation(2*iPRadius, 2*iPRadius,
+                                                                                                                                pixels));
+
+        samples = StereoVision::ImageProcessing::nearestInPaintingBatched<float,3,1>(samples, toPaint, {2});
+
+        for (int i = 0; i < nSamples.shape()[0]; i++) {
+            for (int j = 0; j < nSamples.shape()[1]; j++) {
+
+                if (!toPaint.valueUnchecked(i,j) or filteredPixels.valueUnchecked(i,j)) {
+                    continue;
+                }
+
+                for (int c = 0; c < samples.shape()[2]; c++) {
+                    samples.atUnchecked(i,j,c) = 0;
+                }
+            }
+        }
+
+        out << "\t" << "End inpainting" << Qt::endl;
+    }
+
     out << "\t" << "Start computing preview image with channels r = " << redChannel << " g = " << greenChannel << " b = " << blueChannel << Qt::endl;
 
     float maxPreviewRed = 0;
@@ -656,35 +709,6 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeNextTile(int tileId) {
     }
 
     out << "\t" << "Finished computing the preview" << Qt::endl;
-
-    if (_inPaintingRadius > 0) {
-
-        out << "\t" << "Start inpainting" << Qt::endl;
-
-        using AxisT = StereoVision::ImageProcessing::Convolution::MovingWindowAxis;
-        using PaddingT = StereoVision::ImageProcessing::Convolution::PaddingInfos;
-
-        auto filter = StereoVision::ImageProcessing::Convolution::constantFilter<float>
-                (1, _inPaintingRadius, AxisT(PaddingT(_inPaintingRadius)), AxisT(PaddingT(_inPaintingRadius)));
-        filter.setPaddingConstant(1);
-
-        Multidim::Array<float,2> extended = filter.convolve(nSamples);
-        Multidim::Array<bool,2> toPaint(nSamples.shape());
-
-        for (int i = 0; i < nSamples.shape()[0]; i++) {
-            for (int j = 0; j < nSamples.shape()[1]; j++) {
-                if (nSamples.valueUnchecked(i,j) <= 0 and extended.valueUnchecked(i,j) > 0) {
-                    toPaint.atUnchecked(i,j) = true;
-                } else {
-                    toPaint.atUnchecked(i,j) = false;
-                }
-            }
-        }
-
-        samples = StereoVision::ImageProcessing::nearestInPaintingBatched<float,3,1>(samples, toPaint, {2});
-
-        out << "\t" << "End inpainting" << Qt::endl;
-    }
 
     out << "\t" << "Start writing the data" << Qt::endl;
 
