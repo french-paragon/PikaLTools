@@ -48,12 +48,7 @@ QList<QAction*> BilSequenceActionManager::factorizeClassContextActions(QObject* 
         }
     });
 
-    QAction* optimizeSeqs = new QAction(tr("Optimize bil sequences"), parent);
-    connect(optimizeSeqs, &QAction::triggered, [] () {
-        refineTrajectoryUsingDn();
-    });
-
-    return {add, generateSimulated, initLandmarks, optimizeSeqs};
+    return {add, generateSimulated, initLandmarks};
 
 }
 

@@ -38,7 +38,6 @@ bool initBilSequencesTiePoints();
 bool openBilSequenceFolder(BilSequenceAcquisitionData *bilSequence);
 
 bool simulatePseudoPushBroomData();
-bool refineTrajectoryUsingDn();
 
 /*!
  * \brief estimateTimeDeltaRough gives a rough estimate of the time the bil sequence was acquired at (in the form of affine coefficients a*y+b)
