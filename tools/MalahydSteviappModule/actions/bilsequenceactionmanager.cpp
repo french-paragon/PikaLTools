@@ -4,6 +4,7 @@
 
 #include "bilsequenceactions.h"
 
+#include <steviapp/datablocks/mounting.h>
 #include <steviapp/datablocks/cameras/pushbroompinholecamera.h>
 #include <steviapp/control/mainwindow.h>
 
@@ -68,6 +69,8 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
 
     QAction* assignToCamera = createAssignToCameraAction(parent, bilSeq->getProject(), {bilSeq});
 
+    QAction* assignToMounting = createAssignToMountingAction(parent, bilSeq->getProject(), {bilSeq});
+
     QAction* export_landmarks = new QAction(tr("Export landmarks to csv"), parent);
 
     connect(export_landmarks, &QAction::triggered, [bilSeq] () {
@@ -107,7 +110,7 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
         analyzeReprojections(bilSeq);
     });
 
-    return {assignToCamera, assignTraj2Seq, view_bil_cube, view_files, export_landmarks, compute_orthophoto, compute_corrMat, estimateTime, analyzeProj};
+    return {assignToCamera, assignTraj2Seq, assignToMounting, view_bil_cube, view_files, export_landmarks, compute_orthophoto, compute_corrMat, estimateTime, analyzeProj};
 }
 
 QList<QAction*> BilSequenceActionManager::factorizeMultiItemsContextActions(QObject* parent, StereoVisionApp::Project* p, QModelIndexList const& projectIndex) const {
@@ -141,6 +144,36 @@ QAction* BilSequenceActionManager::createAssignToCameraAction(QObject* parent,
     assignToCamera->setMenu(camMenu);
 
     return assignToCamera;
+
+}
+
+QAction* BilSequenceActionManager::createAssignToMountingAction(QObject* parent,
+                                                                StereoVisionApp::Project* p,
+                                                                QVector<BilSequenceAcquisitionData*> const& seqs) const {
+
+    QAction* assignToMounting = new QAction(tr("Assign to mounting"), parent);
+    QMenu* mountingMenu = new QMenu();
+    connect(assignToMounting, &QObject::destroyed, mountingMenu, &QObject::deleteLater);
+
+    QVector<qint64> mountingIds = p->getIdsByClass(StereoVisionApp::Mounting::staticMetaObject.className());
+
+    for(qint64 mountingId : mountingIds) {
+
+        StereoVisionApp::Mounting* m = qobject_cast<StereoVisionApp::Mounting*>(p->getById(mountingId));
+
+        if (m != nullptr) {
+            QAction* toMounting = new QAction(m->objectName(), assignToMounting);
+            connect(toMounting, &QAction::triggered, [mountingId, seqs] () {
+                for (BilSequenceAcquisitionData* seq : seqs) {
+                    seq->assignMounting(mountingId);
+                }
+            });
+            mountingMenu->addAction(toMounting);
+        }
+    }
+    assignToMounting->setMenu(mountingMenu);
+
+    return assignToMounting;
 
 }
 

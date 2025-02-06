@@ -29,6 +29,10 @@ protected:
     QAction* createAssignToCameraAction(QObject* parent,
                                         StereoVisionApp::Project* p,
                                         QVector<BilSequenceAcquisitionData*> const& seqs) const;
+
+    QAction* createAssignToMountingAction(QObject* parent,
+                                        StereoVisionApp::Project* p,
+                                        QVector<BilSequenceAcquisitionData*> const& seqs) const;
 };
 
 } // namespace PikaLTools

@@ -104,10 +104,6 @@ bool BilSequenceSBAModule::addGraphReductorObservations(StereoVisionApp::Project
 
 bool BilSequenceSBAModule::setupParameters(StereoVisionApp::ModularSBASolver* solver) {
 
-    _sensorsParameters.clear();
-    _sensorParametersIndex.clear();
-    _sensorIndexMap.clear();
-
     StereoVisionApp::Project* currentProject = solver->currentProject();
 
     if (currentProject == nullptr) {
@@ -115,8 +111,6 @@ bool BilSequenceSBAModule::setupParameters(StereoVisionApp::ModularSBASolver* so
     }
 
     QVector<qint64> bilSeqsIdxs = currentProject->getIdsByClass(BilSequenceAcquisitionData::staticMetaObject.className());
-
-    _sensorsParameters.reserve(bilSeqsIdxs.size());
 
     for (qint64 seqId : bilSeqsIdxs) {
 
@@ -158,35 +152,21 @@ bool BilSequenceSBAModule::setupParameters(StereoVisionApp::ModularSBASolver* so
             continue;
         }
 
+        qint64 mountingId = seq->assignedMounting();
+
+        StereoVisionApp::ModularSBASolver::PoseNode* mountingNode = solver->getNodeForMounting(mountingId, true);
+
+        //no mounting node
+        if (mountingNode == nullptr) {
+            continue;
+        }
+
         QMap<QString, QString> sequence_header = seq->getBilInfos()[0].headerData();
 
         double sensorWidth = sequence_header.value("samples").toDouble();
 
         double fov = sequence_header.value("field of view").toDouble();
         double fov_rad = fov*M_PI/180.;
-
-        int seqSensorIndex = seq->sensorIndex();
-
-        if (seqSensorIndex < 0 or !_sensorIndexMap.contains(seqSensorIndex)) {
-
-            BilCameraParameters parameters;
-
-            parameters.seqId = seq->internalId();
-            parameters.sensorId = seqSensorIndex;
-
-            parameters.tLeverArm = {0,0,0};
-            parameters.rLeverArm = {0,0,0};
-
-            _sensorsParameters.push_back(parameters);
-            int pos = _sensorsParameters.size()-1;
-            _sensorParametersIndex.insert(seqId, pos);
-
-            _sensorIndexMap.insert(seqSensorIndex, pos);
-
-        } else {
-            //set the sensor to the parameters already set for the previous line with the same sensor id.
-            _sensorParametersIndex.insert(seqId, _sensorIndexMap[seqSensorIndex]);
-        }
 
     }
 
@@ -199,63 +179,6 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
 
     if (currentProject == nullptr) {
         return false;
-    }
-
-    for (BilCameraParameters& sensorParameters : _sensorsParameters) {
-
-        problem.AddParameterBlock(sensorParameters.tLeverArm.data(), sensorParameters.tLeverArm.size());
-        problem.AddParameterBlock(sensorParameters.rLeverArm.data(), sensorParameters.rLeverArm.size());
-
-        solver->addLogger(QString("Intrisic for BilSensor%1 - Lever arm").arg(sensorParameters.sensorId),
-                          new StereoVisionApp::ModularSBASolver::ParamsValsLogger<3>(sensorParameters.tLeverArm.data()));
-
-        solver->addLogger(QString("Intrisic for BilSensor%1 - Boresight").arg(sensorParameters.sensorId),
-                          new StereoVisionApp::ModularSBASolver::ParamsValsLogger<3>(sensorParameters.rLeverArm.data()));
-
-        //priors
-
-        BilSequenceAcquisitionData* seq = currentProject->getDataBlock<BilSequenceAcquisitionData>(sensorParameters.seqId);
-
-        //lever arm
-
-        Eigen::Matrix3d leverArmStiffness = Eigen::Matrix3d::Identity();
-        Eigen::Vector3d leverArmPrior = Eigen::Vector3d::Zero();
-
-        leverArmStiffness(0,0) = 10;
-        leverArmStiffness(1,1) = 10;
-        leverArmStiffness(2,2) = 10;
-
-        if (seq != nullptr) {
-
-            auto leverArmX = seq->xCoord();
-            auto leverArmY = seq->yCoord();
-            auto leverArmZ = seq->zCoord();
-
-            if (leverArmX.isSet() and leverArmX.isUncertain() and
-                    leverArmY.isSet() and leverArmY.isUncertain() and
-                    leverArmZ.isSet() and leverArmZ.isUncertain()) {
-
-                leverArmPrior.x() = leverArmX.value();
-                leverArmPrior.y() = leverArmY.value();
-                leverArmPrior.z() = leverArmZ.value();
-
-                leverArmStiffness(0,0) = 1/leverArmX.stddev();
-                leverArmStiffness(1,1) = 1/leverArmY.stddev();
-                leverArmStiffness(2,2) = 1/leverArmZ.stddev();
-
-                solver->logMessage(QString("Set hyperspectral sensor %1 lever arm prior stiffness %2, %3, %4")
-                                   .arg(sensorParameters.sensorId).arg(leverArmStiffness(0,0)).arg(leverArmStiffness(1,1)).arg(leverArmStiffness(2,2)));
-            }
-
-        }
-
-        ceres::NormalPrior* leverArmPriorCost = new ceres::NormalPrior(leverArmStiffness, leverArmPrior);
-
-        problem.AddResidualBlock(leverArmPriorCost, nullptr, sensorParameters.tLeverArm.data());
-
-        solver->addLogger(QString("Lever arm prior for BilSensor%1").arg(sensorParameters.sensorId),
-                          new StereoVisionApp::ModularSBASolver::AutoErrorBlockLogger<1, 3>(leverArmPriorCost, {sensorParameters.tLeverArm.data()}, false));
-
     }
 
     QVector<qint64> bilSeqsIdxs = currentProject->getIdsByClass(BilSequenceAcquisitionData::staticMetaObject.className());
@@ -283,12 +206,18 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
             continue;
         }
 
+        qint64 mountingId = seq->assignedMounting();
+
+        StereoVisionApp::ModularSBASolver::PoseNode* mountingNode = solver->getNodeForMounting(mountingId, true);
+
+        //no mounting node
+        if (mountingNode == nullptr) {
+            continue;
+        }
+
         QMap<QString, QString> sequence_header = seq->getBilInfos()[0].headerData();
 
         double sensorWidth = sequence_header.value("samples").toDouble();
-
-        int paramIdxs = _sensorParametersIndex[seqId];
-        BilCameraParameters& sensorParameters = _sensorsParameters[paramIdxs];
 
         QVector<qint64> imlmids = seq->listTypedSubDataBlocks(BilSequenceLandmark::staticMetaObject.className());
 
@@ -391,8 +320,8 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
                                                             info,
                                                             problem,
                                                             measure2node,
-                                                            sensorParameters.rLeverArm.data(),
-                                                            sensorParameters.tLeverArm.data());
+                                                            mountingNode->rAxis.data(),
+                                                            mountingNode->t.data());
 
 
             }
@@ -412,33 +341,6 @@ bool BilSequenceSBAModule::writeResults(StereoVisionApp::ModularSBASolver* solve
         return false;
     }
 
-    QList<qint64> bilSeqList = _sensorParametersIndex.keys();
-
-    for (qint64 seqId : bilSeqList) {
-
-        BilSequenceAcquisitionData* seq = currentProject->getDataBlock<BilSequenceAcquisitionData>(seqId);
-
-        if (seq == nullptr) {
-            continue;
-        }
-
-        StereoVisionApp::floatParameterGroup<3> optLeverArm;
-        StereoVisionApp::floatParameterGroup<3> optBoresight;
-
-        BilCameraParameters& camParams = _sensorsParameters[_sensorParametersIndex[seqId]];
-
-        for (int i = 0; i < 3; i++) {
-            optLeverArm.value(i) = camParams.tLeverArm[i];
-            optBoresight.value(i) = camParams.rLeverArm[i];
-        }
-        optLeverArm.setIsSet();
-        optBoresight.setIsSet();
-
-        seq->setOptPos(optLeverArm);
-        seq->setOptRot(optBoresight);
-
-    }
-
     return true;
 
 }
@@ -448,10 +350,6 @@ bool BilSequenceSBAModule::writeUncertainty(StereoVisionApp::ModularSBASolver* s
 
 }
 void BilSequenceSBAModule::cleanup(StereoVisionApp::ModularSBASolver* solver) {
-
-    _sensorsParameters.clear();
-    _sensorParametersIndex.clear();
-    _sensorIndexMap.clear();
 }
 
 } // namespace PikaLTools

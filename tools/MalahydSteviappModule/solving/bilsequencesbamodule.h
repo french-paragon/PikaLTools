@@ -29,20 +29,6 @@ public:
     virtual void cleanup(StereoVisionApp::ModularSBASolver* solver) override;
 
 protected:
-
-    struct BilCameraParameters {
-
-        qint64 seqId;
-        qint64 sensorId;
-
-        std::array<double, 3> tLeverArm; // lever arm t
-        std::array<double, 3> rLeverArm; // lever arm r
-    };
-
-    std::vector<BilCameraParameters> _sensorsParameters;
-    QMap<qint64, int> _sensorParametersIndex;
-    //for bil sequence with sensor index, indicate if the BilCameraParameters for a given sensor index (int) has been instance for a different camera already
-    QMap<int, qint64> _sensorIndexMap;
 };
 
 } // namespace PikaLTools

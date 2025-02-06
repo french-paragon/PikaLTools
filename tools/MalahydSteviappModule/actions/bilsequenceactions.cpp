@@ -3,6 +3,7 @@
 #include <steviapp/datablocks/project.h>
 #include <steviapp/datablocks/image.h>
 #include <steviapp/datablocks/trajectory.h>
+#include <steviapp/datablocks/mounting.h>
 #include <steviapp/datablocks/cameras/pushbroompinholecamera.h>
 #include <steviapp/control/application.h>
 #include <steviapp/control/mainwindow.h>
@@ -1181,6 +1182,13 @@ bool estimateTimeDeltaRough(BilSequenceAcquisitionData *bilSequence) {
         return false;
     }
 
+    StereoVisionApp::Mounting* mounting = bilSequence->getAssignedMounting();
+
+    if (mounting == nullptr) {
+        out << "\tSequence provided has no assigned mounting, aborting!" << Qt::endl;
+        return false;
+    }
+
     StereoVisionApp::StatusOptionalReturn<StereoVisionApp::Trajectory::TimeTrajectorySequence> optTrajData =
             trajectory->loadTrajectoryProjectLocalFrameSequence();
 
@@ -1199,8 +1207,8 @@ bool estimateTimeDeltaRough(BilSequenceAcquisitionData *bilSequence) {
         return false;
     }
 
-    auto optPos = bilSequence->optPos();
-    auto optRot = bilSequence->optRot();
+    auto optPos = mounting->optPos();
+    auto optRot = mounting->optRot();
 
     StereoVision::Geometry::RigidBodyTransform<double> sensor2body;
 
@@ -1407,6 +1415,13 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
         return false;
     }
 
+    StereoVisionApp::Mounting* mounting = bilSequence->getAssignedMounting();
+
+    if (mounting == nullptr) {
+        out << "\tSequence provided has no assigned mounting, aborting!" << Qt::endl;
+        return false;
+    }
+
     StereoVisionApp::StatusOptionalReturn<StereoVisionApp::Trajectory::TimeTrajectorySequence> optTrajData =
             trajectory->optimizedTrajectory();
 
@@ -1425,8 +1440,8 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
         return false;
     }
 
-    auto optPos = bilSequence->optPos();
-    auto optRot = bilSequence->optRot();
+    auto optPos = mounting->optPos();
+    auto optRot = mounting->optRot();
 
     StereoVision::Geometry::RigidBodyTransform<double> body2sensor;
 

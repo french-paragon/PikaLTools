@@ -6,6 +6,7 @@
 #include "datablocks/comparisontrajectory.h"
 #include "datablocks/inputdtm.h"
 
+#include <steviapp/datablocks/trajectory.h>
 #include <steviapp/gui/opengl3dsceneviewwidget.h>
 #include <steviapp/gui/openGlDrawables/opengldrawablescenegrid.h>
 
@@ -162,31 +163,27 @@ void TrajectoryViewEditor::setDrawableScale(float scale) {
 
 void TrajectoryViewEditor::setTrajectory(const BilSequenceAcquisitionData &bilSequence) {
 
-    std::vector<StereoVision::Geometry::AffineTransform<float>> trajectory = bilSequence.ecefTrajectory();
+    clearTrajectory();
 
-    StereoVisionApp::Project* project = bilSequence.getProject();
+    StereoVisionApp::Trajectory* traj = bilSequence.getAssignedTrajectory();
 
-    if (project == nullptr) {
+    if (traj == nullptr) {
         return;
     }
 
-    if (!project->hasLocalCoordinateFrame()) {
-        QMessageBox::warning(this,
-                             tr("Project does not have a local frame of reference"),
-                             tr("Setup a local frame of reference before showing the lcf trajectory!"));
+    auto trajectoryData = traj->loadTrajectoryInProjectLocalFrame(false);
+
+    if (!trajectoryData.isValid()) {
         return;
     }
 
-    StereoVision::Geometry::AffineTransform<float> transformation = project->ecef2local();
-
-    std::vector<StereoVision::Geometry::AffineTransform<float>> localTrajectory;
-    localTrajectory.reserve(trajectory.size());
+    std::vector<StereoVision::Geometry::AffineTransform<float>> localTrajectory = std::move(trajectoryData.value());
 
     float minXy = -1;
     float maxXy = 1;
 
-    for (int i = 0; i < trajectory.size(); i++) {
-        Eigen::Vector3f pos = transformation*trajectory[i].t;
+    for (int i = 0; i < localTrajectory.size(); i++) {
+        Eigen::Vector3f pos = localTrajectory[i].t;
 
         if (pos.x() < minXy) {
             minXy = pos.x();
@@ -203,8 +200,6 @@ void TrajectoryViewEditor::setTrajectory(const BilSequenceAcquisitionData &bilSe
         if (pos.y() > maxXy) {
             maxXy = pos.x();
         }
-
-        localTrajectory.push_back(StereoVision::Geometry::AffineTransform<float>(transformation.R*trajectory[i].R, pos));
     }
 
     float maxDist = std::max(std::abs(minXy), maxXy);
@@ -227,10 +222,15 @@ void TrajectoryViewEditor::setTrajectory(const BilSequenceAcquisitionData &bilSe
         _bil2lcfLines.insert(nLines, nLcfLines);
     }
 
-    _baseTrajectoryTimes = bilSequence.ecefTimes();
+    _baseTrajectoryTimes.clear();
+    _baseTrajectoryTimes.resize(bilSequence.nLinesInSequence());
 
-    _startLineSpinBox->setMaximum(trajectory.size());
-    _endLineSpinBox->setMaximum(trajectory.size());
+    for (int i = 0; i < bilSequence.nLinesInSequence(); i++) {
+        _baseTrajectoryTimes[i] = bilSequence.getTimeFromPixCoord(i);
+    }
+
+    _startLineSpinBox->setMaximum(localTrajectory.size());
+    _endLineSpinBox->setMaximum(localTrajectory.size());
 
     setStartLine(_startLineSpinBox->value());
     setEndLine(_endLineSpinBox->value());

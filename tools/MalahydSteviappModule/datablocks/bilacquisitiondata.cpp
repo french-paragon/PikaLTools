@@ -2,6 +2,7 @@
 
 #include "io/read_envi_bil.h"
 #include <steviapp/datablocks/trajectory.h>
+#include <steviapp/datablocks/mounting.h>
 #include <steviapp/datablocks/itemdatamodel.h>
 #include <steviapp/datablocks/cameras/pushbroompinholecamera.h>
 
@@ -20,13 +21,13 @@
 namespace PikaLTools {
 
 BilSequenceAcquisitionData::BilSequenceAcquisitionData(StereoVisionApp::Project *parent) :
-    StereoVisionApp::RigidBody(parent),
+    StereoVisionApp::DataBlock(parent),
     _ecefTrajectoryCached(false),
-    _sensorIndex(-1),
     _timeScale(1),
     _timeDelta(0),
     _assignedCamera(-1),
-    _assignedTrajectory(-1)
+    _assignedTrajectory(-1),
+    _assignedMounting(-1)
 
 {
     connect(this, &BilSequenceAcquisitionData::bilSequenceChanged, this, [this] () {
@@ -404,17 +405,6 @@ double BilSequenceAcquisitionData::getBilWidth() const {
     return sensorWidth;
 }
 
-
-int BilSequenceAcquisitionData::sensorIndex() const {
-    return _sensorIndex;
-}
-void BilSequenceAcquisitionData::setSensorIndex(int pSensorIndex) {
-    if (pSensorIndex != _sensorIndex) {
-        _sensorIndex = pSensorIndex;
-        Q_EMIT sensorIndexChanged(_sensorIndex);
-    }
-}
-
 double BilSequenceAcquisitionData::timeScale() const {
     return _timeScale;
 }
@@ -522,6 +512,35 @@ void BilSequenceAcquisitionData::assignTrajectory(qint64 trajId) {
     _assignedTrajectory = trajId;
     if (_assignedTrajectory >= 0) addRefered({_assignedTrajectory});
     emit assignedTrajectoryChanged();
+    return;
+
+}
+
+qint64 BilSequenceAcquisitionData::assignedMounting() const {
+    return _assignedMounting;
+}
+StereoVisionApp::Mounting* BilSequenceAcquisitionData::getAssignedMounting() const {
+    return getProject()->getDataBlock<StereoVisionApp::Mounting>(_assignedMounting);
+}
+QString BilSequenceAcquisitionData::getAssignedMountingName() const {
+    StereoVisionApp::Mounting* mounting = getAssignedMounting();
+
+    if (mounting == nullptr) {
+        return tr("No mounting");
+    }
+
+    return mounting->objectName();
+}
+void BilSequenceAcquisitionData::assignMounting(qint64 mountingId){
+
+    if (mountingId == _assignedMounting) {
+        return;
+    }
+
+    if (_assignedMounting >= 0) removeRefered({_assignedMounting});
+    _assignedMounting = mountingId;
+    if (_assignedMounting >= 0) addRefered({_assignedMounting});
+    emit assignedMountingChanged();
     return;
 
 }
@@ -755,38 +774,9 @@ int BilSequenceAcquisitionData::countPointsRefered(QVector<qint64> const& exclud
 
 }
 
-bool BilSequenceAcquisitionData::geoReferenceSupportActive() const {
-    return true;
-}
-Eigen::Array<float,3, Eigen::Dynamic> BilSequenceAcquisitionData::getLocalPointsEcef() const {
-
-    bool ok = true;
-
-    if (!_ecefTrajectoryCached) {
-        ok = loadLcfData();
-    }
-
-    Eigen::Array<float,3, Eigen::Dynamic> ret;
-
-    if (!ok) {
-        ret.resize(3,0);
-        return ret;
-    }
-
-    ret.resize(3,1);
-    ret.col(0) = _ecefTrajectory[0].t;
-
-    return ret;
-
-}
-QString BilSequenceAcquisitionData::getCoordinateReferenceSystemDescr(int CRSRole) const {
-    Q_UNUSED(CRSRole)
-    return "EPSG:4978";
-}
-
 QJsonObject BilSequenceAcquisitionData::encodeJson() const {
 
-    QJsonObject obj = RigidBody::encodeJson();
+    QJsonObject obj;
 
     QJsonArray bilFiles;
 
@@ -814,15 +804,14 @@ QJsonObject BilSequenceAcquisitionData::encodeJson() const {
 
     obj.insert("SeqInfos", seqInfos);
 
-    if (_sensorIndex != -1) {
-        obj.insert("sensorIdx", _sensorIndex);
-    }
-
     if (_assignedCamera >= 0) {
         obj.insert("assignedCameraId", _assignedCamera);
     }
     if (_assignedTrajectory >= 0) {
         obj.insert("assignedTrajectoryId", _assignedTrajectory);
+    }
+    if (_assignedMounting >= 0) {
+        obj.insert("assignedMountingId", _assignedMounting);
     }
 
     obj.insert("timeScale", _timeScale);
@@ -832,8 +821,6 @@ QJsonObject BilSequenceAcquisitionData::encodeJson() const {
 }
 
 void BilSequenceAcquisitionData::configureFromJson(QJsonObject const& data) {
-
-    RigidBody::configureFromJson(data);
 
     QList<QString> bilFiles;
 
@@ -877,12 +864,6 @@ void BilSequenceAcquisitionData::configureFromJson(QJsonObject const& data) {
         _sequenceInfos.time_per_line = seqInfos.value("timePerLine").toDouble();
     }
 
-    if (data.contains("sensorIdx")) {
-        _sensorIndex = data.value("sensorIdx").toInt(-1);
-    } else {
-        _sensorIndex = -1;
-    }
-
     if(data.contains("assignedCameraId")) {
         _assignedCamera = data.value("assignedCameraId").toInt(-1);
     } else {
@@ -893,6 +874,12 @@ void BilSequenceAcquisitionData::configureFromJson(QJsonObject const& data) {
         _assignedTrajectory = data.value("assignedTrajectoryId").toInt(-1);
     } else {
         _assignedTrajectory = -1;
+    }
+
+    if(data.contains("assignedMountingId")) {
+        _assignedMounting = data.value("assignedMountingId").toInt(-1);
+    } else {
+        _assignedMounting = -1;
     }
 
     if (data.contains("timeScale")) {
@@ -935,6 +922,16 @@ void BilSequenceAcquisitionData::extendDataModel() {
                 &BilSequenceAcquisitionData::assignedTrajectoryChanged
                 );
 
+    ldbp->addCatProperty<QString,
+            BilSequenceAcquisitionData,
+            false,
+            StereoVisionApp::ItemDataModel::ItemPropertyDescription::NoValueSignal> (
+                tr("Mounting"),
+                &BilSequenceAcquisitionData::getAssignedMountingName,
+                nullptr,
+                &BilSequenceAcquisitionData::assignedMountingChanged
+                );
+
     StereoVisionApp::ItemDataModel::Category* tg = _dataModel->addCategory(tr("Timing properties"));
 
     tg->addCatProperty<QString,
@@ -956,65 +953,6 @@ void BilSequenceAcquisitionData::extendDataModel() {
                 &BilSequenceAcquisitionData::timeDeltaChanged
                 );
 
-    StereoVisionApp::ItemDataModel::Category* g = _dataModel->addCategory(tr("Lever arm properties"));
-
-    //Position
-    g->addCatProperty<StereoVisionApp::floatParameter,
-            StereoVisionApp::RigidBody,
-            true,
-            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
-            (tr("X"),
-             &StereoVisionApp::RigidBody::xCoord,
-             &StereoVisionApp::RigidBody::setXCoord,
-             &StereoVisionApp::RigidBody::xCoordChanged);
-
-    g->addCatProperty<StereoVisionApp::floatParameter,
-            StereoVisionApp::RigidBody,
-            true,
-            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
-            (tr("Y"),
-             &StereoVisionApp::RigidBody::yCoord,
-             &StereoVisionApp::RigidBody::setYCoord,
-             &StereoVisionApp::RigidBody::yCoordChanged);
-
-    g->addCatProperty<StereoVisionApp::floatParameter,
-            StereoVisionApp::RigidBody,
-            true,
-            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
-            (tr("Z"),
-             &StereoVisionApp::RigidBody::zCoord,
-             &StereoVisionApp::RigidBody::setZCoord,
-             &StereoVisionApp::RigidBody::zCoordChanged);
-
-    //Rotation
-    g->addCatProperty<StereoVisionApp::floatParameter,
-            StereoVisionApp::RigidBody,
-            true,
-            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
-            (tr("RAxis X"),
-             &StereoVisionApp::RigidBody::xRot,
-             &StereoVisionApp::RigidBody::setXRot,
-             &StereoVisionApp::RigidBody::xRotChanged);
-
-    g->addCatProperty<StereoVisionApp::floatParameter,
-            StereoVisionApp::RigidBody,
-            true,
-            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
-            (tr("RAxis Y"),
-             &StereoVisionApp::RigidBody::yRot,
-             &StereoVisionApp::RigidBody::setYRot,
-             &StereoVisionApp::RigidBody::yRotChanged);
-
-    g->addCatProperty<StereoVisionApp::floatParameter,
-            StereoVisionApp::RigidBody,
-            true,
-            StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
-            (tr("Raxis Z"),
-             &StereoVisionApp::RigidBody::zRot,
-             &StereoVisionApp::RigidBody::setZRot,
-             &StereoVisionApp::RigidBody::zRotChanged);
-
-
 
     StereoVisionApp::ItemDataModel::Category* optCat = _dataModel->addCategory(tr("Optimizer properties"));
 
@@ -1029,52 +967,6 @@ void BilSequenceAcquisitionData::extendDataModel() {
              &DataBlock::isFixed,
              &DataBlock::setFixed,
              &DataBlock::isFixedChanged);
-
-    optCat->addCatProperty<int, BilSequenceAcquisitionData, false, StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
-            (tr("SensorIdx"),
-             &BilSequenceAcquisitionData::sensorIndex,
-             &BilSequenceAcquisitionData::setSensorIndex,
-             &BilSequenceAcquisitionData::sensorIndexChanged);
-
-    StereoVisionApp::ItemDataModel::Category* og = _dataModel->addCategory(tr("Optimized lever arm"));
-
-    //Position
-    og->addCatProperty<float, StereoVisionApp::RigidBody, true, StereoVisionApp::ItemDataModel::ItemPropertyDescription::NoValueSignal>
-            (tr("X pos"),
-             &StereoVisionApp::RigidBody::optXCoord,
-             &StereoVisionApp::RigidBody::setOptXCoord,
-             &StereoVisionApp::RigidBody::optPosChanged);
-
-    og->addCatProperty<float, StereoVisionApp::RigidBody, true, StereoVisionApp::ItemDataModel::ItemPropertyDescription::NoValueSignal>
-            (tr("Y pos"),
-             &StereoVisionApp::RigidBody::optYCoord,
-             &StereoVisionApp::RigidBody::setOptYCoord,
-             &StereoVisionApp::RigidBody::optPosChanged);
-
-    og->addCatProperty<float, StereoVisionApp::RigidBody, true, StereoVisionApp::ItemDataModel::ItemPropertyDescription::NoValueSignal>
-            (tr("Z pos"),
-             &StereoVisionApp::RigidBody::optZCoord,
-             &StereoVisionApp::RigidBody::setOptZCoord,
-             &StereoVisionApp::RigidBody::optPosChanged);
-
-    //Rotation
-    og->addCatProperty<float, StereoVisionApp::RigidBody, true, StereoVisionApp::ItemDataModel::ItemPropertyDescription::NoValueSignal>
-            (tr("X Raxis"),
-             &StereoVisionApp::RigidBody::optXRot,
-             &StereoVisionApp::RigidBody::setOptXRot,
-             &StereoVisionApp::RigidBody::optRotChanged);
-
-    og->addCatProperty<float, StereoVisionApp::RigidBody, true, StereoVisionApp::ItemDataModel::ItemPropertyDescription::NoValueSignal>
-            (tr("Y Raxis"),
-             &StereoVisionApp::RigidBody::optYRot,
-             &StereoVisionApp::RigidBody::setOptYRot,
-             &StereoVisionApp::RigidBody::optRotChanged);
-
-    og->addCatProperty<float, StereoVisionApp::RigidBody, true, StereoVisionApp::ItemDataModel::ItemPropertyDescription::NoValueSignal>
-            (tr("Z Raxis"),
-             &StereoVisionApp::RigidBody::optZRot,
-             &StereoVisionApp::RigidBody::setOptZRot,
-             &StereoVisionApp::RigidBody::optRotChanged);
 
 }
 
@@ -1228,22 +1120,28 @@ std::optional<Eigen::Matrix<double,3,2>> BilSequenceLandmark::getRayInfos(bool o
         return std::nullopt;
     }
 
+    StereoVisionApp::Mounting* mounting = seqData->getAssignedMounting();
+
+    if (mounting == nullptr) {
+        return std::nullopt;
+    }
+
     StereoVision::Geometry::RigidBodyTransform<double> leverArm(Eigen::Vector3d(0,0,0), Eigen::Vector3d(0,0,0));
 
-    StereoVisionApp::floatParameterGroup<3> oPos = seqData->optPos();
-    StereoVisionApp::floatParameterGroup<3> oRot = seqData->optRot();
+    StereoVisionApp::floatParameterGroup<3> oPos = mounting->optPos();
+    StereoVisionApp::floatParameterGroup<3> oRot = mounting->optRot();
 
     if (oPos.isSet() and oRot.isSet()) {
         leverArm.r = (Eigen::Vector3d(oRot.value(0),oRot.value(1),oRot.value(2)));
         leverArm.t = (Eigen::Vector3d(oPos.value(0),oPos.value(1),oPos.value(2)));
     } else {
-        StereoVisionApp::floatParameter xpos = seqData->xCoord();
-        StereoVisionApp::floatParameter ypos = seqData->yCoord();
-        StereoVisionApp::floatParameter zpos = seqData->zCoord();
+        StereoVisionApp::floatParameter xpos = mounting->xCoord();
+        StereoVisionApp::floatParameter ypos = mounting->yCoord();
+        StereoVisionApp::floatParameter zpos = mounting->zCoord();
 
-        StereoVisionApp::floatParameter xrot = seqData->xRot();
-        StereoVisionApp::floatParameter yrot = seqData->yRot();
-        StereoVisionApp::floatParameter zrot = seqData->zRot();
+        StereoVisionApp::floatParameter xrot = mounting->xRot();
+        StereoVisionApp::floatParameter yrot = mounting->yRot();
+        StereoVisionApp::floatParameter zrot = mounting->zRot();
 
         if (xpos.isSet() and ypos.isSet() and zpos.isSet() and
                 xrot.isSet() and yrot.isSet() and zrot.isSet()) {

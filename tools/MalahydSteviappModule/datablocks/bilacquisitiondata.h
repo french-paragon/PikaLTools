@@ -29,6 +29,7 @@ class Landmark;
 class ImageLandmark;
 class Trajectory;
 class PushBroomPinholeCamera;
+class Mounting;
 
 }
 
@@ -39,10 +40,9 @@ class BilSequenceLandmark;
 /*!
  * \brief The BilSequenceAcquisitionData class represent a bill sequence, along with a level arm and boresight
  */
-class BilSequenceAcquisitionData : public StereoVisionApp::RigidBody, public StereoVisionApp::GeoReferencedDataBlockInterface
+class BilSequenceAcquisitionData : public StereoVisionApp::DataBlock
 {
     Q_OBJECT
-    Q_INTERFACES(StereoVisionApp::GeoReferencedDataBlockInterface)
 
 public:
 
@@ -114,21 +114,10 @@ public:
     QString getAssignedTrajectoryName() const;
     void assignTrajectory(qint64 trajId);
 
-    inline std::vector<StereoVision::Geometry::AffineTransform<float>> const& ecefTrajectory() const {
-        if (!_ecefTrajectoryCached) {
-            loadLcfData();
-        }
-
-        return _ecefTrajectory;
-    }
-
-    inline std::vector<double> const& ecefTimes() const {
-        if (!_ecefTrajectoryCached) {
-            loadLcfData();
-        }
-
-        return _ecefTimes;
-    }
+    qint64 assignedMounting() const;
+    StereoVisionApp::Mounting* getAssignedMounting() const;
+    QString getAssignedMountingName() const;
+    void assignMounting(qint64 mountingId);
 
     template<typename T>
     Multidim::Array<T, 3> getBilData(int startLine, int lastLine) const {
@@ -191,10 +180,6 @@ public:
     int countPointsRefered(QSet<qint64> const& excluded = {}) const;
     int countPointsRefered(QVector<qint64> const& excluded) const;
 
-    bool geoReferenceSupportActive() const override;
-    Eigen::Array<float,3, Eigen::Dynamic> getLocalPointsEcef() const override;
-    QString getCoordinateReferenceSystemDescr(int CRSRole = DefaultCRSRole) const override;
-
     bool isInfosOnly() const;
     const SequenceInfos &sequenceInfos() const;
     void setSequenceInfos(const SequenceInfos &newSequenceInfos);
@@ -214,9 +199,6 @@ public:
 
     double getFocalLen() const;
     double getBilWidth() const;
-
-    int sensorIndex() const;
-    void setSensorIndex(int sensorIndex);
 
     double timeScale() const;
     void setTimeScale(double timeScale);
@@ -238,8 +220,7 @@ Q_SIGNALS:
     void bilSequenceChanged();
     void assignedCameraChanged();
     void assignedTrajectoryChanged();
-
-    void sensorIndexChanged(int sensorIndex);
+    void assignedMountingChanged();
 
     void timeScaleChanged();
     void timeDeltaChanged();
@@ -259,7 +240,6 @@ protected:
     bool loadLcfData() const;
 
     QList<BilAcquisitionData> _bilSequence;
-    int _sensorIndex; //used to get multiple lines to use the same sensor.
 
     SequenceInfos _sequenceInfos;
 
@@ -271,6 +251,7 @@ protected:
 
     qint64 _assignedCamera;
     qint64 _assignedTrajectory; //the trajectory the bil sequence has been taken from.
+    qint64 _assignedMounting; //the trajectory the bil sequence has been taken from.
 
     mutable std::vector<bool> _loadedTimes;
     mutable std::vector<double> _linesTimes;

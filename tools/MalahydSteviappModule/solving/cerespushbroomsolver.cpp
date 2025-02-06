@@ -370,7 +370,10 @@ bool CeresPushBroomSolver::init() {
     std::vector<double> lines_times;
 
     if (seq != nullptr) {
-        lines_times = seq->ecefTimes();
+        lines_times.resize(seq->nLinesInSequence());
+        for (int i = 0; i < seq->nLinesInSequence(); i++) {
+            lines_times[i] = seq->getTimeFromPixCoord(i);
+        }
     } else {
         lines_times.resize(nPoses);
 

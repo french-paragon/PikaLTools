@@ -8,6 +8,7 @@
 #include <StereoVision/imageProcessing/morphologicalOperators.h>
 
 #include <steviapp/datablocks/trajectory.h>
+#include <steviapp/datablocks/mounting.h>
 #include <steviapp/datablocks/cameras/pushbroompinholecamera.h>
 
 #include "../datablocks/bilacquisitiondata.h"
@@ -168,6 +169,12 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeBilProjection(int bilId) {
         return false;
     }
 
+    StereoVisionApp::Mounting* leverArm = _bilSequence->getAssignedMounting();
+
+    if (leverArm == nullptr) {
+        return false;
+    }
+
     constexpr bool optimized = true;
     std::vector<std::array<double, 3>> viewDirectionsSensor = _bilSequence->getSensorViewDirections(optimized);
 
@@ -199,16 +206,16 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeBilProjection(int bilId) {
     StereoVision::Geometry::RigidBodyTransform<double> body2sensor(Eigen::Vector3d::Zero(),
                                                                  Eigen::Vector3d::Zero());
 
-    if (_bilSequence->optRot().isSet()) {
-        body2sensor.r[0] = _bilSequence->optRot().value(0);
-        body2sensor.r[1] = _bilSequence->optRot().value(1);
-        body2sensor.r[2] = _bilSequence->optRot().value(2);
+    if (leverArm->optRot().isSet()) {
+        body2sensor.r[0] = leverArm->optRot().value(0);
+        body2sensor.r[1] = leverArm->optRot().value(1);
+        body2sensor.r[2] = leverArm->optRot().value(2);
     }
 
-    if (_bilSequence->optPos().isSet()) {
-        body2sensor.t[0] = _bilSequence->optPos().value(0);
-        body2sensor.t[1] = _bilSequence->optPos().value(1);
-        body2sensor.t[2] = _bilSequence->optPos().value(2);
+    if (leverArm->optPos().isSet()) {
+        body2sensor.t[0] = leverArm->optPos().value(0);
+        body2sensor.t[1] = leverArm->optPos().value(1);
+        body2sensor.t[2] = leverArm->optPos().value(2);
     }
 
     StereoVision::Geometry::RigidBodyTransform<double> sensor2body = body2sensor.inverse();
