@@ -120,7 +120,7 @@ public:
     void assignMounting(qint64 mountingId);
 
     template<typename T>
-    Multidim::Array<T, 3> getBilData(int startLine, int lastLine) const {
+    Multidim::Array<T, 3> getBilData(int startLine, int lastLine, std::vector<int> const& channels = {}) const {
 
         if (startLine >= lastLine) {
             return Multidim::Array<T, 3>();
@@ -153,7 +153,7 @@ public:
             nTotalLines += bil.getNLines();
         }
 
-        return read_bil_sequence<T>(files, sLine, lLine);
+        return read_bil_sequence<T>(files, sLine, lLine, channels);
 
     }
 
@@ -166,7 +166,7 @@ public:
         return envi_bil_img_match_type<T>(firstFile);
     }
 
-    Multidim::Array<float, 3> getFloatBilData(int startLine, int lastLine) const;
+    Multidim::Array<float, 3> getFloatBilData(int startLine, int lastLine, std::vector<int> const& channels = {}) const;
     int nLinesInSequence() const;
 
     qint64 addBilSequenceLandmark(const QPointF &coordinates, bool uncertain = false, qreal sigma_pos = 1.0);

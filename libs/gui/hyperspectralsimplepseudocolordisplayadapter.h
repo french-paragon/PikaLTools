@@ -26,8 +26,8 @@ public:
         _y_axis(yAxis),
         _channel_axis(channelAxis),
         _slice_channel_rgb(sliceChannels),
-        _black_level(blackLevel),
-        _white_level(whiteLevel),
+        _black_level({blackLevel, blackLevel, blackLevel}),
+        _white_level({whiteLevel, whiteLevel, whiteLevel}),
         _displayOriginalChannels(false)
     {
 
@@ -54,15 +54,15 @@ public:
 
         idx[_channel_axis] = _slice_channel_rgb[0];
         Array_T value = _array->valueOrAlt(idx, 0);
-        ret.setRed(valueToColor(value));
+        ret.setRed(valueToColor(value, 0));
 
         idx[_channel_axis] = _slice_channel_rgb[1];
         value = _array->valueOrAlt(idx, 0);
-        ret.setGreen(valueToColor(value));
+        ret.setGreen(valueToColor(value, 1));
 
         idx[_channel_axis] = _slice_channel_rgb[2];
         value = _array->valueOrAlt(idx, 0);
-        ret.setBlue(valueToColor(value));
+        ret.setBlue(valueToColor(value, 2));
 
         return ret;
     }
@@ -123,23 +123,111 @@ public:
     }
 
     inline void setBlackLevel(Array_T const& blackLevel) {
-        if (_black_level != blackLevel) {
-            _black_level = blackLevel;
+
+        bool changed = false;
+
+        for (int i = 0; i < _black_level.size(); i++) {
+            if (_black_level[i] != blackLevel) {
+                _black_level[i] = blackLevel;
+                changed = true;
+            }
+        }
+
+        if (changed) {
             Q_EMIT imageValuesChanged(QRect());
         }
     }
 
     inline void setWhiteLevel(Array_T const& whiteLevel) {
-        if (_white_level != whiteLevel) {
-            _white_level = whiteLevel;
+
+        bool changed = false;
+
+        for (int i = 0; i < _white_level.size(); i++) {
+            if (_white_level[i] != whiteLevel) {
+                _white_level[i] = whiteLevel;
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            Q_EMIT imageValuesChanged(QRect());
+        }
+    }
+
+    inline void setBlackLevel(std::array<Array_T,3> const& blackLevel) {
+
+        bool changed = false;
+
+        for (int i = 0; i < _black_level.size(); i++) {
+            if (_black_level[i] != blackLevel[i]) {
+                _black_level[i] = blackLevel[i];
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            Q_EMIT imageValuesChanged(QRect());
+        }
+    }
+
+    inline void setWhiteLevel(std::array<Array_T,3> const& whiteLevel) {
+
+        bool changed = false;
+
+        for (int i = 0; i < _white_level.size(); i++) {
+            if (_white_level[i] != whiteLevel[i]) {
+                _white_level[i] = whiteLevel[i];
+                changed = true;
+            }
+        }
+
+        if (changed) {
             Q_EMIT imageValuesChanged(QRect());
         }
     }
 
     inline void setBlackAndWhiteLevel(Array_T const& blackLevel, Array_T const& whiteLevel) {
-        if (_black_level != blackLevel or _white_level != whiteLevel) {
-            _black_level = blackLevel;
-            _white_level = whiteLevel;
+
+        bool changed = false;
+
+        for (int i = 0; i < _black_level.size(); i++) {
+            if (_black_level[i] != blackLevel) {
+                _black_level[i] = blackLevel;
+                changed = true;
+            }
+        }
+
+        for (int i = 0; i < _white_level.size(); i++) {
+            if (_white_level[i] != whiteLevel) {
+                _white_level[i] = whiteLevel;
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            Q_EMIT imageValuesChanged(QRect());
+        }
+    }
+
+    inline void setBlackAndWhiteLevel(std::array<Array_T,3> const& blackLevel, std::array<Array_T,3> const& whiteLevel) {
+
+        bool changed = false;
+
+        for (int i = 0; i < _black_level.size(); i++) {
+            if (_black_level[i] != blackLevel[i]) {
+                _black_level[i] = blackLevel[i];
+                changed = true;
+            }
+        }
+
+        for (int i = 0; i < _white_level.size(); i++) {
+            if (_white_level[i] != whiteLevel[i]) {
+                _white_level[i] = whiteLevel[i];
+                changed = true;
+            }
+        }
+
+        if (changed) {
             Q_EMIT imageValuesChanged(QRect());
         }
     }
@@ -148,18 +236,18 @@ protected:
 
     using ComputeType = StereoVision::TypesManipulations::accumulation_extended_t<Array_T>;
 
-    inline uint8_t valueToColor(Array_T const& value) const {
+    inline uint8_t valueToColor(Array_T const& value, int channel) const {
 
-        if (value < _black_level) {
+        if (value < _black_level[channel]) {
             return 0;
         }
 
-        if (value >= _white_level) {
+        if (value >= _white_level[channel]) {
             return 255;
         }
 
-        ComputeType transformed = (255*(static_cast<ComputeType>(value) - static_cast<ComputeType>(_black_level)))
-                /(_white_level - _black_level);
+        ComputeType transformed = (255*(static_cast<ComputeType>(value) - static_cast<ComputeType>(_black_level[channel])))
+                /(_white_level[channel] - _black_level[channel]);
 
         return static_cast<uint8_t>(transformed);
     }
@@ -172,8 +260,8 @@ protected:
     int _y_axis;
     int _channel_axis;
 
-    Array_T _black_level;
-    Array_T _white_level;
+    std::array<Array_T,3> _black_level;
+    std::array<Array_T,3> _white_level;
 
     bool _displayOriginalChannels;
     std::array<QString,3> _channelNames;

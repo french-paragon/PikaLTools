@@ -11,6 +11,9 @@
 class QSpinBox;
 class QDoubleSpinBox;
 class QComboBox;
+class QPushButton;
+class QToolButton;
+class QCheckBox;
 
 namespace StereoVisionApp {
     class ImageWidget;
@@ -36,6 +39,9 @@ public:
 
 protected:
 
+    void setupDisplayOptionPopup();
+    void showDisplayOptionPopup();
+
     void commit_lines_changes();
     void commit_channels_changes();
     void commit_bwLevels_changes();
@@ -57,6 +63,9 @@ protected:
     BilSequenceAcquisitionData* _currentSequence;
     int _sequence_nLines;
 
+    QToolButton* _displayOptionButton;
+    QWidget* _displayOptionPopup;
+
     QSpinBox* _startLineSpinBox;
     QSpinBox* _endLineSpinBox;
 
@@ -64,6 +73,7 @@ protected:
     QSpinBox* _greenChannelSpinBox;
     QSpinBox* _blueChannelSpinBox;
 
+    QCheckBox* _autoBWLevelCheckbox;
     QDoubleSpinBox* _blackLevelChannelSpinBox;
     QDoubleSpinBox* _whiteLevelChannelSpinBox;
 
@@ -72,6 +82,7 @@ protected:
     StereoVisionApp::ImageWidget* _viewWidget;
 
     Multidim::Array<float, 3> _bil_data;
+    std::array<int, 3> _channels;
     float _whiteLevel;
     float _blackLevel;
 

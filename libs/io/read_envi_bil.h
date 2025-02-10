@@ -156,7 +156,7 @@ Multidim::Array<T, 3> read_envi_bil(std::string const& filename) {
     } else if (interleave == "bip") {
         strides = {bands,bands*lines,1};
     } else if (interleave == "bsq") {
-        strides = {samples*bands,1,samples};
+        strides = {samples,1,lines*samples};
     } else {
         return Multidim::Array<T, 3>();
     }
@@ -191,9 +191,183 @@ Multidim::Array<T, 3> read_envi_bil(std::string const& filename) {
 }
 
 template<typename T>
+Multidim::Array<T, 3> read_envi_bil_channels(std::string const& filename, std::vector<int> const& channels) {
+
+    if (!envi_bil_img_match_type<T>(filename)) {
+        return Multidim::Array<T, 3>();
+    }
+
+    auto header = readBilHeaderData(filename);
+
+    if (!header.has_value()) {
+        return Multidim::Array<T, 3>();
+    }
+
+    std::map<std::string, std::string> headerData = header.value();
+
+    int lines;
+    int samples;
+    int bands;
+
+    if (headerData.count("lines") <= 0) {
+        return Multidim::Array<T, 3>();
+    }
+
+    if (headerData.count("samples") <= 0) {
+        return Multidim::Array<T, 3>();
+    }
+
+    if (headerData.count("bands") <= 0) {
+        return Multidim::Array<T, 3>();
+    }
+
+    try {
+        lines = std::stoi(headerData["lines"]);
+        samples = std::stoi(headerData["samples"]);
+        bands = std::stoi(headerData["bands"]);
+    }
+    catch(std::invalid_argument const& e) {
+        return Multidim::Array<T, 3>();
+    }
+
+    for (int channel : channels) {
+        if (channel < 0 or channel >= bands) {
+            //invalid bands provided
+            return Multidim::Array<T, 3>();
+        }
+    }
+
+    int selectedBands = int(channels.size());
+
+    std::array<int,3> shape = {lines, samples, selectedBands};
+
+
+    if (headerData.count("interleave") <= 0) {
+        return Multidim::Array<T, 3>();
+    }
+
+    std::string interleave = headerData["interleave"];
+
+    std::array<int,3> file_strides;
+    std::array<int,3> out_strides = {samples*selectedBands, 1, samples};
+
+    if (interleave == "bil") {
+        file_strides = {samples*bands,1,samples};
+    } else if (interleave == "bip") {
+        file_strides = {samples*bands,bands,1};
+    } else if (interleave == "bsq") {
+        file_strides = {samples,1,lines*samples};
+    } else {
+        return Multidim::Array<T, 3>();
+    }
+
+    std::ifstream image(filename);
+
+    if (image.fail()) {
+        return Multidim::Array<T, 3>();
+    }
+
+    image.seekg(0, std::ios::end);
+    size_t n_bytes = image.tellg();
+
+    if (n_bytes % sizeof (T) != 0) {
+        //invalid file size
+        return Multidim::Array<T, 3>();
+    }
+
+    if (n_bytes/sizeof (T) != static_cast<size_t>(lines)*samples*bands) {
+        //invalid file size
+        return Multidim::Array<T, 3>();
+    }
+
+    Multidim::Array<T, 3> ret(shape, out_strides);
+
+    if (interleave == "bil") {
+
+        T* buffer = new T[samples];
+        n_bytes = samples * sizeof (T);
+
+        for (int i = 0; i < shape[0]; i++) {
+
+            for (int c = 0; c < selectedBands; c++) {
+
+                int f_c = channels[c];
+
+                image.seekg(i*file_strides[0] + f_c*file_strides[2]);
+                image.read(reinterpret_cast<char*>(buffer), n_bytes);
+
+                for (int j = 0; j < shape[1]; j++) {
+                    ret.atUnchecked(i,j,c) = buffer[j*file_strides[1]];
+                }
+
+            }
+
+        }
+
+        delete [] buffer;
+    }
+
+    if (interleave == "bip") {
+
+        T* buffer = new T[1];
+        n_bytes = sizeof (T);
+
+        for (int i = 0; i < shape[0]; i++) {
+
+            for (int c = 0; c < selectedBands; c++) {
+
+                int f_c = channels[c];
+
+                for (int j = 0; j < shape[1]; j++) {
+
+                    image.seekg(i*file_strides[0] + j*file_strides[1] + f_c*file_strides[2]);
+                    image.read(reinterpret_cast<char*>(buffer), n_bytes);
+
+                    ret.atUnchecked(i,j,c) = buffer[0];
+                }
+
+            }
+
+        }
+
+        delete [] buffer;
+    }
+
+    if (interleave == "bsq") {
+
+        T* buffer = new T[lines*samples];
+        n_bytes = lines*samples*sizeof (T);
+
+        for (int c = 0; c < selectedBands; c++) {
+
+            int f_c = channels[c];
+
+            image.seekg(f_c*file_strides[2]);
+            image.read(reinterpret_cast<char*>(buffer), n_bytes);
+
+            for (int i = 0; i < shape[0]; i++) {
+
+                for (int j = 0; j < shape[1]; j++) {
+
+                    ret.atUnchecked(i,j,c) = buffer[i*file_strides[0] + j*file_strides[1]];
+                }
+
+            }
+
+        }
+
+        delete [] buffer;
+    }
+
+    return ret;
+
+}
+
+template<typename T>
 Multidim::Array<T, 3> read_bil_sequence(std::vector<std::string> const& filenames,
                                         std::optional<int> firstLine = std::nullopt,
-                                        std::optional<int> lastLine = std::nullopt) {
+                                        std::optional<int> lastLine = std::nullopt,
+                                        std::vector<int> const& channels = std::vector<int>()) {
 
     for (std::string const& filename : filenames) {
         if (!envi_bil_img_match_type<T>(filename)) {
@@ -261,7 +435,7 @@ Multidim::Array<T, 3> read_bil_sequence(std::vector<std::string> const& filename
         } else if (interleave == "bip") {
             imgs_strides.push_back({c_bands,c_bands*c_lines,1});
         } else if (interleave == "bsq") {
-            imgs_strides.push_back({c_samples*c_bands,1,c_samples});
+            imgs_strides.push_back({c_samples,1,c_lines*c_samples});
         } else {
             return Multidim::Array<T, 3>();
         }
@@ -312,8 +486,14 @@ Multidim::Array<T, 3> read_bil_sequence(std::vector<std::string> const& filename
 
     int n_loaded_lines = l_Line - s_Line;
 
-    std::array<int, 3> shape = {n_loaded_lines, samples, bands};
-    std::array<int, 3> strides = {samples*bands,1,samples};
+    int ret_bands = bands;
+
+    if (!channels.empty()) {
+        ret_bands = channels.size();
+    }
+
+    std::array<int, 3> shape = {n_loaded_lines, samples, ret_bands};
+    std::array<int, 3> strides = {samples*ret_bands,1,samples};
 
     Multidim::Array<T, 3> ret(shape, strides);
 
@@ -367,27 +547,46 @@ Multidim::Array<T, 3> read_bil_sequence(std::vector<std::string> const& filename
 
         Multidim::Array<T, 3> sub(buffer, imgs_shapes[i], imgs_strides[i], true);
 
-        if (imgs_strides[i][0] == strides[0] and
-                imgs_strides[i][1] == strides[1] and
-                imgs_strides[i][2] == strides[2]) {
+        if (channels.empty()) {
 
-            int nLines = sub_lLine - sub_sLine;
-            int n = nLines*imgs_strides[i][LineAxis]; //possible only if the strides are dense
+            if (imgs_strides[i][0] == strides[0] and
+                    imgs_strides[i][1] == strides[1] and
+                    imgs_strides[i][2] == strides[2]) {
 
-            T* cell0 = &ret.atUnchecked(nLinesCopied, 0, 0);
-            T* dataStart = &sub.atUnchecked(sub_sLine,0,0);
+                int nLines = sub_lLine - sub_sLine;
+                int n = nLines*imgs_strides[i][LineAxis]; //possible only if the strides are dense
 
-            std::memcpy(cell0, dataStart, n*sizeof(T));
+                T* cell0 = &ret.atUnchecked(nLinesCopied, 0, 0);
+                T* dataStart = &sub.atUnchecked(sub_sLine,0,0);
 
-            nLinesCopied += nLines;
+                std::memcpy(cell0, dataStart, n*sizeof(T));
 
+                nLinesCopied += nLines;
+
+            } else {
+
+                for (int l = sub_sLine; l < sub_lLine; l++) {
+
+                    for (int s = 0; s < imgs_shapes[i][1]; s++) {
+                        for (int b = 0; b < imgs_shapes[i][2]; b++) {
+                            ret.atUnchecked(nLinesCopied, s, b) = sub.atUnchecked(l,s,b);
+                        }
+                    }
+
+                    nLinesCopied++;
+                }
+
+            }
         } else {
 
             for (int l = sub_sLine; l < sub_lLine; l++) {
 
                 for (int s = 0; s < imgs_shapes[i][1]; s++) {
-                    for (int b = 0; b < imgs_shapes[i][2]; b++) {
-                        ret.atUnchecked(nLinesCopied, s, b) = sub.atUnchecked(l,s,b);
+                    for (int c = 0; c < channels.size(); c++) {
+
+                        int b = channels[c];
+
+                        ret.atUnchecked(nLinesCopied, s, c) = sub.atUnchecked(l,s,b);
                     }
                 }
 

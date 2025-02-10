@@ -10,6 +10,11 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QPushButton>
+#include <QCommonStyle>
+#include <QGroupBox>
+#include <QFormLayout>
+#include <QCheckBox>
+#include <QToolButton>
 
 #include <QMenu>
 #include <QInputDialog>
@@ -28,8 +33,10 @@ BilCubeViewEditor::BilCubeViewEditor(QWidget* parent) :
     _displayAdapter(nullptr),
     _current_landmark_id(-1)
 {
-
+    QCommonStyle style;
     _viewWidget = new StereoVisionApp::ImageWidget(this);
+
+    _channels = {0,0,0};
 
     QLabel* startLineLabel = new QLabel(this);
     startLineLabel->setText(tr("Start line:"));
@@ -47,6 +54,9 @@ BilCubeViewEditor::BilCubeViewEditor(QWidget* parent) :
     _endLineSpinBox->setMaximum(1);
     _endLineSpinBox->setValue(1);
 
+    _startLineSpinBox->setEnabled(false);
+    _endLineSpinBox->setEnabled(false);
+
     connect(_startLineSpinBox, static_cast<void(QSpinBox::*)(int)>(&QSpinBox::valueChanged), [this] (int value) {
         _endLineSpinBox->setMinimum(value+1);
     });
@@ -58,60 +68,15 @@ BilCubeViewEditor::BilCubeViewEditor(QWidget* parent) :
     QPushButton* commitLinesButton = new QPushButton(this);
     commitLinesButton->setText(tr("Set lines"));
 
+    _displayOptionButton = new QToolButton(this);
 
-    QLabel* channelsLabel = new QLabel(this);
-    channelsLabel->setText(tr("Channels:"));
+    _displayOptionButton->setText("Display options");
+    _displayOptionButton->setIcon(style.standardIcon(QStyle::SP_ArrowDown));
+    _displayOptionButton->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
 
-    QLabel* redLabel = new QLabel(this);
-    redLabel->setText(tr("red:"));
+    connect(_displayOptionButton, &QPushButton::pressed, this, &BilCubeViewEditor::showDisplayOptionPopup);
 
-    _redChannelSpinBox = new QSpinBox(this);
-    _redChannelSpinBox->setMinimum(0);
-    _redChannelSpinBox->setMaximum(1);
-    _redChannelSpinBox->setValue(0);
-
-    QLabel* greenLabel = new QLabel(this);
-    greenLabel->setText(tr("green:"));
-
-    _greenChannelSpinBox = new QSpinBox(this);
-    _greenChannelSpinBox->setMinimum(0);
-    _greenChannelSpinBox->setMaximum(1);
-    _greenChannelSpinBox->setValue(0);
-
-    QLabel* blueLabel = new QLabel(this);
-    blueLabel->setText(tr("blue:"));
-
-    _blueChannelSpinBox = new QSpinBox(this);
-    _blueChannelSpinBox->setMinimum(0);
-    _blueChannelSpinBox->setMaximum(1);
-    _blueChannelSpinBox->setValue(0);
-
-    QPushButton* commitChannelsButton = new QPushButton(this);
-    commitChannelsButton->setText(tr("Set channels"));
-
-    QLabel* levelsLabel = new QLabel(this);
-    levelsLabel->setText(tr("Levels:"));
-
-    QLabel* blackLevelLabel = new QLabel(this);
-    blackLevelLabel->setText(tr("b:"));
-
-    _blackLevelChannelSpinBox = new QDoubleSpinBox(this);
-    _blackLevelChannelSpinBox->setMinimum(0);
-    _blackLevelChannelSpinBox->setMaximum(2);
-    _blackLevelChannelSpinBox->setValue(0);
-    _blackLevelChannelSpinBox->setDecimals(2);
-
-    QLabel* whiteLevelLabel = new QLabel(this);
-    whiteLevelLabel->setText(tr("w:"));
-
-    _whiteLevelChannelSpinBox = new QDoubleSpinBox(this);
-    _whiteLevelChannelSpinBox->setMinimum(0);
-    _whiteLevelChannelSpinBox->setMaximum(2);
-    _whiteLevelChannelSpinBox->setValue(0);
-    _whiteLevelChannelSpinBox->setDecimals(2);
-
-    QPushButton* commitLevelsButton = new QPushButton(this);
-    commitLevelsButton->setText(tr("Set Levels"));
+    setupDisplayOptionPopup();
 
     QLabel* activeLandmarkLabel = new QLabel(this);
     activeLandmarkLabel->setText(tr("Active landmark:"));
@@ -132,53 +97,19 @@ BilCubeViewEditor::BilCubeViewEditor(QWidget* parent) :
 
     toolsLayout->addWidget(commitLinesButton);
 
-    toolsLayout->addSpacing(5);
     toolsLayout->addStretch();
 
-    toolsLayout->addWidget(channelsLabel);
-    toolsLayout->addSpacing(3);
-
-    toolsLayout->addWidget(redLabel);
-    toolsLayout->addWidget(_redChannelSpinBox);
-    toolsLayout->addSpacing(2);
-
-    toolsLayout->addWidget(greenLabel);
-    toolsLayout->addWidget(_greenChannelSpinBox);
-    toolsLayout->addSpacing(2);
-
-    toolsLayout->addWidget(blueLabel);
-    toolsLayout->addWidget(_blueChannelSpinBox);
+    toolsLayout->addWidget(_displayOptionButton);
 
     toolsLayout->addSpacing(5);
-
-    toolsLayout->addWidget(commitChannelsButton);
-
-    toolsLayout->addSpacing(5);
-    toolsLayout->addStretch();
-
-    toolsLayout->addWidget(levelsLabel);
-    toolsLayout->addSpacing(3);
-
-    toolsLayout->addWidget(blackLevelLabel);
-    toolsLayout->addWidget(_blackLevelChannelSpinBox);
-    toolsLayout->addSpacing(2);
-
-    toolsLayout->addWidget(whiteLevelLabel);
-    toolsLayout->addWidget(_whiteLevelChannelSpinBox);
-    toolsLayout->addSpacing(2);
-
-    toolsLayout->addSpacing(5);
-
-    toolsLayout->addWidget(commitLevelsButton);
-
-    toolsLayout->addSpacing(5);
-    toolsLayout->addStretch();
 
     toolsLayout->addWidget(activeLandmarkLabel);
     toolsLayout->addWidget(_currentLandmarkMenu);
 
     toolsLayout->setMargin(3);
     toolsLayout->setSpacing(0);
+
+    connect(commitLinesButton, &QPushButton::pressed, this, &BilCubeViewEditor::commit_lines_changes);
 
     //main layout
     QVBoxLayout* layout = new QVBoxLayout();
@@ -189,22 +120,6 @@ BilCubeViewEditor::BilCubeViewEditor(QWidget* parent) :
     layout->setMargin(0);
 
     setLayout(layout);
-
-    //editing disabled by default
-    _startLineSpinBox->setEnabled(false);
-    _endLineSpinBox->setEnabled(false);
-
-    _redChannelSpinBox->setEnabled(false);
-    _greenChannelSpinBox->setEnabled(false);
-    _blueChannelSpinBox->setEnabled(false);
-
-    _blackLevelChannelSpinBox->setEnabled(false);
-    _whiteLevelChannelSpinBox->setEnabled(false);
-
-    connect(commitLinesButton, &QPushButton::pressed, this, &BilCubeViewEditor::commit_lines_changes);
-    connect(commitChannelsButton, &QPushButton::pressed, this, &BilCubeViewEditor::commit_channels_changes);
-    connect(commitLevelsButton, &QPushButton::pressed, this, &BilCubeViewEditor::commit_bwLevels_changes);
-
 
     _displayOverlay = new BilSequenceLandmarksOverlay(_viewWidget);
 
@@ -275,8 +190,7 @@ void BilCubeViewEditor::setSequence(BilSequenceAcquisitionData* sequence) {
         _blackLevelChannelSpinBox->setValue(_blackLevel);
         _whiteLevelChannelSpinBox->setValue(_whiteLevel);
 
-        _blackLevelChannelSpinBox->setEnabled(true);
-        _whiteLevelChannelSpinBox->setEnabled(true);
+        _autoBWLevelCheckbox->setEnabled(true);
 
         QVector<float> waveLengths;
 
@@ -302,18 +216,18 @@ void BilCubeViewEditor::setSequence(BilSequenceAcquisitionData* sequence) {
             return;
         }
 
-        std::array<int, 3> colorChannels = {nSpetrcalBands/4,
-                                            nSpetrcalBands/2,
-                                            nSpetrcalBands-nSpetrcalBands/4};
+        _channels = {nSpetrcalBands/4,
+                     nSpetrcalBands/2,
+                     nSpetrcalBands-nSpetrcalBands/4};
 
-        if (colorChannels[2] >= nSpetrcalBands) {
-            colorChannels[2] = nSpetrcalBands-1;
+        if (_channels[2] >= nSpetrcalBands) {
+            _channels[2] = nSpetrcalBands-1;
         }
 
         if (waveLengths.size() == nSpetrcalBands) {
 
             std::array<float, 3> referenceWl = {630, 532, 465};
-            std::array<float, 3> currentWl = {waveLengths[colorChannels[0]], waveLengths[colorChannels[1]], waveLengths[colorChannels[2]]};
+            std::array<float, 3> currentWl = {waveLengths[_channels[0]], waveLengths[_channels[1]], waveLengths[_channels[2]]};
 
 
             for (int i = 0; i < waveLengths.size(); i++) {
@@ -324,7 +238,7 @@ void BilCubeViewEditor::setSequence(BilSequenceAcquisitionData* sequence) {
 
                     if (candDelta < currentDelta) {
                         currentWl[c] = waveLengths[i];
-                        colorChannels[c] = i;
+                        _channels[c] = i;
                     }
                 }
             }
@@ -335,9 +249,9 @@ void BilCubeViewEditor::setSequence(BilSequenceAcquisitionData* sequence) {
         _greenChannelSpinBox->setMaximum(nSpetrcalBands);
         _blueChannelSpinBox->setMaximum(nSpetrcalBands);
 
-        _redChannelSpinBox->setValue(colorChannels[0]);
-        _greenChannelSpinBox->setValue(colorChannels[1]);
-        _blueChannelSpinBox->setValue(colorChannels[2]);
+        _redChannelSpinBox->setValue(_channels[0]);
+        _greenChannelSpinBox->setValue(_channels[1]);
+        _blueChannelSpinBox->setValue(_channels[2]);
 
         _startLineSpinBox->setEnabled(true);
         _endLineSpinBox->setEnabled(true);
@@ -381,6 +295,109 @@ void BilCubeViewEditor::clearSequence() {
 
 }
 
+void BilCubeViewEditor::setupDisplayOptionPopup() {
+
+    _displayOptionPopup = new QWidget(this);
+    _displayOptionPopup->setWindowFlags(Qt::Popup | Qt::FramelessWindowHint);
+    _displayOptionPopup->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Minimum);
+
+    QVBoxLayout* displayOptionLayout = new QVBoxLayout(_displayOptionPopup);
+
+    _redChannelSpinBox = new QSpinBox(_displayOptionPopup);
+    _redChannelSpinBox->setMinimum(0);
+    _redChannelSpinBox->setMaximum(1);
+    _redChannelSpinBox->setValue(_channels[0]);
+
+    _greenChannelSpinBox = new QSpinBox(_displayOptionPopup);
+    _greenChannelSpinBox->setMinimum(0);
+    _greenChannelSpinBox->setMaximum(1);
+    _greenChannelSpinBox->setValue(_channels[0]);
+
+    _blueChannelSpinBox = new QSpinBox(_displayOptionPopup);
+    _blueChannelSpinBox->setMinimum(0);
+    _blueChannelSpinBox->setMaximum(1);
+    _blueChannelSpinBox->setValue(_channels[0]);
+
+    _autoBWLevelCheckbox = new QCheckBox(_displayOptionPopup);
+    _autoBWLevelCheckbox->setTristate(false);
+    _autoBWLevelCheckbox->setChecked(false);
+
+    _blackLevelChannelSpinBox = new QDoubleSpinBox(_displayOptionPopup);
+    _blackLevelChannelSpinBox->setMinimum(0);
+    _blackLevelChannelSpinBox->setMaximum(2);
+    _blackLevelChannelSpinBox->setValue(0);
+    _blackLevelChannelSpinBox->setDecimals(2);
+
+    _whiteLevelChannelSpinBox = new QDoubleSpinBox(_displayOptionPopup);
+    _whiteLevelChannelSpinBox->setMinimum(0);
+    _whiteLevelChannelSpinBox->setMaximum(2);
+    _whiteLevelChannelSpinBox->setValue(0);
+    _whiteLevelChannelSpinBox->setDecimals(2);
+
+    QGroupBox* channelGroupBox = new QGroupBox(_displayOptionPopup);
+    channelGroupBox->setTitle(tr("Channels"));
+    QFormLayout* channelLayout = new QFormLayout(channelGroupBox);
+
+    channelLayout->addRow(tr("Red:"), _redChannelSpinBox);
+    channelLayout->addRow(tr("Green:"), _greenChannelSpinBox);
+    channelLayout->addRow(tr("Blue:"), _blueChannelSpinBox);
+
+    displayOptionLayout->addWidget(channelGroupBox);
+
+    QGroupBox* levelsGroupBox = new QGroupBox(_displayOptionPopup);
+    levelsGroupBox->setTitle(tr("Levels"));
+    QFormLayout* levelsLayout = new QFormLayout(levelsGroupBox);
+
+    levelsLayout->addRow(tr("Auto:"), _autoBWLevelCheckbox);
+    levelsLayout->addRow(tr("Black:"), _blackLevelChannelSpinBox);
+    levelsLayout->addRow(tr("White:"), _whiteLevelChannelSpinBox);
+
+    displayOptionLayout->addWidget(levelsGroupBox);
+
+    QPushButton* commitVisualChanges = new QPushButton(_displayOptionPopup);
+    commitVisualChanges->setText(tr("Commit"));
+
+    displayOptionLayout->addWidget(commitVisualChanges);
+
+    //editing disabled by default
+
+    _redChannelSpinBox->setEnabled(false);
+    _greenChannelSpinBox->setEnabled(false);
+    _blueChannelSpinBox->setEnabled(false);
+
+    _autoBWLevelCheckbox->setEnabled(false);
+    _autoBWLevelCheckbox->setChecked(false);
+
+    connect(_autoBWLevelCheckbox, &QCheckBox::stateChanged, this, [this] () {
+        if (_autoBWLevelCheckbox->isChecked()) {
+
+            _blackLevelChannelSpinBox->setEnabled(false);
+            _whiteLevelChannelSpinBox->setEnabled(false);
+        }
+
+        _blackLevelChannelSpinBox->setEnabled(true);
+        _whiteLevelChannelSpinBox->setEnabled(true);
+    });
+
+    _blackLevelChannelSpinBox->setEnabled(true);
+    _whiteLevelChannelSpinBox->setEnabled(true);
+
+    connect(commitVisualChanges, &QPushButton::pressed, this, [this] () {
+        commit_channels_changes();
+        commit_bwLevels_changes();
+    });
+
+}
+
+void BilCubeViewEditor::showDisplayOptionPopup() {
+
+    QPoint globalPos = _displayOptionButton->mapToGlobal(QPoint(0,0));
+    _displayOptionPopup->show();
+    _displayOptionPopup->move(globalPos.x() + _displayOptionButton->width() - _displayOptionPopup->width(),
+                              globalPos.y() + _displayOptionButton->height());
+
+}
+
 void BilCubeViewEditor::commit_lines_changes() {
 
     if (_displayAdapter != nullptr) {
@@ -399,17 +416,17 @@ void BilCubeViewEditor::commit_lines_changes() {
     _endLineSpinBox->setMinimum(_startLineSpinBox->value()+1);
     _startLineSpinBox->setMaximum(_endLineSpinBox->value()-1);
 
-    _bil_data = _currentSequence->getFloatBilData(sLine, eLine);
+    _channels[0] = _redChannelSpinBox->value();
+    _channels[1] = _greenChannelSpinBox->value();
+    _channels[2] = _blueChannelSpinBox->value();
+
+    _bil_data = _currentSequence->getFloatBilData(sLine, eLine, std::vector<int>(_channels.begin(), _channels.end()));
 
     _displayAdapter = new HyperspectralSimplePseudocolorDisplayAdapter<float>(&_bil_data, _blackLevel, _whiteLevel);
 
-    std::array<int, 3> channels;
+    _displayAdapter->setChannels({0,1,2});
 
-    channels[0] = _redChannelSpinBox->value();
-    channels[1] = _greenChannelSpinBox->value();
-    channels[2] = _blueChannelSpinBox->value();
-
-    _displayAdapter->setChannels(channels);
+    commit_bwLevels_changes();
 
     _viewWidget->setImage(_displayAdapter);
 
@@ -436,22 +453,20 @@ void BilCubeViewEditor::commit_channels_changes() {
         return;
     }
 
-    std::array<int, 3> channels = _displayAdapter->getChannels();
-
-    if (channels[0] == _redChannelSpinBox->value()
-            and channels[1] == _greenChannelSpinBox->value()
-            and channels[2] == _blueChannelSpinBox->value()) {
+    if (_channels[0] == _redChannelSpinBox->value()
+            and _channels[1] == _greenChannelSpinBox->value()
+            and _channels[2] == _blueChannelSpinBox->value()) {
 
         //no need to change anything
         return;
 
     }
 
-    channels[0] = _redChannelSpinBox->value();
-    channels[1] = _greenChannelSpinBox->value();
-    channels[2] = _blueChannelSpinBox->value();
+    _channels[0] = _redChannelSpinBox->value();
+    _channels[1] = _greenChannelSpinBox->value();
+    _channels[2] = _blueChannelSpinBox->value();
 
-    _displayAdapter->setChannels(channels);
+    commit_lines_changes();
 
 }
 
@@ -461,10 +476,58 @@ void BilCubeViewEditor::commit_bwLevels_changes() {
         return;
     }
 
-    _blackLevel = _blackLevelChannelSpinBox->value();
-    _whiteLevel = _whiteLevelChannelSpinBox->value();
+    bool autoLevel = _autoBWLevelCheckbox->isChecked();
 
-    _displayAdapter->setBlackAndWhiteLevel(_blackLevel, _whiteLevel);
+    if (!autoLevel) {
+        _blackLevel = _blackLevelChannelSpinBox->value();
+        _whiteLevel = _whiteLevelChannelSpinBox->value();
+
+        _displayAdapter->setBlackAndWhiteLevel(_blackLevel, _whiteLevel);
+        return;
+    }
+
+    constexpr int nChannels = 3;
+
+    std::array<float,nChannels> blackLevels;
+    std::array<float,nChannels> whiteLevels;
+
+    int nPoints = _bil_data.shape()[0]*_bil_data.shape()[1];
+
+    for (int c = 0; c < nChannels; c++) {
+        std::vector<float> values;
+        values.reserve(nPoints);
+
+        for (int i = 0; i < _bil_data.shape()[0]; i++) {
+            for (int j = 0; j < _bil_data.shape()[1]; j++) {
+                values.push_back(_bil_data.valueUnchecked(i,j,c));
+            }
+        }
+
+        int bLevelId = 0.05*nPoints;
+        int wLevelId = 0.95*nPoints;
+
+        if (wLevelId >= nPoints) {
+            wLevelId = nPoints-1;
+        }
+
+        if (bLevelId == wLevelId) {
+            bLevelId = 0;
+            wLevelId = nPoints-1;
+        }
+
+        auto bLevelElement = values.begin();
+        std::advance(bLevelElement, bLevelId);
+        auto wLevelElement = values.begin();
+        std::advance(wLevelElement, wLevelId);
+
+        std::nth_element(values.begin(), bLevelElement, values.end());
+        std::nth_element(values.begin(), wLevelElement, values.end());
+
+        blackLevels[c] = *bLevelElement;
+        whiteLevels[c] = *wLevelElement;
+    }
+
+    _displayAdapter->setBlackAndWhiteLevel(blackLevels, whiteLevels);
 
 }
 

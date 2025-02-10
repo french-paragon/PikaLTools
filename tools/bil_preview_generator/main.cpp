@@ -14,8 +14,8 @@ int main(int argc, char** argv) {
     constexpr int green = 71;
     constexpr int blue = 38;
 
-    constexpr int bLevel = 0;
-    constexpr int wLevel = 4095;
+    constexpr int bLevel = 35000;
+    constexpr int wLevel = 50000;
 
     if (argc != 2) {
         std::cerr << "Wrong number of arguments" << std::endl;

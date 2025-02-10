@@ -545,54 +545,54 @@ void BilSequenceAcquisitionData::assignMounting(qint64 mountingId){
 
 }
 
-Multidim::Array<float, 3> BilSequenceAcquisitionData::getFloatBilData(int startLine, int lastLine) const {
+Multidim::Array<float, 3> BilSequenceAcquisitionData::getFloatBilData(int startLine, int lastLine, std::vector<int> const& channels) const {
 
     if (sequenceMatchType<int8_t>()) {
-        return getBilData<int8_t>(startLine, lastLine).cast<float>();
+        return getBilData<int8_t>(startLine, lastLine, channels).cast<float>();
     }
 
     if (sequenceMatchType<uint8_t>()) {
-        return getBilData<uint8_t>(startLine, lastLine).cast<float>();
+        return getBilData<uint8_t>(startLine, lastLine, channels).cast<float>();
     }
 
     if (sequenceMatchType<int16_t>()) {
-        return getBilData<int16_t>(startLine, lastLine).cast<float>();
+        return getBilData<int16_t>(startLine, lastLine, channels).cast<float>();
     }
 
     if (sequenceMatchType<uint16_t>()) {
-        return getBilData<uint16_t>(startLine, lastLine).cast<float>();
+        return getBilData<uint16_t>(startLine, lastLine, channels).cast<float>();
     }
 
     if (sequenceMatchType<int32_t>()) {
-        return getBilData<int32_t>(startLine, lastLine).cast<float>();
+        return getBilData<int32_t>(startLine, lastLine, channels).cast<float>();
     }
 
     if (sequenceMatchType<uint32_t>()) {
-        return getBilData<uint32_t>(startLine, lastLine).cast<float>();
+        return getBilData<uint32_t>(startLine, lastLine, channels).cast<float>();
     }
 
     if (sequenceMatchType<int64_t>()) {
-        return getBilData<int64_t>(startLine, lastLine).cast<float>();
+        return getBilData<int64_t>(startLine, lastLine, channels).cast<float>();
     }
 
     if (sequenceMatchType<uint64_t>()) {
-        return getBilData<uint64_t>(startLine, lastLine).cast<float>();
+        return getBilData<uint64_t>(startLine, lastLine, channels).cast<float>();
     }
 
     if (sequenceMatchType<float>()) {
-        return getBilData<float>(startLine, lastLine).cast<float>();
+        return getBilData<float>(startLine, lastLine, channels).cast<float>();
     }
 
     if (sequenceMatchType<float>()) {
-        return getBilData<float>(startLine, lastLine).cast<float>();
+        return getBilData<float>(startLine, lastLine, channels).cast<float>();
     }
 
     if (sequenceMatchType<double>()) {
-        return getBilData<double>(startLine, lastLine).cast<float>();
+        return getBilData<double>(startLine, lastLine, channels).cast<float>();
     }
 
     if (sequenceMatchType<double>()) {
-        return getBilData<double>(startLine, lastLine).cast<float>();
+        return getBilData<double>(startLine, lastLine, channels).cast<float>();
     }
 
     return Multidim::Array<float, 3>();
