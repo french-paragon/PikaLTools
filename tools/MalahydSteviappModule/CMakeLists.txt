@@ -47,8 +47,6 @@ set(MODULE_SRC
     gui/pushbroomoptimizationconfigdialog.cpp
     gui/simulatepushbroomtiepointsoptiondialog.h
     gui/simulatepushbroomtiepointsoptiondialog.cpp
-    solving/cerespushbroomsolver.h
-    solving/cerespushbroomsolver.cpp
     solving/bilsequencesbamodule.h
     solving/bilsequencesbamodule.cpp
     solving/dtmtiepointsmodule.h

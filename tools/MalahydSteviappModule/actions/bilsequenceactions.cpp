@@ -1,6 +1,7 @@
 #include "bilsequenceactions.h"
 
 #include <steviapp/datablocks/project.h>
+#include <steviapp/datablocks/datatable.h>
 #include <steviapp/datablocks/image.h>
 #include <steviapp/datablocks/trajectory.h>
 #include <steviapp/datablocks/mounting.h>
@@ -41,7 +42,6 @@
 
 #include "../processing/rectifybilseqtoorthosteppedprocess.h"
 
-#include "../solving/cerespushbroomsolver.h"
 #include "../solving/bilsequencesbamodule.h"
 #include "../solving/dtmtiepointsmodule.h"
 
@@ -819,7 +819,220 @@ bool openBilSequenceFolder(BilSequenceAcquisitionData *bilSequence) {
 
 bool simulatePseudoPushBroomData() {
 
-    using TimeSeq = CeresPushBroomSolver::IndexedVec3TimeSeq;
+    enum RotationRepresentations {
+        AngleAxis,
+        Quaternion,
+        EulerXYZ
+    };
+
+    using TimeSeq = StereoVisionApp::IndexedTimeSequence<std::array<float,3>, double>;
+
+    struct GPSMeasurementInfos {
+        StereoVisionApp::DataTable* dataTable;
+
+        QString colTime;
+        QString colPosX;
+        QString colPosY;
+        QString colPosZ;
+
+        /*!
+         * \brief configureFromColumnsSelection configure a GPSMeasurementInfos from a ColumnSelectionInfos
+         * \param colSelectionInfos the column selection info struct
+         * \return optionally an error message.
+         */
+        std::optional<QString> configureFromColumnsSelection(DataColumnsSelectionWidget::ColumnSelectionInfos const& colSelectionInfos) {
+
+            if (colSelectionInfos.dataTable == nullptr) {
+                return QObject::tr("Missing GPS data");
+            }
+
+            bool validGPSdata = true;
+            QVector<QString> gpsDataColumns = colSelectionInfos.dataTable->columns();
+
+            if (colSelectionInfos.variableType != DataColumnsSelectionWidget::Position or
+                    !gpsDataColumns.contains(colSelectionInfos.indexingCol) or
+                    colSelectionInfos.columnsNames.size() != 3) {
+                validGPSdata = false;
+            }
+
+            if (validGPSdata) {
+                for (QString const& colName : colSelectionInfos.columnsNames) {
+                    if (!gpsDataColumns.contains(colName)) {
+                        validGPSdata = false;
+                    }
+                }
+            }
+
+            if (!validGPSdata) {
+                return QObject::tr("Invalid GPS data");
+            }
+
+            dataTable = colSelectionInfos.dataTable;
+            colTime = colSelectionInfos.indexingCol;
+            colPosX = colSelectionInfos.columnsNames[0];
+            colPosY = colSelectionInfos.columnsNames[1];
+            colPosZ = colSelectionInfos.columnsNames[2];
+
+            return std::nullopt;
+        }
+        TimeSeq compileSequence() {
+
+            if (dataTable == nullptr) {
+                return TimeSeq();
+            }
+
+            QVector<QVariant> time = dataTable->getColumnData(colTime);
+            QVector<QVariant> posx = dataTable->getColumnData(colPosX);
+            QVector<QVariant> posy = dataTable->getColumnData(colPosY);
+            QVector<QVariant> posz = dataTable->getColumnData(colPosZ);
+
+            using ptT = TimeSeq::TimedElement;
+
+            std::vector<ptT> sequence(time.size());
+
+            for (int i = 0; i < time.size(); i++) {
+                sequence[i].time = time[i].toFloat();
+                sequence[i].val = {posx[i].toFloat(), posy[i].toFloat(), posz[i].toFloat()};
+            }
+
+            return TimeSeq(std::move(sequence));
+        }
+    };
+
+    struct InitialOrientationInfos {
+        StereoVisionApp::DataTable* dataTable;
+
+        RotationRepresentations rotationRepresentation;
+
+        QString colTime;
+        QString colRotW;
+        QString colRotX;
+        QString colRotY;
+        QString colRotZ;
+
+        /*!
+         * \brief configureFromColumnsSelection configure an InitialOrientationInfos from a ColumnSelectionInfos
+         * \param colSelectionInfos the column selection info struct
+         * \return optionally an error message.
+         */
+        std::optional<QString> configureFromColumnsSelection(DataColumnsSelectionWidget::ColumnSelectionInfos const& colSelectionInfos) {
+
+            if (colSelectionInfos.dataTable == nullptr) {
+                return QObject::tr("Missing Initial orientation data");
+            }
+
+            bool validInitialOrientationdata = true;
+            QVector<QString> initialOrientationDataColumns = colSelectionInfos.dataTable->columns();
+
+            if (colSelectionInfos.variableType != DataColumnsSelectionWidget::Orientation or
+                    !initialOrientationDataColumns.contains(colSelectionInfos.indexingCol)) {
+                validInitialOrientationdata = false;
+            }
+
+            if ((colSelectionInfos.angleRepType != DataColumnsSelectionWidget::Quaternion and colSelectionInfos.columnsNames.size() != 3)) {
+                validInitialOrientationdata = false;
+            }
+
+            if ((colSelectionInfos.angleRepType == DataColumnsSelectionWidget::Quaternion and colSelectionInfos.columnsNames.size() != 4)) {
+                validInitialOrientationdata = false;
+            }
+
+            if (validInitialOrientationdata) {
+                for (QString const& colName : colSelectionInfos.columnsNames) {
+                    if (!initialOrientationDataColumns.contains(colName)) {
+                        validInitialOrientationdata = false;
+                    }
+                }
+            }
+
+            if (!validInitialOrientationdata) {
+                return QObject::tr("Invalid Initial orientation data");
+            }
+
+            dataTable = colSelectionInfos.dataTable;
+            colTime = colSelectionInfos.indexingCol;
+
+            if (colSelectionInfos.angleRepType == DataColumnsSelectionWidget::Quaternion) {
+                rotationRepresentation = Quaternion;
+                colRotW = colSelectionInfos.columnsNames[0];
+                colRotX = colSelectionInfos.columnsNames[1];
+                colRotY = colSelectionInfos.columnsNames[2];
+                colRotZ = colSelectionInfos.columnsNames[3];
+            }
+
+            if (colSelectionInfos.angleRepType == DataColumnsSelectionWidget::AxisAngle) {
+                rotationRepresentation =  AngleAxis;
+                colRotX = colSelectionInfos.columnsNames[0];
+                colRotY = colSelectionInfos.columnsNames[1];
+                colRotZ = colSelectionInfos.columnsNames[2];
+            }
+
+            if (colSelectionInfos.angleRepType == DataColumnsSelectionWidget::EulerXYZ) {
+                rotationRepresentation =  EulerXYZ;
+                colRotX = colSelectionInfos.columnsNames[0];
+                colRotY = colSelectionInfos.columnsNames[1];
+                colRotZ = colSelectionInfos.columnsNames[2];
+            }
+
+            return std::nullopt;
+        }
+
+        /*!
+         * \brief compileSequence give the sequence of orientations as axis angles
+         * \return the sequence represented as axis angles
+         */
+        TimeSeq compileSequence() {
+
+            if (dataTable == nullptr) {
+                return TimeSeq();
+            }
+
+            QVector<QVariant> time = dataTable->getColumnData(colTime);
+            QVector<QVariant> rotw = dataTable->getColumnData(colRotW);
+            QVector<QVariant> rotx = dataTable->getColumnData(colRotX);
+            QVector<QVariant> roty = dataTable->getColumnData(colRotY);
+            QVector<QVariant> rotz = dataTable->getColumnData(colRotZ);
+
+            using ptT = TimeSeq::TimedElement;
+
+            std::vector<ptT> sequence(time.size());
+
+            for (int i = 0; i < time.size(); i++) {
+                sequence[i].time = time[i].toFloat();
+
+                switch (rotationRepresentation) {
+                case AngleAxis:
+
+                    sequence[i].val = {rotx[i].toFloat(), roty[i].toFloat(), rotz[i].toFloat()};
+                    break;
+
+                case Quaternion:
+                {
+                    Eigen::AngleAxis<double> axis;
+                    axis = Eigen::Quaternion<double>(rotw[i].toFloat(), rotx[i].toFloat(), roty[i].toFloat(), rotz[i].toFloat());
+
+                    Eigen::Vector3d raxis = axis.axis()*axis.angle();
+                    sequence[i].val = {static_cast<float>(raxis.x()), static_cast<float>(raxis.y()), static_cast<float>(raxis.z())};
+                }
+                    break;
+
+                case EulerXYZ:
+                {
+                    Eigen::AngleAxis<double> axis;
+                    axis = Eigen::AngleAxis<double>(rotz[i].toFloat(), Eigen::Vector3d::UnitZ())*
+                    Eigen::AngleAxis<double>(roty[i].toFloat(), Eigen::Vector3d::UnitY())*
+                    Eigen::AngleAxis<double>(rotx[i].toFloat(), Eigen::Vector3d::UnitX());
+
+                    Eigen::Vector3d raxis = axis.axis()*axis.angle();
+                    sequence[i].val = {static_cast<float>(raxis.x()), static_cast<float>(raxis.y()), static_cast<float>(raxis.z())};
+                }
+                    break;
+                }
+            }
+
+            return TimeSeq(std::move(sequence));
+        }
+    };
 
     QTextStream out(stdout);
 
@@ -851,7 +1064,7 @@ bool simulatePseudoPushBroomData() {
     DataColumnsSelectionWidget::ColumnSelectionInfos orientationInfosColsSelection = configDialog.getsOrientationColsSelectionInfos();
     DataColumnsSelectionWidget::ColumnSelectionInfos positionInfosColsSelection = configDialog.getsPositionColsSelectionInfos();
 
-    CeresPushBroomSolver::GPSMeasurementInfos positionInfos;
+    GPSMeasurementInfos positionInfos;
     auto errorMessage = positionInfos.configureFromColumnsSelection(positionInfosColsSelection);
 
     if (errorMessage.has_value()) {
@@ -859,7 +1072,7 @@ bool simulatePseudoPushBroomData() {
         return false;
     }
 
-    CeresPushBroomSolver::InitialOrientationInfos orientationInfos;
+    InitialOrientationInfos orientationInfos;
     errorMessage = orientationInfos.configureFromColumnsSelection(orientationInfosColsSelection);
 
     if (errorMessage.has_value()) {
