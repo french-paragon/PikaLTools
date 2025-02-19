@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>446</width>
-    <height>414</height>
+    <width>448</width>
+    <height>452</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -52,11 +52,14 @@
    <item>
     <widget class="QGroupBox" name="groupBox_3">
      <property name="title">
-      <string>Trajectory</string>
+      <string>Optimization options</string>
      </property>
      <layout class="QFormLayout" name="formLayout_2">
       <item row="0" column="0" colspan="2">
        <widget class="QComboBox" name="selectedTrajectoryComboBox"/>
+      </item>
+      <item row="1" column="0" colspan="2">
+       <widget class="QComboBox" name="selectedCameraComboBox"/>
       </item>
      </layout>
     </widget>

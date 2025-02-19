@@ -31,6 +31,7 @@ RectifyBilSeqToOrthoSteppedProcess::RectifyBilSeqToOrthoSteppedProcess(QObject *
     _minBilLine(-1),
     _maxBilLine(-1),
     _useOptimzedTrajectory(true),
+    _useOptimzedCamera(true),
     _terrain_projector(nullptr),
     _tmp_folder(nullptr)
 {
@@ -175,8 +176,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeBilProjection(int bilId) {
         return false;
     }
 
-    constexpr bool optimized = true;
-    std::vector<std::array<double, 3>> viewDirectionsSensor = _bilSequence->getSensorViewDirections(optimized);
+    std::vector<std::array<double, 3>> viewDirectionsSensor = _bilSequence->getSensorViewDirections(_useOptimzedCamera);
 
     std::vector<double> times = get_envi_bil_lines_times(bil_file_path.toStdString());
 

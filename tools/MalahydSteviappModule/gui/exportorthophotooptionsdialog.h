@@ -23,6 +23,7 @@ public:
     QString outFile() const;
 
     bool useOptimizedTrajectory() const;
+    bool useOptimizedCamera() const;
 
     int minLineId() const;
     int maxLineId() const;
@@ -34,7 +35,7 @@ public:
 private:
 
     void configureDtmList();
-    void configureTrajectoryExportOption();
+    void configureOptimizationExportOption();
     void selectOutFile();
 
     QVector<qint64> _dtm_idxs;

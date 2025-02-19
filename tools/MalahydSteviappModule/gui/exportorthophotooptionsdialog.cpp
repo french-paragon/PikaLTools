@@ -16,7 +16,7 @@ ExportOrthoPhotoOptionsDialog::ExportOrthoPhotoOptionsDialog(QWidget *parent) :
 {
     ui->setupUi(this);
     configureDtmList();
-    configureTrajectoryExportOption();
+    configureOptimizationExportOption();
 
     ui->outFileLineEdit->setReadOnly(true);
     connect(ui->openOutFileButton, &QPushButton::clicked, this, &ExportOrthoPhotoOptionsDialog::selectOutFile);
@@ -40,6 +40,9 @@ QString ExportOrthoPhotoOptionsDialog::outFile() const {
 
 bool ExportOrthoPhotoOptionsDialog::useOptimizedTrajectory() const {
     return ui->selectedTrajectoryComboBox->currentData().toBool();
+}
+bool ExportOrthoPhotoOptionsDialog::useOptimizedCamera() const {
+    return ui->selectedCameraComboBox->currentData().toBool();
 }
 
 int ExportOrthoPhotoOptionsDialog::minLineId() const {
@@ -106,7 +109,7 @@ void ExportOrthoPhotoOptionsDialog::configureDtmList() {
 }
 
 
-void ExportOrthoPhotoOptionsDialog::configureTrajectoryExportOption() {
+void ExportOrthoPhotoOptionsDialog::configureOptimizationExportOption() {
 
     ui->selectedTrajectoryComboBox->clear();
 
@@ -116,6 +119,15 @@ void ExportOrthoPhotoOptionsDialog::configureTrajectoryExportOption() {
     ui->selectedTrajectoryComboBox->setCurrentIndex(0);
 
     ui->selectedTrajectoryComboBox->setEditable(false);
+
+    ui->selectedCameraComboBox->clear();
+
+    ui->selectedCameraComboBox->addItem(tr("Use optimized camera"), QVariant(true));
+    ui->selectedCameraComboBox->addItem(tr("Use initial camera"), QVariant(false));
+
+    ui->selectedCameraComboBox->setCurrentIndex(0);
+
+    ui->selectedCameraComboBox->setEditable(false);
 
 }
 

@@ -43,6 +43,10 @@ public:
         _useOptimzedTrajectory = useOptimized;
     }
 
+    inline void useOptimizedCamera(bool useOptimized) {
+        _useOptimzedCamera = useOptimized;
+    }
+
     inline void setOutFile(QString const& outFile) {
         _outFile = outFile;
     }
@@ -125,6 +129,7 @@ protected:
     double _max_tile_width;
 
     bool _useOptimzedTrajectory;
+    bool _useOptimzedCamera;
 
     int _redChannel;
     int _greenChannel;
