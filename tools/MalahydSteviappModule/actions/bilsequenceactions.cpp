@@ -298,6 +298,7 @@ bool computeOrthophoto(BilSequenceAcquisitionData *bilSequence, InputDtm* pInput
 
     bool useOptimizedTrajectory = true;
     bool useOptimizedCamera = true;
+    bool useOptimizedLeverArm = true;
 
     int nLines = bilSequence->nLinesInSequence();
 
@@ -320,6 +321,7 @@ bool computeOrthophoto(BilSequenceAcquisitionData *bilSequence, InputDtm* pInput
 
         useOptimizedTrajectory = dialog.useOptimizedTrajectory();
         useOptimizedCamera = dialog.useOptimizedCamera();
+        useOptimizedLeverArm = dialog.useOptimizedLeverArm();
 
         targetGsd = dialog.getTargetGSD();
     }
@@ -337,6 +339,7 @@ bool computeOrthophoto(BilSequenceAcquisitionData *bilSequence, InputDtm* pInput
     processor->setMinAndMaxLineId(minBilLine, maxBilLine);
     processor->useOptimizedTrajectory(useOptimizedTrajectory);
     processor->useOptimizedCamera(useOptimizedCamera);
+    processor->useOptimizedLeverArm(useOptimizedLeverArm);
     processor->setTargetGSD(targetGsd);
 
     QThread* t = new QThread();

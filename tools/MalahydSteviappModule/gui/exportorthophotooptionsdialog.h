@@ -24,6 +24,7 @@ public:
 
     bool useOptimizedTrajectory() const;
     bool useOptimizedCamera() const;
+    bool useOptimizedLeverArm() const;
 
     int minLineId() const;
     int maxLineId() const;

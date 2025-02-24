@@ -46,6 +46,9 @@ public:
     inline void useOptimizedCamera(bool useOptimized) {
         _useOptimzedCamera = useOptimized;
     }
+    inline void useOptimizedLeverArm(bool useOptimized) {
+        _useOptimzedLeverArm = useOptimized;
+    }
 
     inline void setOutFile(QString const& outFile) {
         _outFile = outFile;
@@ -130,6 +133,7 @@ protected:
 
     bool _useOptimzedTrajectory;
     bool _useOptimzedCamera;
+    bool _useOptimzedLeverArm;
 
     int _redChannel;
     int _greenChannel;

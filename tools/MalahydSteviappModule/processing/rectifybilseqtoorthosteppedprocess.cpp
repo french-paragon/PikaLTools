@@ -32,6 +32,7 @@ RectifyBilSeqToOrthoSteppedProcess::RectifyBilSeqToOrthoSteppedProcess(QObject *
     _maxBilLine(-1),
     _useOptimzedTrajectory(true),
     _useOptimzedCamera(true),
+    _useOptimzedLeverArm(true),
     _terrain_projector(nullptr),
     _tmp_folder(nullptr)
 {
@@ -206,16 +207,33 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeBilProjection(int bilId) {
     StereoVision::Geometry::RigidBodyTransform<double> body2sensor(Eigen::Vector3d::Zero(),
                                                                  Eigen::Vector3d::Zero());
 
-    if (leverArm->optRot().isSet()) {
-        body2sensor.r[0] = leverArm->optRot().value(0);
-        body2sensor.r[1] = leverArm->optRot().value(1);
-        body2sensor.r[2] = leverArm->optRot().value(2);
-    }
+    if (_useOptimzedLeverArm) {
 
-    if (leverArm->optPos().isSet()) {
-        body2sensor.t[0] = leverArm->optPos().value(0);
-        body2sensor.t[1] = leverArm->optPos().value(1);
-        body2sensor.t[2] = leverArm->optPos().value(2);
+        if (leverArm->optRot().isSet()) {
+            body2sensor.r[0] = leverArm->optRot().value(0);
+            body2sensor.r[1] = leverArm->optRot().value(1);
+            body2sensor.r[2] = leverArm->optRot().value(2);
+        }
+
+        if (leverArm->optPos().isSet()) {
+            body2sensor.t[0] = leverArm->optPos().value(0);
+            body2sensor.t[1] = leverArm->optPos().value(1);
+            body2sensor.t[2] = leverArm->optPos().value(2);
+        }
+
+    } else {
+
+        if (leverArm->xRot().isSet() and leverArm->yRot().isSet() and leverArm->zRot().isSet()) {
+            body2sensor.r[0] = leverArm->xRot().value();
+            body2sensor.r[1] = leverArm->yRot().value();
+            body2sensor.r[2] = leverArm->zRot().value();
+        }
+
+        if (leverArm->xCoord().isSet() and leverArm->yCoord().isSet() and leverArm->zCoord().isSet()) {
+            body2sensor.t[0] = leverArm->xCoord().value();
+            body2sensor.t[1] = leverArm->yCoord().value();
+            body2sensor.t[2] = leverArm->zCoord().value();
+        }
     }
 
     StereoVision::Geometry::RigidBodyTransform<double> sensor2body = body2sensor.inverse();

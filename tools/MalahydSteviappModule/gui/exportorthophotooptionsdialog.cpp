@@ -44,6 +44,9 @@ bool ExportOrthoPhotoOptionsDialog::useOptimizedTrajectory() const {
 bool ExportOrthoPhotoOptionsDialog::useOptimizedCamera() const {
     return ui->selectedCameraComboBox->currentData().toBool();
 }
+bool ExportOrthoPhotoOptionsDialog::useOptimizedLeverArm() const {
+    return ui->selectedLeverArmComboBox->currentData().toBool();
+}
 
 int ExportOrthoPhotoOptionsDialog::minLineId() const {
     if (ui->lineLimitGroupBox->isChecked()) {
@@ -128,6 +131,15 @@ void ExportOrthoPhotoOptionsDialog::configureOptimizationExportOption() {
     ui->selectedCameraComboBox->setCurrentIndex(0);
 
     ui->selectedCameraComboBox->setEditable(false);
+
+    ui->selectedLeverArmComboBox->clear();
+
+    ui->selectedLeverArmComboBox->addItem(tr("Use optimized lever arm"), QVariant(true));
+    ui->selectedLeverArmComboBox->addItem(tr("Use initial lever arm"), QVariant(false));
+
+    ui->selectedLeverArmComboBox->setCurrentIndex(0);
+
+    ui->selectedLeverArmComboBox->setEditable(false);
 
 }
 
