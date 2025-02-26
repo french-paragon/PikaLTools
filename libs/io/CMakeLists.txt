@@ -16,9 +16,7 @@ add_library(
 )
 
 get_target_property(SteviAppGeoIncludeDirs SteviappSdk::StereoVisionAppGeo INTERFACE_INCLUDE_DIRECTORIES)
-#steviapp link to proj directly, but it lead to a conflict with gdal on certain version of ubuntu.
-#to solve this we need to encapsulate the io function, which use gdal, without linking to proj.
-#But we still need the includes.
+
 target_include_directories(${IO_LIB} PUBLIC ${SteviAppGeoIncludeDirs})
 
 target_link_libraries(${IO_LIB} PRIVATE Qt5::Core StereoVision::stevi geotiff)
