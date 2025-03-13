@@ -53,6 +53,15 @@ bool estimateTimeDeltaRough(BilSequenceAcquisitionData *bilSequence);
  */
 bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence);
 
+/*!
+ * \brief exportTrajectoryWithBilMounting export the trajectory associated with a bil, with the mounting associated with the bil
+ * \param bilSequence the bil sequence
+ * \return true on success, false otherwise.
+ */
+bool exportTrajectoryWithBilMounting(BilSequenceAcquisitionData *bilSequence);
+
+bool exportImageGeometry(BilSequenceAcquisitionData *bilSequence);
+
 } // namespace PikaLTools
 
 #endif // BILSEQUENCEACTIONS_H

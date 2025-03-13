@@ -22,7 +22,14 @@ class RectifyBilSeqToOrthoSteppedProcess : public StereoVisionApp::SteppedProces
 {
     Q_OBJECT
 public:
+
+    enum Mode {
+        ExportOrtho,
+        ExportImageGeometry
+    };
+
     RectifyBilSeqToOrthoSteppedProcess(QObject* parent = nullptr);
+    RectifyBilSeqToOrthoSteppedProcess(Mode mode, QObject* parent = nullptr);
     ~RectifyBilSeqToOrthoSteppedProcess();
 
     virtual int numberOfSteps() override;
@@ -54,6 +61,10 @@ public:
         _outFile = outFile;
     }
 
+    inline void setOutCrs(QString const& outCrs) {
+        _outCrs = outCrs;
+    }
+
     inline void setTargetGSD(double gsd) {
         _target_gsd = gsd;
     }
@@ -67,6 +78,8 @@ public:
 
 protected:
 
+    Mode _mode;
+
     template<typename CT>
     using Trajectory = StereoVisionApp::IndexedTimeSequence<StereoVision::Geometry::RigidBodyTransform<CT>, CT>;
 
@@ -76,6 +89,7 @@ protected:
     virtual void cleanup() override;
 
     bool computeBilProjection(int bilId);
+    bool exportBilProjection(int bilId, QString exportPath = "", QString exportCRS = "");
     bool computeProjectedGrid();
     bool computeNextTile(int tileId);
 
@@ -121,6 +135,7 @@ protected:
 
     QTemporaryDir* _tmp_folder;
     QString _outFile;
+    QString _outCrs;
 
     int _minBilLine;
     int _maxBilLine;

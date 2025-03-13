@@ -8,6 +8,7 @@
 #include <steviapp/datablocks/cameras/pushbroompinholecamera.h>
 #include <steviapp/control/application.h>
 #include <steviapp/control/mainwindow.h>
+#include <steviapp/control/trajectoryactions.h>
 #include <steviapp/gui/stepprocessmonitorbox.h>
 #include <steviapp/gui/imageviewer.h>
 #include <steviapp/gui/imageadapters/imagedatadisplayadapter.h>
@@ -28,6 +29,7 @@
 
 #include <StereoVision/geometry/core.h>
 #include <StereoVision/geometry/rotations.h>
+#include <StereoVision/geometry/sensorframesconvention.h>
 #include <StereoVision/io/image_io.h>
 #include <StereoVision/interpolation/interpolation.h>
 
@@ -1753,6 +1755,154 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
         out << "\tLandmark " << lm->objectName() << "(" << lmid << "): error u = " << errorU << " error v = " << errorV << Qt::endl;
 
     }
+
+    return true;
+}
+
+bool exportTrajectoryWithBilMounting(BilSequenceAcquisitionData *bilSequence) {
+
+    if (bilSequence == nullptr) {
+        return false;
+    }
+
+    StereoVisionApp::Trajectory* traj = bilSequence->getAssignedTrajectory();
+
+    if (traj == nullptr) {
+        return false;
+    }
+
+    StereoVisionApp::Mounting* mounting = bilSequence->getAssignedMounting();
+
+    StereoVision::Geometry::RigidBodyTransform<double> body2sensor;
+
+    if (mounting != nullptr) {
+
+        auto optPos = mounting->optPos();
+        auto optRot = mounting->optRot();
+
+        if (!optPos.isSet() or !optRot.isSet()) {
+            body2sensor.r.setZero();
+            body2sensor.t.setZero();
+        } else {
+            body2sensor.r.x() = optRot.value(0);
+            body2sensor.r.y() = optRot.value(1);
+            body2sensor.r.z() = optRot.value(2);
+
+            body2sensor.t.x() = optPos.value(0);
+            body2sensor.t.y() = optPos.value(1);
+            body2sensor.t.z() = optPos.value(2);
+        }
+    }
+
+    StereoVisionApp::exportTrajectory(traj, body2sensor.inverse());
+    return true;
+}
+
+bool exportImageGeometry(BilSequenceAcquisitionData *bilSequence) {
+
+
+    if (bilSequence == nullptr) {
+        return false;
+    }
+
+    //get options
+    StereoVisionApp::StereoVisionApplication* app = StereoVisionApp::StereoVisionApplication::GetAppInstance();
+
+    if (app == nullptr) {
+        return false;
+    }
+
+    StereoVisionApp::MainWindow* mw = StereoVisionApp::MainWindow::getActiveMainWindow();
+    StereoVisionApp::Project* proj = bilSequence->getProject();
+
+    if (proj == nullptr) {
+        return false;
+    }
+
+    InputDtm* inputDtm = nullptr;
+    QString outFile = "";
+
+    double targetGsd = 2.0;
+
+    int minBilLine = -1;
+    int maxBilLine = -1;
+
+    bool useOptimizedTrajectory = true;
+    bool useOptimizedCamera = true;
+    bool useOptimizedLeverArm = true;
+
+    int nLines = bilSequence->nLinesInSequence();
+
+    if (mw != nullptr) {
+        ExportOrthoPhotoOptionsDialog dialog(mw);
+        dialog.setWindowTitle(QObject::tr("Export image geometry"));
+
+        dialog.setLineFileId(nLines);
+
+        int code = dialog.exec();
+
+        if (code == QDialog::Rejected) {
+            return false;
+        }
+
+        inputDtm = proj->getDataBlock<InputDtm>(dialog.selectedDtmIdx());
+        outFile = dialog.outFile();
+
+        QFileInfo outInfos(outFile);
+        outFile = outInfos.absoluteDir().path();
+
+        minBilLine = dialog.minLineId();
+        maxBilLine = dialog.maxLineId();
+
+        useOptimizedTrajectory = dialog.useOptimizedTrajectory();
+        useOptimizedCamera = dialog.useOptimizedCamera();
+        useOptimizedLeverArm = dialog.useOptimizedLeverArm();
+
+        targetGsd = dialog.getTargetGSD();
+    }
+
+    if (inputDtm == nullptr) {
+        return false;
+    }
+
+    if (outFile.isEmpty()) {
+        return false;
+    }
+
+    RectifyBilSeqToOrthoSteppedProcess* processor = new RectifyBilSeqToOrthoSteppedProcess(RectifyBilSeqToOrthoSteppedProcess::ExportImageGeometry);
+    processor->configure(bilSequence, inputDtm, outFile);
+    processor->setMinAndMaxLineId(minBilLine, maxBilLine);
+    processor->useOptimizedTrajectory(useOptimizedTrajectory);
+    processor->useOptimizedCamera(useOptimizedCamera);
+    processor->useOptimizedLeverArm(useOptimizedLeverArm);
+    processor->setTargetGSD(targetGsd);
+
+    QThread* t = new QThread();
+
+    processor->moveToThread(t);
+    QObject::connect(processor, &QObject::destroyed, t, &QThread::quit);
+    QObject::connect(t, &QThread::finished, t, &QObject::deleteLater);
+
+    if (mw != nullptr) {
+
+        StereoVisionApp::StepProcessMonitorBox* box = new StereoVisionApp::StepProcessMonitorBox(mw);
+        box->setWindowFlag(Qt::Dialog);
+        box->setWindowModality(Qt::WindowModal);
+        box->setWindowTitle(QObject::tr("Exporting image geometry"));
+
+        box->setProcess(processor);
+
+        QObject::connect(box, &QObject::destroyed, processor, &QObject::deleteLater);
+
+        box->show();
+
+    } else {
+
+        processor->deleteWhenDone(true);
+    }
+
+    t->start();
+    processor->run();
 
     return true;
 }

@@ -89,6 +89,11 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
         computeOrthophoto(bilSeq);
     });
 
+    QAction* exportIgm = new QAction(tr("Export image geometry"), parent);
+    connect(exportIgm, &QAction::triggered, [bilSeq] () {
+        exportImageGeometry(bilSeq);
+    });
+
     QAction* compute_corrMat = new QAction(tr("Show data correlation"), parent);
 
     connect(compute_corrMat, &QAction::triggered, [bilSeq] () {
@@ -110,7 +115,12 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
         analyzeReprojections(bilSeq);
     });
 
-    return {assignToCamera, assignTraj2Seq, assignToMounting, view_bil_cube, view_files, export_landmarks, compute_orthophoto, compute_corrMat, estimateTime, analyzeProj};
+    QAction* exportTraj = new QAction(tr("Export trajectory with mounting"), parent);
+    connect(exportTraj, &QAction::triggered, [bilSeq] () {
+        exportTrajectoryWithBilMounting(bilSeq);
+    });
+
+    return {assignToCamera, assignTraj2Seq, assignToMounting, view_bil_cube, view_files, export_landmarks, compute_orthophoto, exportIgm, compute_corrMat, estimateTime, analyzeProj, exportTraj};
 }
 
 QList<QAction*> BilSequenceActionManager::factorizeMultiItemsContextActions(QObject* parent, StereoVisionApp::Project* p, QModelIndexList const& projectIndex) const {

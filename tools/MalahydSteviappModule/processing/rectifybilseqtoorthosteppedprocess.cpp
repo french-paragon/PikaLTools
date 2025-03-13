@@ -6,6 +6,7 @@
 #include <StereoVision/imageProcessing/standardConvolutionFilters.h>
 #include <StereoVision/imageProcessing/inpainting.h>
 #include <StereoVision/imageProcessing/morphologicalOperators.h>
+#include <StereoVision/interpolation/interpolation.h>
 
 #include <steviapp/datablocks/trajectory.h>
 #include <steviapp/datablocks/mounting.h>
@@ -27,6 +28,7 @@ namespace PikaLTools {
 
 RectifyBilSeqToOrthoSteppedProcess::RectifyBilSeqToOrthoSteppedProcess(QObject *parent) :
     StereoVisionApp::SteppedProcess(parent),
+    _mode(ExportOrtho),
     _bilSequence(nullptr),
     _minBilLine(-1),
     _maxBilLine(-1),
@@ -34,8 +36,11 @@ RectifyBilSeqToOrthoSteppedProcess::RectifyBilSeqToOrthoSteppedProcess(QObject *
     _useOptimzedCamera(true),
     _useOptimzedLeverArm(true),
     _terrain_projector(nullptr),
-    _tmp_folder(nullptr)
+    _tmp_folder(nullptr),
+    _outFile(""),
+    _outCrs("")
 {
+
     _target_gsd = 0.5;
     _max_tile_width = 2000;
     _inPaintingRadius = 4;
@@ -44,6 +49,11 @@ RectifyBilSeqToOrthoSteppedProcess::RectifyBilSeqToOrthoSteppedProcess(QObject *
     _greenChannel = 27;
     _blueChannel = 12;
 
+}
+RectifyBilSeqToOrthoSteppedProcess::RectifyBilSeqToOrthoSteppedProcess(Mode mode, QObject* parent) :
+    RectifyBilSeqToOrthoSteppedProcess(parent)
+{
+    _mode = mode;
 }
 
 RectifyBilSeqToOrthoSteppedProcess::~RectifyBilSeqToOrthoSteppedProcess() {
@@ -58,6 +68,10 @@ int RectifyBilSeqToOrthoSteppedProcess::numberOfSteps() {
 
     //one projection step for each bil file.
     int nSteps = _bilSequence->getBilInfos().size();
+
+    if (_mode == ExportImageGeometry) {
+        return 2*nSteps; //one step to project, one step to write
+    }
 
     //one step to configure the grid.
     nSteps += 1;
@@ -91,6 +105,21 @@ QString RectifyBilSeqToOrthoSteppedProcess::currentStepName() {
 
         return tr("Treating bil %1 (%2/%3)").arg(bilFileInfo.baseName()).arg(step+1).arg(nBils);
     }
+
+    if (_mode == ExportImageGeometry) {
+
+        if (step - nBils < nBils) {
+
+            QString bilPath = _bilSequence->getBilFiles()[step - nBils];
+
+            QFileInfo bilFileInfo(bilPath);
+
+            return tr("Exporting bil %1 (%2/%3)").arg(bilFileInfo.baseName()).arg(step+1-nBils).arg(nBils);
+        }
+
+        return tr("Cleaning up");
+    }
+
 
     if (step == nBils) {
         return tr("Building grid");
@@ -128,6 +157,13 @@ bool RectifyBilSeqToOrthoSteppedProcess::doNextStep() {
         int bilId = step;
         out << "\tComputing projection " << bilId << Qt::endl;
         return computeBilProjection(bilId);
+    }
+
+    if (_mode == ExportImageGeometry) {
+
+        int bilId = step - nBils;
+        out << "\tExporting projection " << bilId << Qt::endl;
+        return exportBilProjection(bilId, _outFile, _outCrs);
     }
 
     if (step == nBils) {
@@ -280,7 +316,9 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeBilProjection(int bilId) {
 
             StereoVisionApp::Geo::TerrainProjector<double>::ProjectionResults& results = projResOpt.value();
 
-            for (int i = 0; i < _nSamples; i++) {
+            int nToTreat = std::min<int>(results.projectedPoints.size(), _nSamples);
+
+            for (int i = 0; i < nToTreat; i++) {
                 std::array<float,2> proj = results.projectedPoints[i];
 
                 if (std::isfinite(proj[0]) or std::isfinite(proj[1])) {
@@ -318,15 +356,373 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeBilProjection(int bilId) {
 
     out << "\t" << "min_x = " << min_x << " max_x = " << max_x << " min_y = " << min_y << " max_y = " << max_y << Qt::endl;
 
-    BilROI regionOfInterest;
-    regionOfInterest.minX = min_x;
-    regionOfInterest.maxX = max_x;
-    regionOfInterest.minY = min_y;
-    regionOfInterest.maxY = max_y;
-    _bilFilesROI[bilId] = regionOfInterest;
+    if (_mode == ExportOrtho) {
+        BilROI regionOfInterest;
+        regionOfInterest.minX = min_x;
+        regionOfInterest.maxX = max_x;
+        regionOfInterest.minY = min_y;
+        regionOfInterest.maxY = max_y;
+        _bilFilesROI[bilId] = regionOfInterest;
+    }
 
     return true;
 
+}
+
+bool RectifyBilSeqToOrthoSteppedProcess::exportBilProjection(int bilId, QString exportPath, QString exportCRS) {
+
+    constexpr int enviDataTypeDouble = 5;
+
+    QTextStream out(stdout);
+
+    out << "Export bil projection for bil: " << bilId << Qt::endl;
+
+    QFileInfo outPathInfos(exportPath);
+
+    if (!outPathInfos.isDir()) {
+        out << "Trying to export to a non directory: " << exportPath << ", aborting!" << Qt::endl;
+        return false;
+    }
+
+    QString bil_file_path = _bilSequence->getBilInfos()[bilId].bilFilePath();
+
+    QFileInfo bil_file_info(bil_file_path);
+
+    if (!bil_file_info.exists()) {
+        out << "File for bil id: " << bilId << " (" << bil_file_path << ") does not exist" << Qt::endl;
+        return false;
+    }
+
+    QString tmpFileName = QString("bilProj%1.bin").arg(bilId);
+
+    QString tmpFilePath = _tmp_folder->filePath(tmpFileName);
+
+    QFile tmpProjections(tmpFilePath);
+
+    bool ok = tmpProjections.open(QFile::ReadOnly);
+
+    if (!ok) {
+        out << "Could not open bil id: " << bilId << " projection data in file " << tmpFilePath << Qt::endl;
+        return false;
+    }
+
+    StereoVisionApp::Mounting* leverArm = _bilSequence->getAssignedMounting();
+
+    if (leverArm == nullptr) {
+        return false;
+    }
+
+    //Boresight is body2sensor
+    StereoVision::Geometry::RigidBodyTransform<double> body2sensor(Eigen::Vector3d::Zero(),
+                                                                 Eigen::Vector3d::Zero());
+
+    if (_useOptimzedLeverArm) {
+
+        if (leverArm->optRot().isSet()) {
+            body2sensor.r[0] = leverArm->optRot().value(0);
+            body2sensor.r[1] = leverArm->optRot().value(1);
+            body2sensor.r[2] = leverArm->optRot().value(2);
+        }
+
+        if (leverArm->optPos().isSet()) {
+            body2sensor.t[0] = leverArm->optPos().value(0);
+            body2sensor.t[1] = leverArm->optPos().value(1);
+            body2sensor.t[2] = leverArm->optPos().value(2);
+        }
+
+    } else {
+
+        if (leverArm->xRot().isSet() and leverArm->yRot().isSet() and leverArm->zRot().isSet()) {
+            body2sensor.r[0] = leverArm->xRot().value();
+            body2sensor.r[1] = leverArm->yRot().value();
+            body2sensor.r[2] = leverArm->zRot().value();
+        }
+
+        if (leverArm->xCoord().isSet() and leverArm->yCoord().isSet() and leverArm->zCoord().isSet()) {
+            body2sensor.t[0] = leverArm->xCoord().value();
+            body2sensor.t[1] = leverArm->yCoord().value();
+            body2sensor.t[2] = leverArm->zCoord().value();
+        }
+    }
+
+    StereoVision::Geometry::RigidBodyTransform<double> sensor2body = body2sensor.inverse();
+
+
+    PJ_CONTEXT* ctx = proj_context_create();
+
+    if (ctx == 0) {
+        return false;
+    }
+
+
+    const char* wgs84_ecef = "EPSG:4978";
+    const char* wgs84_geo = "EPSG:4979";
+
+
+    PJ* ecef2terrain = proj_create_crs_to_crs(ctx, wgs84_ecef, _terrain.crsInfos.c_str(), nullptr);
+
+    if (ecef2terrain == 0) { //in case of error
+        proj_context_destroy(ctx);
+        return false;
+    }
+
+
+    PJ* geo2ecef = proj_create_crs_to_crs(ctx, wgs84_geo, wgs84_ecef, nullptr);
+
+    if (geo2ecef == 0) { //in case of error
+        proj_destroy(ecef2terrain);
+        proj_context_destroy(ctx);
+        return false;
+    }
+
+
+    PJ* ecef2geo = proj_create_crs_to_crs(ctx, wgs84_ecef, wgs84_geo, nullptr);
+
+    if (ecef2geo == 0) { //in case of error
+        proj_destroy(ecef2terrain);
+        proj_destroy(geo2ecef);
+        proj_context_destroy(ctx);
+        return false;
+    }
+
+    std::vector<std::array<double, 3>> viewDirectionsSensor = _bilSequence->getSensorViewDirections(_useOptimzedCamera);
+
+    Eigen::Matrix<double,3,3> dsmToMap;
+    dsmToMap.block<2,3>(0,0) = _terrain.geoTransform;
+    dsmToMap(2,0) = 0;
+    dsmToMap(2,1) = 0;
+    dsmToMap(2,2) = 1;
+
+    std::vector<double> times = get_envi_bil_lines_times(bil_file_path.toStdString());
+
+    int nLines = times.size();
+
+    Multidim::Array<float,2> projectedCoordinates({_nSamples,2}, {2,1});
+
+    Multidim::Array<double,3> data({_nSamples, nLines, 3},{nLines,1,_nSamples*nLines});
+    Multidim::Array<int32_t,3> angles({_nSamples, nLines, 3},{nLines,1,_nSamples*nLines});
+
+    double avgHeight = 0;
+    double min_x = std::numeric_limits<double>::infinity();
+    double max_x = -std::numeric_limits<double>::infinity();
+    double min_y = std::numeric_limits<double>::infinity();
+    double max_y = -std::numeric_limits<double>::infinity();
+    double min_z = std::numeric_limits<double>::infinity();
+    double max_z = -std::numeric_limits<double>::infinity();
+
+    for (int i = 0; i < nLines; i++) { //lines
+
+        double targetTime = times[i];
+
+        Trajectory<double>::TimeInterpolableVals vals = _bil_trajectory.getValueAtTime(targetTime);
+        StereoVision::Geometry::RigidBodyTransform<double> delta = vals.valLower.inverse()*vals.valUpper;
+
+        double w = vals.weigthUpper;
+        StereoVision::Geometry::RigidBodyTransform<double> body2ecef = vals.valLower*(w*delta);
+
+        StereoVision::Geometry::RigidBodyTransform<double> sensor2ecef = body2ecef*sensor2body;
+
+        std::array<double, 3> ecefOrigin{sensor2ecef.t.x(), sensor2ecef.t.y(), sensor2ecef.t.z()};
+
+        PJ_COORD ecef{ecefOrigin[0], ecefOrigin[1], ecefOrigin[2]};
+        PJ_COORD geo = proj_trans(ecef2geo, PJ_FWD, ecef);
+        PJ_COORD down = geo;
+        PJ_COORD north = geo;
+
+        down.xyz.z -= 10; //10 meters down;
+        north.xyz.x += 1./3600; //one second higher north
+
+        PJ_COORD downEcef = proj_trans(geo2ecef, PJ_FWD, down);
+        PJ_COORD northEcef = proj_trans(geo2ecef, PJ_FWD, north);
+
+        PJ_COORD originInTerrain = proj_trans(ecef2terrain, PJ_FWD, ecef);
+
+        Eigen::Vector3d vOrigin(ecefOrigin[0],ecefOrigin[1],ecefOrigin[2]);
+
+        Eigen::Vector3d vDown(downEcef.xyz.x, downEcef.xyz.y,downEcef.xyz.z);
+        Eigen::Vector3d vNorth(northEcef.xyz.x, northEcef.xyz.y,northEcef.xyz.z);
+
+        vDown -= vOrigin;
+        vNorth -= vOrigin;
+
+        vDown.normalize();
+        vNorth.normalize();
+
+        std::vector<std::array<float, 3>> viewDirectionsECEF(_nSamples);
+
+        for (int i = 0; i < _nSamples; i++) {
+            Eigen::Vector3d vec(viewDirectionsSensor[i][0], viewDirectionsSensor[i][1], viewDirectionsSensor[i][2]);
+            Eigen::Vector3d transformed = StereoVision::Geometry::angleAxisRotate(sensor2ecef.r, vec);
+
+            viewDirectionsECEF[i] = std::array<float, 3>{float(transformed.x()), float(transformed.y()), float(transformed.z())};
+        }
+
+        qint64 read = tmpProjections.read(reinterpret_cast<char*>(&projectedCoordinates.atUnchecked(0,0)),
+                                          projectedCoordinates.flatLenght()*sizeof (float));
+
+        if (read != projectedCoordinates.flatLenght()*sizeof (float)) {
+            out << "Projection read error" << Qt::endl;
+            return false;
+        }
+
+        for (int pt = 0; pt < _nSamples; pt++) {
+
+            float dsm_i = projectedCoordinates.valueUnchecked(pt,0);
+            float dsm_j = projectedCoordinates.valueUnchecked(pt,1);
+
+            Eigen::Vector3d dmsCoord(dsm_j, dsm_i,1);
+            Eigen::Vector3d mapCoord = dsmToMap*dmsCoord;
+
+            constexpr auto Kernel = StereoVision::Interpolation::pyramidFunction<double,2>;
+            constexpr int radius = 1;
+
+            double z = StereoVision::Interpolation::interpolateValue<2,double, Kernel, radius>
+                    (_terrain.raster, {dsm_i, dsm_j});
+
+            data.atUnchecked(pt,i,0) = mapCoord.x();
+            data.atUnchecked(pt,i,1) = mapCoord.y();
+            data.atUnchecked(pt,i,2) = z;
+            avgHeight += z;
+
+            min_x = std::min(mapCoord.x(), min_x);
+            max_x = std::max(mapCoord.x(), max_x);
+            min_y = std::min(mapCoord.y(), min_y);
+            max_y = std::max(mapCoord.y(), max_y);
+            min_z = std::min(z, min_z);
+            max_z = std::max(z, max_z);
+
+            double planeHeight = originInTerrain.xyz.z - z;
+
+            Eigen::Vector3d viewDir(viewDirectionsECEF[i][0],viewDirectionsECEF[i][1],viewDirectionsECEF[i][2]);
+            viewDir.normalize();
+            Eigen::Vector3d horizontal = viewDir - viewDir.dot(vDown)*vDown;
+
+            double dot = horizontal.dot(vNorth);
+            double det = horizontal.cross(vNorth).dot(-vDown);
+
+            double zenith = std::acos(viewDir.dot(vDown));
+            double heading = std::atan2(det, dot);
+
+            if (heading < 0) {
+                heading += 2*M_PI;
+            }
+
+            angles.atUnchecked(pt,i,0) = std::round(zenith/M_PI *180*100);
+            angles.atUnchecked(pt,i,1) = std::round(heading/M_PI *180*10);
+            angles.atUnchecked(pt,i,2) = std::round(planeHeight);
+
+
+        }
+    }
+    out << "\tComputed the data in dsm frame!" << Qt::endl;
+
+    QString outCrs = QString::fromStdString(_terrain.crsInfos);
+
+
+    proj_destroy(ecef2terrain);
+    proj_destroy(geo2ecef);
+    proj_destroy(ecef2geo);
+    proj_context_destroy(ctx);
+
+    avgHeight /= (nLines*_nSamples);
+
+    QString headerFileName = QString("bilProj%1.hdr").arg(bilId);
+    QString bsqFileName = QString("bilProj%1.bsq").arg(bilId);
+
+    QString anglesHeaderFileName = QString("bilProj%1_sca.hdr").arg(bilId);
+    QString anglesBsqFileName = QString("bilProj%1_sca.bsq").arg(bilId);
+
+    QDir outDir(exportPath);
+
+    QString headerFilePath = outDir.filePath(headerFileName);
+    QString bsqFilePath = outDir.filePath(bsqFileName);
+
+    QString anglesHeaderFilePath = outDir.filePath(anglesHeaderFileName);
+    QString anglesBsqFilePath = outDir.filePath(anglesBsqFileName);
+
+    QFile headerFile(headerFilePath);
+
+    ok = headerFile.open(QFile::WriteOnly|QFile::Text);
+
+    if (!ok) {
+        out << "Could not write header file: " << headerFilePath << Qt::endl;
+        return false;
+    }
+
+    QTextStream hdrOut(&headerFile);
+
+    hdrOut << "ENVI" << "\n";
+    hdrOut << "description = {Steviapp image projection geometry file, average scene elevation = " << QString("%1").arg(avgHeight, 0, 'f', 2) << "}" << "\n";
+    hdrOut << "samples = " << _nSamples << "\n";
+    hdrOut << "lines   = " << nLines << "\n";
+    hdrOut << "bands   = 3" << "\n";
+    hdrOut << "header offset = 0" << "\n";
+    hdrOut << "file type = ENVI Standard" << "\n";
+    hdrOut << "data type = 5" << "\n";
+    hdrOut << "interleave = BSQ" << "\n";
+    hdrOut << "sensor type = " << "\n";
+    hdrOut << "byte order = 0" << "\n";
+    hdrOut << "x start =  1" << "\n";
+    hdrOut << "y start =  1" << "\n";
+    hdrOut << "band names = {IGM X Map, IGM Y Map, IGM Z Map}" << "\n";
+
+    hdrOut << "xrange = {" << min_x << ", " << max_x << "}" << "\n";
+    hdrOut << "yrange = {" << min_y << ", " << max_y << "}" << "\n";
+    hdrOut << "zrange = {" << min_z << ", " << max_z << "}" << "\n";
+    hdrOut << "coordinate_system = " << outCrs << Qt::flush;
+
+    QFile anglesHeaderFile(anglesHeaderFilePath);
+
+    ok = anglesHeaderFile.open(QFile::WriteOnly|QFile::Text);
+
+    if (!ok) {
+        out << "Could not write header file: " << anglesHeaderFilePath << Qt::endl;
+        return false;
+    }
+
+    QTextStream anglesHdrOut(&anglesHeaderFile);
+
+    anglesHdrOut << "ENVI" << "\n";
+    anglesHdrOut << "description = {Steviapp image projection viewpoint file}" << "\n";
+    anglesHdrOut << "samples = " << _nSamples << "\n";
+    anglesHdrOut << "lines   = " << nLines << "\n";
+    anglesHdrOut << "bands   = 3" << "\n";
+    anglesHdrOut << "header offset = 0" << "\n";
+    anglesHdrOut << "file type = ENVI Standard" << "\n";
+    anglesHdrOut << "data type = 3" << "\n";
+    anglesHdrOut << "interleave = BSQ" << "\n";
+    anglesHdrOut << "sensor type = " << "\n";
+    anglesHdrOut << "byte order = 0" << "\n";
+    anglesHdrOut << "band names = {Zenithx100, Azimuthx10, HeightM}" << Qt::flush;
+
+
+    QFile bsqFile(bsqFilePath);
+
+    ok = bsqFile.open(QFile::WriteOnly);
+
+    if (!ok) {
+        out << "Could not write bsq file: " << bsqFilePath << Qt::endl;
+        return false;
+    }
+
+    bsqFile.write(reinterpret_cast<char*>(&data.atUnchecked(0,0,0)),
+                         data.flatLenght()*sizeof (double));
+
+
+    QFile anglesBsqFile(anglesBsqFilePath);
+
+    ok = anglesBsqFile.open(QFile::WriteOnly);
+
+    if (!ok) {
+        out << "Could not write bsq file: " << anglesBsqFilePath << Qt::endl;
+        return false;
+    }
+
+    anglesBsqFile.write(reinterpret_cast<char*>(&angles.atUnchecked(0,0,0)),
+                         angles.flatLenght()*sizeof (double));
+
+
+    return true;
 }
 bool RectifyBilSeqToOrthoSteppedProcess::computeProjectedGrid() {
 
