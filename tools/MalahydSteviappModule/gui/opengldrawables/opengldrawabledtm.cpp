@@ -329,7 +329,7 @@ void OpenGlDrawableDtm::setDtm(InputDtm* inputDtmBlock) {
         return;
     }
 
-    auto rasterDataOpt = readGeoRasterData<float,2>(inputDtmBlock->getDataSource().toStdString());
+    auto rasterDataOpt = inputDtmBlock->dtmData();
 
     if (!rasterDataOpt.has_value()) {
         return;

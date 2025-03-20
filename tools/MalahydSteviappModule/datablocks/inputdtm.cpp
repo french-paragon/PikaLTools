@@ -26,6 +26,19 @@ void InputDtm::setDataSource(QString const& source) {
     }
 }
 
+QString InputDtm::getCrsOverride() const {
+    return _crs_override;
+}
+void InputDtm::setCrsOverride(QString const& crsOverride) {
+    if (crsOverride != _crs_override) {
+        _crs_override = crsOverride;
+        if (_dtmDataCache.has_value()) {
+            _dtmDataCache.value().crsInfos = _crs_override.toStdString();
+        }
+        Q_EMIT crsOverrideChanged();
+    }
+}
+
 QVariant InputDtm::minHeight() const {
     if (_minHeight.has_value()) {
         return _minHeight.value();
@@ -92,10 +105,16 @@ void InputDtm::setMaxHeight(QVariant max) {
 
 std::optional<StereoVisionApp::Geo::GeoRasterData<float, 2>> InputDtm::dtmData() const {
     if (_dtmDataCache.has_value()) {
+        if (!_crs_override.isEmpty()) {
+            _dtmDataCache.value().crsInfos = _crs_override.toStdString();
+        }
         return _dtmDataCache;
     }
 
     _dtmDataCache = readGeoRasterData<float,2>(getDataSource().toStdString());
+    if (!_crs_override.isEmpty()) {
+        _dtmDataCache.value().crsInfos = _crs_override.toStdString();
+    }
     return _dtmDataCache;
 }
 
@@ -253,6 +272,7 @@ Eigen::Array2Xf InputDtm::getDtmLandmarksCoordinates(QVector<qint64> ids) const 
 QJsonObject InputDtm::encodeJson() const {
     QJsonObject obj;
     obj.insert("datasource", _dataSource);
+    obj.insert("crsoverride", _crs_override);
 
     if (_minHeight.has_value()) {
         obj.insert("minHeight", _minHeight.value());
@@ -280,6 +300,12 @@ void InputDtm::configureFromJson(QJsonObject const& data) {
 
     if (data.contains("datasource")) {
         _dataSource = data.value("datasource").toString();
+    }
+
+    if (data.contains("crsoverride")) {
+        _crs_override = data.value("crsoverride").toString();
+    } else {
+        _crs_override = "";
     }
 
     if (data.contains("minHeight")) {
@@ -310,6 +336,18 @@ void InputDtm::configureFromJson(QJsonObject const& data) {
 void InputDtm::extendDataModel() {
 
     constexpr auto NoValueSignal = StereoVisionApp::ItemDataModel::ItemPropertyDescription::NoValueSignal;
+
+    StereoVisionApp::ItemDataModel::Category* i = _dataModel->addCategory(tr("Dtm infos"));
+
+    i->addCatProperty<QString, InputDtm, false, NoValueSignal> (tr("File"),
+                                                                &InputDtm::getDataSource,
+                                                                nullptr,
+                                                                &InputDtm::dataSourceChanged);
+
+    i->addCatProperty<QString, InputDtm, true, NoValueSignal> (tr("Crs override"),
+                                                                &InputDtm::getCrsOverride,
+                                                                &InputDtm::setCrsOverride,
+                                                                &InputDtm::crsOverrideChanged);
 
     StereoVisionApp::ItemDataModel::Category* p = _dataModel->addCategory(tr("Dtm boundaries"));
 

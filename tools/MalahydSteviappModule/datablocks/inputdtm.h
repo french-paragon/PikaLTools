@@ -26,6 +26,9 @@ public:
     QString getDataSource() const;
     void setDataSource(QString const& source);
 
+    QString getCrsOverride() const;
+    void setCrsOverride(QString const& crsOverride);
+
     QVariant minHeight() const;
     void setMinHeight(QVariant minHeight);
 
@@ -50,6 +53,7 @@ Q_SIGNALS:
     void pointRemoved(qint64 pt);
 
     void dataSourceChanged();
+    void crsOverrideChanged();
 
     void minHeightChanged();
     void maxHeightChanged();
@@ -62,6 +66,7 @@ protected:
     void extendDataModel();
 
     QString _dataSource;
+    QString _crs_override;
     std::optional<float> _minHeight;
     std::optional<float> _maxHeight;
 
