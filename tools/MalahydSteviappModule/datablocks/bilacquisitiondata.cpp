@@ -411,6 +411,7 @@ double BilSequenceAcquisitionData::timeScale() const {
 void BilSequenceAcquisitionData::setTimeScale(double timeScale) {
     if (_timeScale != timeScale) {
         _timeScale = timeScale;
+        std::fill(_loadedTimes.begin(), _loadedTimes.end(), false);
         Q_EMIT timeScaleChanged();
     }
 }
@@ -421,6 +422,7 @@ double BilSequenceAcquisitionData::timeDelta() const {
 void BilSequenceAcquisitionData::setTimeDelta(double timeDelta) {
     if (_timeDelta != timeDelta) {
         _timeDelta = timeDelta;
+        std::fill(_loadedTimes.begin(), _loadedTimes.end(), false);
         Q_EMIT timeDeltaChanged();
     }
 }
