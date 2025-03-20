@@ -64,6 +64,10 @@ bool BilSequenceSBAModule::addGraphReductorVariables(StereoVisionApp::Project *c
             continue;
         }
 
+        if (!seq->isEnabled()) {
+            continue;
+        }
+
         graphReductor->insertItem(seqId, 0);
     }
 
@@ -84,6 +88,10 @@ bool BilSequenceSBAModule::addGraphReductorObservations(StereoVisionApp::Project
         BilSequenceAcquisitionData* seq = currentProject->getDataBlock<BilSequenceAcquisitionData>(seqId);
 
         if (seq == nullptr) {
+            continue;
+        }
+
+        if (!seq->isEnabled()) {
             continue;
         }
 
