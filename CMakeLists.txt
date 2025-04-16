@@ -24,7 +24,7 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-find_library(QCUSTOMPLOT_LIBRARY NAMES qcustomplot)
+find_library(QCUSTOMPLOT_LIBRARY NAMES qcustomplot QCustomPlot)
 
 if (NOT QCUSTOMPLOT_LIBRARY)
     message(SEND_ERROR "QCustomPlot not found")

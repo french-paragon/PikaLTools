@@ -16,6 +16,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <cstdint>
 
 constexpr int LineAxis = 0;
 constexpr int SamplesAxis = 1;
