@@ -11,7 +11,7 @@
 
 #include "cost_functors/pinholepushbroomuvprojector.h"
 
-#include <ceres/normal_prior.h>
+#include <steviapp/sparsesolver/costfunctors/fixedsizenormalprior.h>
 
 namespace PikaLTools {
 

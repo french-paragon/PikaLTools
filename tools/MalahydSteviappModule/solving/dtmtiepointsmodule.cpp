@@ -5,7 +5,7 @@
 #include <steviapp/datablocks/landmark.h>
 
 #include <proj.h>
-#include <ceres/normal_prior.h>
+#include <steviapp/sparsesolver/costfunctors/fixedsizenormalprior.h>
 
 namespace PikaLTools {
 
@@ -223,8 +223,7 @@ bool DtmTiePointsModule::init(StereoVisionApp::ModularSBASolver* solver, ceres::
                 vecPrior = currentProject->ecef2local().cast<double>()*vecPrior;
             }
 
-            ceres::Vector m;
-            m.resize(3);
+            Eigen::Vector3d m;
 
             m[0] = vecPrior.x();
             m[1] = vecPrior.y();
@@ -236,9 +235,9 @@ bool DtmTiePointsModule::init(StereoVisionApp::ModularSBASolver* solver, ceres::
             stiffness(1,1) = 1;
             stiffness(2,2) = 1;
 
-            ceres::NormalPrior* normalPrior = new ceres::NormalPrior(stiffness, m);
+            StereoVisionApp::FixedSizeNormalPrior<3,3>* normalPrior = new StereoVisionApp::FixedSizeNormalPrior<3,3>(stiffness, m);
 
-            ceres::NormalPrior* errorFunc = new ceres::NormalPrior(Eigen::Matrix3d::Identity(), m);
+            StereoVisionApp::FixedSizeNormalPrior<3,3>* errorFunc = new StereoVisionApp::FixedSizeNormalPrior<3,3>(Eigen::Matrix3d::Identity(), m);
 
             lmNode->pos[0] = m[0];
             lmNode->pos[1] = m[1];
