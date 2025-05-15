@@ -21,6 +21,7 @@ bool showLcfTrajectory(BilSequenceAcquisitionData *bilSequence);
 bool showBilImage(BilSequenceAcquisitionData *bilSequence);
 
 bool exportBilLandmarks(BilSequenceAcquisitionData *bilSequence, QString const& outFile = "");
+bool exportBilRectifiedLandmarks(BilSequenceAcquisitionData *bilSequence, bool optimized = true, QString const& outFile = "");
 
 bool computeOrthophoto(BilSequenceAcquisitionData *bilSequence, InputDtm* inputDtm = nullptr, const QString &outFile = "");
 

@@ -11,6 +11,12 @@
 #include <QAction>
 #include <QMessageBox>
 #include <QMenu>
+#include <QDialog>
+#include <QCheckBox>
+#include <QLabel>
+#include <QFormLayout>
+#include <QDialogButtonBox>
+#include <QComboBox>
 
 namespace PikaLTools {
 
@@ -74,7 +80,44 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
     QAction* export_landmarks = new QAction(tr("Export landmarks to csv"), parent);
 
     connect(export_landmarks, &QAction::triggered, [bilSeq] () {
-        exportBilLandmarks(bilSeq);
+
+        QDialog exportOptions;
+        QFormLayout layout(&exportOptions);
+
+        QComboBox exportBox(&exportOptions);
+        exportBox.addItem(QObject::tr("Unrectified"), false);
+        exportBox.addItem(QObject::tr("Rectified"), true);
+        QCheckBox optimizedBox(&exportOptions);
+
+        layout.addRow(QObject::tr("Export:"), &exportBox);
+        layout.addRow(QObject::tr("Optimized:"), &optimizedBox);
+
+        QDialogButtonBox buttonBox(&exportOptions);
+
+        buttonBox.addButton(QDialogButtonBox::StandardButton::Ok);
+        buttonBox.addButton(QDialogButtonBox::StandardButton::Cancel);
+
+        QObject::connect(&buttonBox, &QDialogButtonBox::accepted,
+                         &exportOptions, &QDialog::accept);
+        QObject::connect(&buttonBox, &QDialogButtonBox::rejected,
+                         &exportOptions, &QDialog::reject);
+
+        layout.addRow(&buttonBox);
+
+        int code = exportOptions.exec();
+
+        if (code != QDialog::Accepted) {
+            return;
+        }
+
+        bool rectified = exportBox.currentData().toBool();
+        bool optimized = optimizedBox.isChecked();
+
+        if (rectified) {
+            exportBilRectifiedLandmarks(bilSeq, optimized);
+        } else {
+            exportBilLandmarks(bilSeq);
+        }
     });
 
     QAction* view_files = new QAction(tr("View files on disk"), parent);

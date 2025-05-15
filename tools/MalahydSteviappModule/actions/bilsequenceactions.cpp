@@ -215,7 +215,7 @@ bool showBilImage(BilSequenceAcquisitionData *bilSequence) {
 
 
 
-bool exportBilLandmarks(BilSequenceAcquisitionData *bilSequence, QString const& pOutFile) {
+bool exportBilLandmarks(BilSequenceAcquisitionData *bilSequence,  QString const& pOutFile) {
 
 
     QString outFile = pOutFile;
@@ -269,6 +269,84 @@ bool exportBilLandmarks(BilSequenceAcquisitionData *bilSequence, QString const& 
     return true;
 }
 
+
+bool exportBilRectifiedLandmarks(BilSequenceAcquisitionData *bilSequence, bool optimized, QString const& pOutFile) {
+
+    if (bilSequence == nullptr) {
+        return false;
+    }
+
+    QString outFile = pOutFile;
+
+    StereoVisionApp::MainWindow* mw = StereoVisionApp::MainWindow::getActiveMainWindow();
+
+    if (mw != nullptr and outFile.isEmpty()) {
+        if (mw->isVisible()) {
+            //in case we have a gui
+            outFile = QFileDialog::getSaveFileName(mw, QObject::tr("Export landmarks to"), QString(), QObject::tr("csv Files (*.csv)"));
+
+            if (outFile.isEmpty()) {
+                return false;
+            }
+        }
+    }
+
+    QVector<BilSequenceLandmark*> landmarks;
+
+    for (qint64 id : bilSequence->listTypedSubDataBlocks(BilSequenceLandmark::staticMetaObject.className())) {
+        BilSequenceLandmark* lm = bilSequence->getBilSequenceLandmark(id);
+
+        if (lm == nullptr) {
+            continue;
+        }
+
+        landmarks.push_back(lm);
+    }
+
+    StereoVisionApp::PushBroomPinholeCamera* cam = bilSequence->getAssignedCamera();
+
+    if (cam == nullptr) {
+        return false;
+    }
+
+    double fLen = cam->fLen().value();
+
+    if (optimized) {
+        fLen = cam->optimizedFLen().valueOr(fLen);
+    }
+
+    QFile fout(outFile);
+
+    if (!fout.open(QFile::WriteOnly)) {
+        return false;
+    }
+
+    QTextStream out(&fout);
+
+    out << "#rectified landmark positions are equivalent to a pinhole camera without distortion" << "\n";
+    out << "#Camera focal lenght = " << fLen << " Principal point = (0,0)" << "\n";
+    out << "Landmark name" << "," << "Time (y coord)" << "," << "U coord" << "," << "V coord" << "\n";
+
+    for (BilSequenceLandmark* lm : landmarks) {
+
+        double time = bilSequence->getTimeFromPixCoord(lm->y().value());
+        std::array<double,3> direction = cam->getSensorViewDirection(lm->x().value(), optimized);
+
+        double u = direction[0]/direction[2] * fLen;
+        double v = direction[1]/direction[2] * fLen;
+
+        StereoVisionApp::Landmark* alm = lm->attachedLandmark();
+
+        if (alm == nullptr) {
+            continue;
+        }
+
+        out << alm->objectName() << "," << time << "," << u << "," << v << "\n";
+    }
+
+    fout.close();
+    return true;
+}
 
 bool computeOrthophoto(BilSequenceAcquisitionData *bilSequence, InputDtm* pInputDtm, QString const& pOutFile) {
 
@@ -704,17 +782,19 @@ bool initBilSequencesTiePoints() {
 
     out << Qt::endl;
 
-    out << "Processed points: ";
+    QVector<int> processedLmIdxs;
 
     for (qint64 lmId : selectedLmIdxs) {
 
         StereoVisionApp::Landmark* lm = project->getDataBlock<StereoVisionApp::Landmark>(lmId);
 
         if (lm == nullptr) {
+            out << "\t" << "Could no load lm: " << lmId << "! Skipping" << Qt::endl;
             continue;
         }
 
         if (lm->hasOptimizedParameters() or pointsInfos[lmId].size() < 2) { // initial solution already set
+            out << "\t" << "Solution already set for lm: " << lmId << "! Skipping" << Qt::endl;
             continue;
         }
 
@@ -744,6 +824,7 @@ bool initBilSequencesTiePoints() {
             BilSequenceAcquisitionData* bilSeq = project->getDataBlock<BilSequenceAcquisitionData>(lmInfos.seqId);
 
             if (bilSeq == nullptr) {
+                out << "\t" << "Could no load bil sequence " << lmInfos.seqId << " for lm: " << lmId << "! Skipping" << Qt::endl;
                 ok = false;
                 break;
             }
@@ -751,13 +832,16 @@ bool initBilSequencesTiePoints() {
             BilSequenceLandmark* lm = bilSeq->getBilSequenceLandmark(lmInfos.seqlmid);
 
             if (lm == nullptr) {
+                out << "\t" << "Could no load associated image landmark in sequence " << lmInfos.seqId << " for lm: " << lmId << "! Skipping" << Qt::endl;
                 ok = false;
                 break;
             }
 
-            std::optional<Eigen::Matrix<double,3,2>> rayInfos = lm->getRayInfos();
+            StereoVisionApp::StatusOptionalReturn<Eigen::Matrix<double,3,2>> rayInfos = lm->getRayInfos();
 
-            if (!rayInfos.has_value()) {
+            if (!rayInfos.isValid()) {
+                out << "\t" << "Could no load associated ray infos in sequence " << lmInfos.seqId << " for lm: " << lmId
+                    << "! Skipping (error message is \"" << rayInfos.errorMessage() << "\")" << Qt::endl;
                 ok = false;
                 break;
             }
@@ -782,8 +866,13 @@ bool initBilSequencesTiePoints() {
         constexpr bool optimized = true;
         lm->setPositionFromEcef(local2ecef*lsInteresctPos, optimized);
 
-        out << lmId << " ";
+        processedLmIdxs.push_back(lmId);
+    }
 
+    out << "Processed points: ";
+
+    for (int lmId : processedLmIdxs) {
+        out << lmId << " ";
     }
 
     out << Qt::endl;
