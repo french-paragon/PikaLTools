@@ -321,15 +321,19 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
                     lmName = lm->objectName();
                 }
 
+                QString loggingName = QString("Projection cost bil sequence id %1 (%2), landmark id %3 (%4)")
+                                          .arg(seq->internalId()).arg(seq->objectName())
+                                          .arg(lm->internalId()).arg(lm->objectName());
+
                 projectionModule->addProjectionCostFunction(lmNode->pos.data(),
                                                             closest.rAxis.data(),
                                                             closest.t.data(),
                                                             uv,
                                                             info,
-                                                            problem,
                                                             measure2node,
                                                             mountingNode->rAxis.data(),
-                                                            mountingNode->t.data());
+                                                            mountingNode->t.data(),
+                                                            loggingName);
 
 
             }
