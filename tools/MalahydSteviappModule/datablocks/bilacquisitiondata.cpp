@@ -364,6 +364,16 @@ double BilSequenceAcquisitionData::getFocalLen() const {
         return _sequenceInfos.fLen;
     }
 
+    StereoVisionApp::PushBroomPinholeCamera* cam =  getAssignedCamera();
+
+    if (cam != nullptr) {
+        StereoVisionApp::floatParameter fLen = cam->fLen();
+
+        if (fLen.isSet()) {
+            return fLen.value();
+        }
+    }
+
     std::optional<std::map<std::string, std::string>> headerData = readBilHeaderData(getBilFiles()[0].toStdString());
 
     if (!headerData.has_value()) {
