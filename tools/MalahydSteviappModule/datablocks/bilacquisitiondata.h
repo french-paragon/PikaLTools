@@ -7,6 +7,8 @@
 #include <steviapp/datablocks/floatparameter.h>
 #include <steviapp/datablocks/georeferenceddatablockinterface.h>
 
+#include <steviapp/utils/statusoptionalreturn.h>
+
 #include <MultidimArrays/MultidimArrays.h>
 
 #include <QMap>
@@ -300,7 +302,7 @@ public:
      * \param optimizationSpace if true the ray is given in the project optimization space, if false, in plain ECEF
      * \return a 3x2 matrix, the first column is the sensor position at the time corresponding to the point, the second is the ray direction from the sensor.
      */
-    std::optional<Eigen::Matrix<double,3,2>> getRayInfos(bool optimizationSpace = true);
+    StereoVisionApp::StatusOptionalReturn<Eigen::Matrix<double,3,2>> getRayInfos(bool optimizationSpace = true);
 
 Q_SIGNALS:
 

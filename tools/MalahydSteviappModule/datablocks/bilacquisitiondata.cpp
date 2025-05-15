@@ -1100,10 +1100,12 @@ QPointF BilSequenceLandmark::bilSequenceCoordinates() const {
     return QPointF(_x.value(), _y.value());
 }
 
-std::optional<Eigen::Matrix<double,3,2>> BilSequenceLandmark::getRayInfos(bool optimizationSpace) {
+StereoVisionApp::StatusOptionalReturn<Eigen::Matrix<double,3,2>> BilSequenceLandmark::getRayInfos(bool optimizationSpace) {
+
+    using RType = StereoVisionApp::StatusOptionalReturn<Eigen::Matrix<double,3,2>>;
 
     if (!_x.isSet() or !_y.isSet()) {
-        return std::nullopt;
+        return RType::error("Image landmark position is not set!");
     }
 
     StereoVision::Geometry::AffineTransform<double> ecef2optim(Eigen::Matrix3d::Identity(), Eigen::Vector3d::Zero());
@@ -1119,13 +1121,13 @@ std::optional<Eigen::Matrix<double,3,2>> BilSequenceLandmark::getRayInfos(bool o
     BilSequenceAcquisitionData* seqData = qobject_cast<BilSequenceAcquisitionData*>(parent());
 
     if (seqData == nullptr) {
-        return std::nullopt;
+        return RType::error("Could not load corresponding BilSequenceAcquisitionData!");
     }
 
     StereoVisionApp::Mounting* mounting = seqData->getAssignedMounting();
 
     if (mounting == nullptr) {
-        return std::nullopt;
+        return RType::error("Could not load associated mounting!");
     }
 
     StereoVision::Geometry::RigidBodyTransform<double> leverArm(Eigen::Vector3d(0,0,0), Eigen::Vector3d(0,0,0));
@@ -1157,21 +1159,29 @@ std::optional<Eigen::Matrix<double,3,2>> BilSequenceLandmark::getRayInfos(bool o
     StereoVisionApp::Trajectory* traj = seqData->getAssignedTrajectory();
 
     if (traj == nullptr) {
-        return std::nullopt;
+        return RType::error("Could not load associated trajectory!");
     }
 
     StereoVisionApp::StatusOptionalReturn<StereoVisionApp::Trajectory::TimeTrajectorySequence> posSeq =
             traj->loadTrajectorySequence(); //sequence is platform 2 ecef
 
     if (!posSeq.isValid()) {
-        return std::nullopt;
+        return RType::error("Could not load associated trajectory data!");
     }
 
     double time = seqData->getTimeFromPixCoord(_y.value());
     double flen = seqData->getFocalLen();
 
     if (flen < 0) {
-        return std::nullopt;
+        return RType::error("Invalid focal length!");
+    }
+
+    if (time < posSeq.value().sequenceStartTime()) {
+        return RType::error(qPrintable(QString("Image landmark time before sequence start time (%1 vs. %2)!").arg(time).arg(posSeq.value().sequenceStartTime())));
+    }
+
+    if (time > posSeq.value().sequenceEndTime()) {
+        return RType::error(qPrintable(QString("Image landmark time after sequence end time (%1 vs. %2)!").arg(time).arg(posSeq.value().sequenceEndTime())));
     }
 
     double midPoint = seqData->getBilWidth()/2;
