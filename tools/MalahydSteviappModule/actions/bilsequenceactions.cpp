@@ -737,8 +737,8 @@ bool initBilSequencesTiePoints() {
         return false;
     }
 
-    StereoVision::Geometry::AffineTransform<float> ecef2local = project->ecef2local();
-    StereoVision::Geometry::AffineTransform<float> local2ecef(ecef2local.R.transpose(),
+    StereoVision::Geometry::AffineTransform<double> ecef2local = project->ecef2local();
+    StereoVision::Geometry::AffineTransform<double> local2ecef(ecef2local.R.transpose(),
                                                               -ecef2local.R.transpose()*ecef2local.t);
 
     QVector<qint64> bilSeqIdxs = project->getIdsByClass(BilSequenceAcquisitionData::staticMetaObject.className());
@@ -861,7 +861,7 @@ bool initBilSequencesTiePoints() {
             continue;
         }
 
-        Eigen::Vector3f lsInteresctPos = A.matrix().colPivHouseholderQr().solve(b).cast<float>();
+        Eigen::Vector3d lsInteresctPos = A.matrix().colPivHouseholderQr().solve(b);
 
         constexpr bool optimized = true;
         lm->setPositionFromEcef(local2ecef*lsInteresctPos, optimized);
@@ -1570,14 +1570,14 @@ bool estimateTimeDeltaRough(BilSequenceAcquisitionData *bilSequence) {
 
         constexpr bool optimized = true;
         constexpr bool applyProjectLocalTransform = true;
-        std::optional<Eigen::Vector3f> optLmPos = lm->getOptimizableCoordinates(optimized, applyProjectLocalTransform);
+        std::optional<Eigen::Vector3d> optLmPos = lm->getOptimizableCoordinates(optimized, applyProjectLocalTransform);
 
         if (!optLmPos.has_value()) {
             out << "\tSkipping landmark without optimized position (id = " << lmid << ")" << Qt::endl;
             continue;
         }
 
-        Eigen::Vector3d lmPos = optLmPos.value().cast<double>();
+        Eigen::Vector3d lmPos = optLmPos.value();
 
         out << "\tStart treating bil landmark " << imlmid << " (lmid = " << lmid << " pos = " << lmPos.x() << " " << lmPos.y() << " " << lmPos.z() << ")" << Qt::endl;
 
@@ -1804,7 +1804,7 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
 
         constexpr bool optimized = true;
         constexpr bool applyProjectLocalTransform = true;
-        std::optional<Eigen::Vector3f> optLmPos = lm->getOptimizableCoordinates(optimized, applyProjectLocalTransform);
+        std::optional<Eigen::Vector3d> optLmPos = lm->getOptimizableCoordinates(optimized, applyProjectLocalTransform);
 
         if (!optLmPos.has_value()) {
             out << "\tSkipping landmark without optimized position " << lm->objectName() << " (id = " << lmid << ")" << Qt::endl;

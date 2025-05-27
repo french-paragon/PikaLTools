@@ -449,7 +449,7 @@ void OpenGlDrawableDtm::setDtm(InputDtm* inputDtmBlock) {
                        &vertices_pos.atUnchecked(0,0,2), 3*sizeof(double), nPoints,
                        nullptr,0,0); //reproject to ecef coordinates
 
-    StereoVision::Geometry::AffineTransform<float> transformation = project->ecef2local();
+    StereoVision::Geometry::AffineTransform<float> transformation = project->ecef2local().cast<float>();
 
 
     Multidim::Array<float,3> vertices_local_pos({outShape[0], outShape[1], 3}, {3*outShape[1],3,1});

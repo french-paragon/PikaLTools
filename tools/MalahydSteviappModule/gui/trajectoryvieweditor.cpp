@@ -262,7 +262,7 @@ void TrajectoryViewEditor::setComparisonTrajectory(const ComparisonTrajectory &c
         return;
     }
 
-    StereoVision::Geometry::AffineTransform<float> transformation = project->ecef2local();
+    StereoVision::Geometry::AffineTransform<float> transformation = project->ecef2local().cast<float>();
 
     std::vector<Eigen::Vector3f> localTrajectory;
     localTrajectory.reserve(trajectory.size());
@@ -361,7 +361,7 @@ void TrajectoryViewEditor::setDtm(InputDtm* bilSequence) {
                        &vertices_pos.atUnchecked(0,0,2), 3*sizeof(double), nPoints,
                        nullptr,0,0); //reproject to ecef coordinates
 
-    StereoVision::Geometry::AffineTransform<float> transformation = project->ecef2local();
+    StereoVision::Geometry::AffineTransform<float> transformation = project->ecef2local().cast<float>();
 
 
     Multidim::Array<float,3> vertices_local_pos({inShape[0], inShape[1], 3}, {3*inShape[1],3,1});
