@@ -128,6 +128,14 @@ bool BilSequenceSBAModule::setupParameters(StereoVisionApp::ModularSBASolver* so
             continue;
         }
 
+        if (!solver->itemIsObservable(seqId)) {
+            continue;
+        }
+
+        if (!seq->isEnabled()) {
+            continue;
+        }
+
         //check if a previous module assigned a projection module already to the frame.
         StereoVisionApp::ModularSBASolver::ProjectorModule* projectionModule = solver->getProjectorForFrame(seqId);
 
@@ -196,6 +204,14 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
         BilSequenceAcquisitionData* seq = currentProject->getDataBlock<BilSequenceAcquisitionData>(seqId);
 
         if (seq == nullptr) {
+            continue;
+        }
+
+        if (!solver->itemIsObservable(seqId)) {
+            continue;
+        }
+
+        if (!seq->isEnabled()) {
             continue;
         }
 
