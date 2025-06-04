@@ -6,6 +6,7 @@
 #include <steviapp/datablocks/landmark.h>
 #include <steviapp/datablocks/floatparameter.h>
 #include <steviapp/datablocks/georeferenceddatablockinterface.h>
+#include <steviapp/datablocks/observationssummaryinterface.h>
 
 #include <steviapp/utils/statusoptionalreturn.h>
 
@@ -42,9 +43,10 @@ class BilSequenceLandmark;
 /*!
  * \brief The BilSequenceAcquisitionData class represent a bill sequence, along with a level arm and boresight
  */
-class BilSequenceAcquisitionData : public StereoVisionApp::DataBlock
+class BilSequenceAcquisitionData : public StereoVisionApp::DataBlock, StereoVisionApp::ObservationsSummaryInterface
 {
     Q_OBJECT
+    Q_INTERFACES(StereoVisionApp::ObservationsSummaryInterface)
 
 public:
 
@@ -120,6 +122,8 @@ public:
     StereoVisionApp::Mounting* getAssignedMounting() const;
     QString getAssignedMountingName() const;
     void assignMounting(qint64 mountingId);
+
+    virtual QVector<GenericObservation> observationsInfos(QVector<qint64> const& target) const override;
 
     template<typename T>
     Multidim::Array<T, 3> getBilData(int startLine, int lastLine, std::vector<int> const& channels = {}) const {

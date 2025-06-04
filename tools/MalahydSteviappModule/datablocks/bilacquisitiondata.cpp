@@ -557,6 +557,37 @@ void BilSequenceAcquisitionData::assignMounting(qint64 mountingId){
 
 }
 
+QVector<StereoVisionApp::ObservationsSummaryInterface::GenericObservation> BilSequenceAcquisitionData::observationsInfos(QVector<qint64> const& target) const {
+
+    QVector<GenericObservation> ret;
+
+    if (target.size() == 1) {
+        qint64 id = target[0];
+
+        QVector<qint64> imlmids = listTypedSubDataBlocks(BilSequenceLandmark::staticMetaObject.className());
+
+        ret.reserve(imlmids.size());
+
+        if (id == _assignedTrajectory) {
+            for (qint64 imlmid : imlmids) {
+                BilSequenceLandmark* blm = getBilSequenceLandmark(imlmid);
+
+                if (blm == nullptr) {
+                    continue;
+                }
+
+                ret.push_back(TimedObservation{blm->internalUrl(), getTimeFromPixCoord(blm->y().value())});
+            }
+
+            return ret;
+        }
+
+        return ret;
+    }
+
+    return ret;
+}
+
 Multidim::Array<float, 3> BilSequenceAcquisitionData::getFloatBilData(int startLine, int lastLine, std::vector<int> const& channels) const {
 
     if (sequenceMatchType<int8_t>()) {
