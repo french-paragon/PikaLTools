@@ -742,8 +742,8 @@ bool initBilSequencesTiePoints() {
     }
 
     StereoVision::Geometry::AffineTransform<double> ecef2local = project->ecef2local();
-    StereoVision::Geometry::AffineTransform<double> local2ecef(ecef2local.R.transpose(),
-                                                              -ecef2local.R.transpose()*ecef2local.t);
+    StereoVision::Geometry::AffineTransform<double> local2ecef(ecef2local.R.inverse(),
+                                                              -ecef2local.R.inverse()*ecef2local.t);
 
     QVector<qint64> bilSeqIdxs = project->getIdsByClass(BilSequenceAcquisitionData::staticMetaObject.className());
 
@@ -1771,7 +1771,7 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
     }
 
     StereoVisionApp::StatusOptionalReturn<StereoVisionApp::Trajectory::TimeTrajectorySequence> optInitialTrajData =
-        trajectory->loadTrajectoryProjectLocalFrameSequence();
+        StereoVisionApp::StatusOptionalReturn<StereoVisionApp::Trajectory::TimeTrajectorySequence>::error(""); // = trajectory->loadTrajectoryProjectLocalFrameSequence();
 
     constexpr bool subsample = false;
     StereoVisionApp::StatusOptionalReturn<StereoVisionApp::Trajectory::TimeTrajectorySequence> optTrajData =
