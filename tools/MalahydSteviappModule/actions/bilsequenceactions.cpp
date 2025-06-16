@@ -26,6 +26,10 @@
 #include <steviapp/sparsesolver/sbamodules/imagealignementsbamodule.h>
 #include <steviapp/sparsesolver/sbamodules/correspondencessetsbamodule.h>
 #include <steviapp/sparsesolver/sbamodules/localcoordinatesystemsbamodule.h>
+#include <steviapp/sparsesolver/sbamodules/pinholecameraprojectormodule.h>
+
+#include "steviapp/sparsesolver/costfunctors/modularuvprojection.h"
+#include "steviapp/sparsesolver/costfunctors/posedecoratorfunctors.h"
 
 #include <StereoVision/geometry/core.h>
 #include <StereoVision/geometry/rotations.h>
@@ -1700,9 +1704,43 @@ bool estimateTimeDeltaRough(BilSequenceAcquisitionData *bilSequence) {
 
 bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
 
+    using UVCost = StereoVisionApp::InvertPose<StereoVisionApp::UV2ParametrizedXYZCost<StereoVisionApp::PinholePushbroomUVProjector,1,1,6,6>,0>;
+    using LeverArmCost = StereoVisionApp::LeverArm<UVCost,StereoVisionApp::Body2World|StereoVisionApp::Body2Sensor,0>;
+    using PoseTransformCost = StereoVisionApp::PoseTransform<UVCost,StereoVisionApp::PoseTransformDirection::SourceToInitial,0>;
+    using PoseTransformLeverArmCost = StereoVisionApp::PoseTransform<LeverArmCost,StereoVisionApp::PoseTransformDirection::SourceToInitial,0>;
+
+
+    QString outFilePath = "";
+    bool useCSVFormat = false;
+
+    StereoVisionApp::MainWindow* mw = StereoVisionApp::MainWindow::getActiveMainWindow();
+
+    if (mw != nullptr) {
+
+        outFilePath = QFileDialog::getSaveFileName(mw, QObject::tr("Save reprojection errors to"));
+
+        if (!outFilePath.isEmpty()) {
+            useCSVFormat = true;
+        }
+
+    }
+
     QTextStream out(stdout);
 
-    out << "Estimate bil sequence reprojections errors:" << Qt::endl;
+    QFile outFile(outFilePath);
+    if (!outFilePath.isEmpty()) {
+        bool ok = outFile.open(QFile::WriteOnly);
+
+        if (!ok) {
+            return false;
+        }
+
+        out.setDevice(&outFile);
+    }
+
+    if (!useCSVFormat) {
+        out << "Estimate bil sequence reprojections errors:" << Qt::endl;
+    }
 
     if (bilSequence == nullptr) {
         out << "\tNull sequence provided, aborting!" << Qt::endl;
@@ -1732,8 +1770,12 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
         return false;
     }
 
+    StereoVisionApp::StatusOptionalReturn<StereoVisionApp::Trajectory::TimeTrajectorySequence> optInitialTrajData =
+        trajectory->loadTrajectoryProjectLocalFrameSequence();
+
+    constexpr bool subsample = false;
     StereoVisionApp::StatusOptionalReturn<StereoVisionApp::Trajectory::TimeTrajectorySequence> optTrajData =
-            trajectory->optimizedTrajectory();
+            trajectory->optimizedTrajectory(subsample);
 
     if (!optTrajData.isValid()) {
         out << "\t Could not load trajectory data! Message is: " << optTrajData.errorMessage() << Qt::endl;
@@ -1781,7 +1823,50 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
         focalLenght = cam->fLen().value();
     }
 
+    double principalPoint = cam->opticalCenterX().value();
+    if (optimized) {
+        principalPoint = cam->optimizedOpticalCenterX().value();
+    }
+
+    std::array<double,3> leverArmOrientation = {body2sensor.r.x(), body2sensor.r.y(), body2sensor.r.z()};
+    std::array<double,3> leverArmPosition = {body2sensor.t.x(), body2sensor.t.y(), body2sensor.t.z()};
+
+    std::array<double,6> horizontalDistortion;
+    std::array<double,6> verticalDistortion;
+
+    if (optimized) {
+        horizontalDistortion = {cam->optimizedA0().value(),
+                                cam->optimizedA1().value(),
+                                cam->optimizedA2().value(),
+                                cam->optimizedA3().value(),
+                                cam->optimizedA4().value(),
+                                cam->optimizedA5().value()};
+        verticalDistortion = {cam->optimizedB0().value(),
+                                cam->optimizedB1().value(),
+                                cam->optimizedB2().value(),
+                                cam->optimizedB3().value(),
+                                cam->optimizedB4().value(),
+                                cam->optimizedB5().value()};
+    } else {
+        horizontalDistortion = {cam->a0().value(),
+                               cam->a1().value(),
+                               cam->a2().value(),
+                               cam->a3().value(),
+                               cam->a4().value(),
+                               cam->a5().value()};
+        verticalDistortion = {cam->b0().value(),
+                              cam->b1().value(),
+                              cam->b2().value(),
+                              cam->b3().value(),
+                              cam->b4().value(),
+                              cam->b5().value()};
+    }
+
     QVector<qint64> imlmids = bilSequence->listTypedSubDataBlocks(BilSequenceLandmark::staticMetaObject.className());
+
+    if (useCSVFormat) {
+        out << "Landmark(id),errorU,errorV" << Qt::endl;
+    }
 
     for (qint64 imlmid : imlmids) {
 
@@ -1811,37 +1896,75 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
             continue;
         }
 
+        Eigen::Vector3d& lmPos = optLmPos.value();
+
+        int nearestId = trajData.nearestNodeIndex(time);
         auto interpolablePose = trajData.getValueAtTime(time);
 
         StereoVision::Geometry::RigidBodyTransform<double> body2world =
-                StereoVision::Geometry::interpolateRigidBodyTransformOnManifold(interpolablePose.weigthLower,
-                                                                                interpolablePose.valLower,
-                                                                                interpolablePose.weigthUpper,
-                                                                                interpolablePose.valUpper);
+            StereoVision::Geometry::interpolateRigidBodyTransformOnManifold(
+            interpolablePose.weigthLower,
+            interpolablePose.valLower,
+            interpolablePose.weigthUpper,
+            interpolablePose.valUpper);
 
-        StereoVision::Geometry::RigidBodyTransform<double> world2sensor = body2sensor*body2world.inverse();
+        StereoVision::Geometry::RigidBodyTransform<double> measure2node;
 
-        int low = std::floor(blm->x().value());
-        int high = std::ceil(blm->x().value());
+        //compute the local offset instead of interpolating, to match what was happening when the data was initialized.
+        if (optInitialTrajData.isValid()) {
 
-        low = std::clamp<int>(low, 0, viewDirectionsSensor.size()-1);
-        high = std::clamp<int>(high, 0, viewDirectionsSensor.size()-1);
+            body2world = trajData[nearestId].val;
 
-        double alpha = 1 - (blm->x().value() - low);
+            auto& initialTraj = optInitialTrajData.value();
 
-        Eigen::Vector3d expectedLow = Eigen::Vector3d(viewDirectionsSensor[low][0], viewDirectionsSensor[low][1], viewDirectionsSensor[low][2]);
-        Eigen::Vector3d expectedHigh = Eigen::Vector3d(viewDirectionsSensor[high][0], viewDirectionsSensor[high][1], viewDirectionsSensor[high][2]);
-        Eigen::Vector3d expected = alpha*expectedLow + (1-alpha)*expectedHigh;
-        Eigen::Vector3d projected = world2sensor*optLmPos.value().cast<double>();
+            auto nodeInitialPose = initialTraj.getValueAtTime(trajData[nearestId].time);
+            auto measureInitialPose = initialTraj.getValueAtTime(time);
 
-        projected /= projected.z();
+            StereoVision::Geometry::RigidBodyTransform<double> node2worldInitial =
+                StereoVision::Geometry::interpolateRigidBodyTransformOnManifold
+                (nodeInitialPose.weigthLower, nodeInitialPose.valLower,
+                 nodeInitialPose.weigthUpper, nodeInitialPose.valUpper);
 
-        projected *= focalLenght;
+            StereoVision::Geometry::RigidBodyTransform<double> measure2worldInitial =
+                StereoVision::Geometry::interpolateRigidBodyTransformOnManifold
+                (measureInitialPose.weigthLower, measureInitialPose.valLower,
+                 measureInitialPose.weigthUpper, measureInitialPose.valUpper);
 
-        double errorU = expected[0] - projected[0];
-        double errorV = expected[1] - projected[1];
+            StereoVision::Geometry::RigidBodyTransform<double> measure2node =
+                node2worldInitial.inverse()*measure2worldInitial;
+        }
 
-        out << "\tLandmark " << lm->objectName() << "(" << lmid << "): error u = " << errorU << " error v = " << errorV << Qt::endl;
+        Eigen::Vector2d ptProjPos(blm->x().value(), 0);
+        Eigen::Matrix2d ptProjStiffness = Eigen::Matrix2d::Identity();
+
+        PoseTransformLeverArmCost projCost(measure2node,
+            new StereoVisionApp::PinholePushbroomUVProjector(cam->imWidth()), ptProjPos, ptProjStiffness);
+
+        std::array<double,3> poseOrientation = {body2world.r.x(), body2world.r.y(), body2world.r.z()};
+        std::array<double,3> posePosition = {body2world.t.x(), body2world.t.y(), body2world.t.z()};
+        std::array<double,3> pointData = {lmPos.x(), lmPos.y(), lmPos.z()};
+
+        std::array<double,2> residuals;
+
+        projCost(poseOrientation.data(),
+                 posePosition.data(),
+                 leverArmOrientation.data(),
+                 leverArmPosition.data(),
+                 pointData.data(),
+                 &focalLenght,
+                 &principalPoint,
+                 horizontalDistortion.data(),
+                 verticalDistortion.data(),
+                 residuals.data());
+
+        double errorU = residuals[0];
+        double errorV = residuals[1];
+
+        if (useCSVFormat) {
+            out << lm->objectName() << "(" << lmid << ")," << errorU << "," << errorV << Qt::endl;
+        } else {
+            out << "\tLandmark " << lm->objectName() << "(" << lmid << "): error u = " << errorU << " error v = " << errorV << Qt::endl;
+        }
 
     }
 
