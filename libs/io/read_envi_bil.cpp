@@ -186,46 +186,49 @@ Multidim::Array<float, 3> read_envi_bil_to_float(std::string const& filename) {
 }
 
 
-Multidim::Array<float, 3> read_bil_sequence_to_float(std::vector<std::string> const& filenames) {
+Multidim::Array<float, 3> read_bil_sequence_to_float(std::vector<std::string> const& filenames,
+                                                     std::optional<int> firstLine,
+                                                     std::optional<int> lastLine,
+                                                     std::vector<int> const& channels) {
 
     if (envi_bil_img_match_type<uint8_t>(filenames[0])) {
-        return read_bil_sequence<uint8_t>(filenames).cast<float>();
+        return read_bil_sequence<uint8_t>(filenames, firstLine, lastLine, channels).cast<float>();
     }
 
     if (envi_bil_img_match_type<int8_t>(filenames[0])) {
-        return read_bil_sequence<int8_t>(filenames).cast<float>();
+        return read_bil_sequence<int8_t>(filenames, firstLine, lastLine, channels).cast<float>();
     }
 
     if (envi_bil_img_match_type<uint16_t>(filenames[0])) {
-        return read_bil_sequence<uint16_t>(filenames).cast<float>();
+        return read_bil_sequence<uint16_t>(filenames, firstLine, lastLine, channels).cast<float>();
     }
 
     if (envi_bil_img_match_type<int16_t>(filenames[0])) {
-        return read_bil_sequence<int16_t>(filenames).cast<float>();
+        return read_bil_sequence<int16_t>(filenames, firstLine, lastLine, channels).cast<float>();
     }
 
     if (envi_bil_img_match_type<uint32_t>(filenames[0])) {
-        return read_bil_sequence<uint32_t>(filenames).cast<float>();
+        return read_bil_sequence<uint32_t>(filenames, firstLine, lastLine, channels).cast<float>();
     }
 
     if (envi_bil_img_match_type<int32_t>(filenames[0])) {
-        return read_bil_sequence<int32_t>(filenames).cast<float>();
+        return read_bil_sequence<int32_t>(filenames, firstLine, lastLine, channels).cast<float>();
     }
 
     if (envi_bil_img_match_type<uint64_t>(filenames[0])) {
-        return read_bil_sequence<uint64_t>(filenames).cast<float>();
+        return read_bil_sequence<uint64_t>(filenames, firstLine, lastLine, channels).cast<float>();
     }
 
     if (envi_bil_img_match_type<int64_t>(filenames[0])) {
-        return read_bil_sequence<int64_t>(filenames).cast<float>();
+        return read_bil_sequence<int64_t>(filenames, firstLine, lastLine, channels).cast<float>();
     }
 
     if (envi_bil_img_match_type<float>(filenames[0])) {
-        return read_bil_sequence<float>(filenames);
+        return read_bil_sequence<float>(filenames, firstLine, lastLine, channels);
     }
 
     if (envi_bil_img_match_type<double>(filenames[0])) {
-        return read_bil_sequence<double>(filenames).cast<float>();
+        return read_bil_sequence<double>(filenames, firstLine, lastLine, channels).cast<float>();
     }
 
     return Multidim::Array<float, 3>();

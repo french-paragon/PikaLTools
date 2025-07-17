@@ -605,7 +605,10 @@ Multidim::Array<T, 3> read_bil_sequence(std::vector<std::string> const& filename
 }
 
 Multidim::Array<float, 3> read_envi_bil_to_float(std::string const& filename);
-Multidim::Array<float, 3> read_bil_sequence_to_float(std::vector<std::string> const& filenames);
+Multidim::Array<float, 3> read_bil_sequence_to_float(std::vector<std::string> const& filenames,
+                                                     std::optional<int> firstLine = std::nullopt,
+                                                     std::optional<int> lastLine = std::nullopt,
+                                                     std::vector<int> const& channels = std::vector<int>());
 
 /*!
  * \brief read_envi_bil_times read the times infos
