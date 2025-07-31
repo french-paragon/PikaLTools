@@ -525,7 +525,7 @@ Multidim::Array<T, 3> read_bil_sequence(std::vector<std::string> const& filename
         image.seekg(0, std::ios::end);
         size_t n_bytes = image.tellg();
 
-        if (n_bytes != imgNLines*samples*bands*sizeof (T)) {
+        if (n_bytes != static_cast<size_t>(imgNLines)*samples*bands*sizeof (T)) {
             //invalid file size
             return Multidim::Array<T, 3>();
         }
