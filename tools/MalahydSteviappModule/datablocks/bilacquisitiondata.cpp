@@ -588,6 +588,69 @@ QVector<StereoVisionApp::ObservationsSummaryInterface::GenericObservation> BilSe
     return ret;
 }
 
+std::vector<int> BilSequenceAcquisitionData::assumedRgbChannels() const {
+
+    BilSequenceAcquisitionData::BilAcquisitionData data = getBilInfos().first();
+
+    QMap<QString, QString> headerData = data.headerData();
+
+    bool ok;
+
+    QVector<float> waveLengths;
+
+    if (headerData.contains("wavelength")) {
+        QString elements = headerData["wavelength"].mid(1,headerData["wavelength"].size()-2);
+        QStringList splittedElements = elements.split(",");
+        waveLengths.reserve(splittedElements.size());
+
+        for (QString const& element : splittedElements) {
+            bool ok;
+            float value = element.toFloat(&ok);
+
+            if (ok) {
+                waveLengths.push_back(value);
+            }
+        }
+    }
+
+    int nSpetrcalBands = headerData.value("bands", "0").toInt(&ok);
+
+    if (!ok) {
+        return std::vector<int>();
+    }
+
+    std::vector<int> channels = {nSpetrcalBands/4,
+                                 nSpetrcalBands/2,
+                                 nSpetrcalBands-nSpetrcalBands/4};
+
+    if (channels[2] >= nSpetrcalBands) {
+        channels[2] = nSpetrcalBands-1;
+    }
+
+    if (waveLengths.size() == nSpetrcalBands) {
+
+        std::array<float, 3> referenceWl = {630, 532, 465};
+        std::array<float, 3> currentWl = {waveLengths[channels[0]], waveLengths[channels[1]], waveLengths[channels[2]]};
+
+
+        for (int i = 0; i < waveLengths.size(); i++) {
+            for (int c = 0; c < 3; c++) {
+
+                float candDelta = std::fabs(waveLengths[i] - referenceWl[c]);
+                float currentDelta = std::fabs(currentWl[c] - referenceWl[c]);
+
+                if (candDelta < currentDelta) {
+                    currentWl[c] = waveLengths[i];
+                    channels[c] = i;
+                }
+            }
+        }
+
+    }
+
+    return channels;
+}
+
 Multidim::Array<float, 3> BilSequenceAcquisitionData::getFloatBilData(int startLine, int lastLine, std::vector<int> const& channels) const {
 
     if (sequenceMatchType<int8_t>()) {

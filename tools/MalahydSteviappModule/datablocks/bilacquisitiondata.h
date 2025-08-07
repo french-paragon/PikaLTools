@@ -125,6 +125,8 @@ public:
 
     virtual QVector<GenericObservation> observationsInfos(QVector<qint64> const& target) const override;
 
+    std::vector<int> assumedRgbChannels() const;
+
     template<typename T>
     Multidim::Array<T, 3> getBilData(int startLine, int lastLine, std::vector<int> const& channels = {}) const {
 

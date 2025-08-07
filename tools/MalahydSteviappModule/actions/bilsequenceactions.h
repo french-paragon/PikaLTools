@@ -63,6 +63,8 @@ bool exportTrajectoryWithBilMounting(BilSequenceAcquisitionData *bilSequence);
 
 bool exportImageGeometry(BilSequenceAcquisitionData *bilSequence);
 
+bool estimateBilShift(BilSequenceAcquisitionData *bilSequence);
+
 } // namespace PikaLTools
 
 #endif // BILSEQUENCEACTIONS_H

@@ -6,9 +6,11 @@ set(LIB_SRC scanlinecleaner.h
     pushbroomprojections.h
     pushbroomprojections.cpp
     darkframestools.h
-    darkframestools.cpp)
+    darkframestools.cpp
+    relativeoffsetsestimator.h)
 
 add_library(
     ${PROCESSING_LIB}
     ${LIB_SRC}
+    relativeoffsetsestimator.h
 )

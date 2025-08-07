@@ -36,6 +36,7 @@
 #include <StereoVision/geometry/sensorframesconvention.h>
 #include <StereoVision/io/image_io.h>
 #include <StereoVision/interpolation/interpolation.h>
+#include <StereoVision/imageProcessing/colorConversions.h>
 
 #include "../datablocks/bilacquisitiondata.h"
 #include "../datablocks/inputdtm.h"
@@ -57,6 +58,7 @@
 
 #include "processing/texturegeneration.h"
 #include "processing/pushbroomprojections.h"
+#include "processing/relativeoffsetsestimator.h"
 
 #include <QList>
 #include <QDir>
@@ -1946,6 +1948,7 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
 
         std::array<double,2> residuals;
 
+
         projCost(poseOrientation.data(),
                  posePosition.data(),
                  leverArmOrientation.data(),
@@ -1956,6 +1959,12 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
                  horizontalDistortion.data(),
                  verticalDistortion.data(),
                  residuals.data());
+
+        std::cout << "Input for projection: \"" << lm->objectName().toStdString() << "\"";
+        std::cout << "\" r = " << poseOrientation[0] << "," << poseOrientation[1] << "," << poseOrientation[2];
+        std::cout << " t = " << posePosition[0] << "," << posePosition[1] << "," << posePosition[2];
+        std::cout << " lm = " << pointData[0] << "," << pointData[1] << "," << pointData[2];
+        std::cout << " error = " << residuals[0] << "," << residuals[1] << std::endl;
 
         double errorU = residuals[0];
         double errorV = residuals[1];
@@ -2115,6 +2124,49 @@ bool exportImageGeometry(BilSequenceAcquisitionData *bilSequence) {
 
     t->start();
     processor->run();
+
+    return true;
+}
+
+bool estimateBilShift(BilSequenceAcquisitionData *bilSequence) {
+
+    if (bilSequence == nullptr) {
+        return false;
+    }
+
+    QWidget* mw = StereoVisionApp::MainWindow::getActiveMainWindow();
+
+    QString dirPath = QStandardPaths::writableLocation(QStandardPaths::StandardLocation::PicturesLocation);
+    QString filter = BilSequenceAcquisitionData::tr("Tiff Image (*.tiff)");
+
+    QString saveFile = QFileDialog::getSaveFileName(mw, BilSequenceAcquisitionData::tr("Save rectified sequence to"), dirPath, filter);
+
+    if (saveFile.isEmpty()) {
+        return true;
+    }
+
+    if (!saveFile.endsWith(".tif", Qt::CaseInsensitive) and
+        !saveFile.endsWith(".tiff", Qt::CaseInsensitive)) {
+        saveFile += ".tiff";
+    }
+
+    int nLines = bilSequence->nLinesInSequence();
+
+    std::vector<int> channels = bilSequence->assumedRgbChannels();
+
+    Multidim::Array<float, 3> data = bilSequence->getFloatBilData(0, nLines, channels);
+
+    if (data.empty()) {
+        return false;
+    }
+
+    std::vector<float> shifts = estimatePushBroomHorizontalShiftCorr(data);
+
+    Multidim::Array<float, 3> rectified = computeHorizontallyRectifiedImage(data, shifts);
+
+    Multidim::Array<float, 3> normalized = StereoVision::ImageProcessing::normalizeImageChannels(rectified);
+
+    StereoVision::IO::writeImage<float>(saveFile.toStdString(), normalized);
 
     return true;
 }
