@@ -168,7 +168,23 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
         exportTrajectoryWithBilMounting(bilSeq);
     });
 
-    return {assignToCamera, assignTraj2Seq, assignToMounting, view_bil_cube, view_files, export_landmarks, compute_orthophoto, exportIgm, compute_corrMat, analyzeShift, estimateTime, analyzeProj, exportTraj};
+    QList<QAction*> ret{assignToCamera,
+                         assignTraj2Seq,
+                         assignToMounting,
+                         view_bil_cube,
+                         view_files,
+                         export_landmarks,
+                         compute_orthophoto,
+                         exportIgm,
+                         compute_corrMat,
+                         analyzeShift,
+                         estimateTime,
+                         analyzeProj,
+                         exportTraj};
+
+    ret.append(DatablockActionManager::factorizeItemContextActions(parent, d));
+
+    return ret;
 }
 
 QList<QAction*> BilSequenceActionManager::factorizeMultiItemsContextActions(QObject* parent, StereoVisionApp::Project* p, QModelIndexList const& projectIndex) const {
