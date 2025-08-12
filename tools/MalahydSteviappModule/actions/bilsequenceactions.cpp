@@ -2150,6 +2150,9 @@ bool estimateBilShift(BilSequenceAcquisitionData *bilSequence) {
         saveFile += ".tiff";
     }
 
+    QFileInfo infos(saveFile);
+    QString shiftSaveFile = infos.dir().filePath(infos.baseName() + "_shifts.csv");
+
     int nLines = bilSequence->nLinesInSequence();
 
     std::vector<int> channels = bilSequence->assumedRgbChannels();
@@ -2167,6 +2170,22 @@ bool estimateBilShift(BilSequenceAcquisitionData *bilSequence) {
     Multidim::Array<float, 3> normalized = StereoVision::ImageProcessing::normalizeImageChannels(rectified);
 
     StereoVision::IO::writeImage<float>(saveFile.toStdString(), normalized);
+
+    if (!shiftSaveFile.isEmpty()) {
+        QFile out(shiftSaveFile);
+
+        if (!out.open(QFile::WriteOnly)) {
+            return false;
+        }
+
+        QTextStream outStream(&out);
+
+        for (float shift : shifts) {
+            outStream << shift << "\n";
+        }
+
+        outStream.flush();
+    }
 
     return true;
 }
