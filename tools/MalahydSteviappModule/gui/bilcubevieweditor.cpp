@@ -15,6 +15,7 @@
 #include <QFormLayout>
 #include <QCheckBox>
 #include <QToolButton>
+#include <QMouseEvent>
 
 #include <QMenu>
 #include <QInputDialog>
@@ -35,6 +36,14 @@ BilCubeViewEditor::BilCubeViewEditor(QWidget* parent) :
 {
     QCommonStyle style;
     _viewWidget = new StereoVisionApp::ImageWidget(this);
+
+    _viewWidget->setMouseMoveHandler([this] (QMouseEvent* event) -> bool {
+        QPointF pos = _viewWidget->widgetToImageCoordinates(event->pos());
+        QString msg = BilCubeViewEditor::tr("Image Pos %1 : %2").arg(pos.y() + _startLineSpinBox->value()).arg(pos.x());
+        sendStatusMessage(msg);
+        event->accept();
+        return true;
+    });
 
     _channels = {0,0,0};
 
