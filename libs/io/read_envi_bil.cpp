@@ -275,7 +275,7 @@ std::vector<double> read_envi_bil_times(std::string const& filename) {
 
     while (std::getline(timesFile, lineData)) {
 
-        float tVal;
+        double tVal;
 
         try {
             tVal = std::stod(lineData);
@@ -351,7 +351,7 @@ std::vector<double> get_envi_bil_lines_times(std::string const& filename) {
 
     while (std::getline(timesFile, lineData)) {
 
-        float tVal;
+        double tVal;
 
         try {
             tVal = std::stod(lineData);
