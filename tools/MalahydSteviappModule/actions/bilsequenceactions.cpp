@@ -2163,9 +2163,9 @@ bool estimateBilShift(BilSequenceAcquisitionData *bilSequence) {
         return false;
     }
 
-    std::vector<float> shifts = estimatePushBroomHorizontalShiftCorr(data);
+    std::vector<float> shifts = PushBroomRelativeOffsets::estimatePushBroomHorizontalShiftCorr(data);
 
-    Multidim::Array<float, 3> rectified = computeHorizontallyRectifiedImage(data, shifts);
+    Multidim::Array<float, 3> rectified = PushBroomRelativeOffsets::computeHorizontallyRectifiedImage(data, shifts);
 
     Multidim::Array<float, 3> normalized = StereoVision::ImageProcessing::normalizeImageChannels(rectified);
 
@@ -2188,6 +2188,97 @@ bool estimateBilShift(BilSequenceAcquisitionData *bilSequence) {
     }
 
     return true;
+}
+
+bool estimateBilShiftVertical(BilSequenceAcquisitionData *bilSequence) {
+
+    if (bilSequence == nullptr) {
+        return false;
+    }
+
+    QWidget* mw = StereoVisionApp::MainWindow::getActiveMainWindow();
+
+    QString dirPath = QStandardPaths::writableLocation(QStandardPaths::StandardLocation::PicturesLocation);
+    QString filter = BilSequenceAcquisitionData::tr("Tiff Image (*.tiff)");
+
+    QString saveFile = QFileDialog::getSaveFileName(mw, BilSequenceAcquisitionData::tr("Save rectified sequence to"), dirPath, filter);
+
+    if (saveFile.isEmpty()) {
+        return true;
+    }
+
+    if (!saveFile.endsWith(".tif", Qt::CaseInsensitive) and
+        !saveFile.endsWith(".tiff", Qt::CaseInsensitive)) {
+        saveFile += ".tiff";
+    }
+
+    QFileInfo infos(saveFile);
+    QString inflexionsSaveFile = infos.dir().filePath(infos.baseName() + "_inflexions.csv");
+    QString selectedSaveFile = infos.dir().filePath(infos.baseName() + "_selected_lines.csv");
+
+    int nLines = bilSequence->nLinesInSequence();
+
+    std::vector<int> channels = bilSequence->assumedRgbChannels();
+
+    Multidim::Array<float, 3> data = bilSequence->getFloatBilData(0, nLines, channels);
+
+    if (data.empty()) {
+        return false;
+    }
+
+    constexpr float countWeight = 1;
+    constexpr float magnitudeWeight = 0;
+    std::vector<float> inflexions = PushBroomRelativeOffsets::estimatePushBroomInflexionPointsIntensityPerLine(data, countWeight, magnitudeWeight);
+
+    constexpr float peakInflexionQuantile = 0.5;
+
+    int nThElement = std::max<int>(0,peakInflexionQuantile*(inflexions.size()-1));
+
+    std::vector<float> sortedInflexions = inflexions;
+
+    std::nth_element(sortedInflexions.begin(), sortedInflexions.begin() + nThElement, sortedInflexions.end());
+
+    float peakThreshold = 1; //sortedInflexions[nThElement];
+    int maxInterval = 5;
+
+    std::vector<int> selected = PushBroomRelativeOffsets::filterPushBroomLinesWithInflexion(inflexions, peakThreshold, maxInterval);
+
+    Multidim::Array<float, 3> filteredData = PushBroomRelativeOffsets::removeUnfilteredLinesFromPushBroomImage(data, selected);
+
+    Multidim::Array<float, 3> normalized = StereoVision::ImageProcessing::normalizeImageChannels(filteredData);
+
+    StereoVision::IO::writeImage<float>(saveFile.toStdString(), normalized);
+
+    QFile outInflexions(inflexionsSaveFile);
+
+    if (!outInflexions.open(QFile::WriteOnly)) {
+        return false;
+    }
+
+    QTextStream outInflexionsStream(&outInflexions);
+
+    for (float count : inflexions) {
+        outInflexionsStream << count << "\n";
+    }
+
+    outInflexionsStream.flush();
+
+    QFile outSelected(selectedSaveFile);
+
+    if (!outSelected.open(QFile::WriteOnly)) {
+        return false;
+    }
+
+    QTextStream outSelectedStream(&outSelected);
+
+    for (float count : selected) {
+        outSelectedStream << count << "\n";
+    }
+
+    outSelectedStream.flush();
+
+    return true;
+
 }
 
 } // namespace PikaLTools

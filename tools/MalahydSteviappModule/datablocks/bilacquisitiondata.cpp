@@ -615,7 +615,7 @@ std::vector<int> BilSequenceAcquisitionData::assumedRgbChannels() const {
 
     int nSpetrcalBands = headerData.value("bands", "0").toInt(&ok);
 
-    if (!ok) {
+    if (!ok or nSpetrcalBands == 0) {
         return std::vector<int>();
     }
 

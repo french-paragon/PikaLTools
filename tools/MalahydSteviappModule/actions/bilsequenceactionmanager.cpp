@@ -142,6 +142,11 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
         estimateBilShift(bilSeq);
     });
 
+    QAction* analyzeVShift = new QAction(tr("Analyze vertical shift"), parent);
+    connect(analyzeVShift, &QAction::triggered, [bilSeq] () {
+        estimateBilShiftVertical(bilSeq);
+    });
+
     QAction* compute_corrMat = new QAction(tr("Show data correlation"), parent);
 
     connect(compute_corrMat, &QAction::triggered, [bilSeq] () {
@@ -178,6 +183,7 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
                          exportIgm,
                          compute_corrMat,
                          analyzeShift,
+                         analyzeVShift,
                          estimateTime,
                          analyzeProj,
                          exportTraj};

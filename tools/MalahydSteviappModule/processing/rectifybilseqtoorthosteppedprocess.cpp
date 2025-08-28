@@ -41,6 +41,8 @@ RectifyBilSeqToOrthoSteppedProcess::RectifyBilSeqToOrthoSteppedProcess(QObject *
     _outCrs("")
 {
 
+    setObjectName("RectifyBilSeq2Ortho");
+
     _target_gsd = 0.5;
     _max_tile_width = 2000;
     _inPaintingRadius = 4;
@@ -83,7 +85,7 @@ int RectifyBilSeqToOrthoSteppedProcess::numberOfSteps() {
     return nSteps;
 }
 
-QString RectifyBilSeqToOrthoSteppedProcess::currentStepName() {
+QString RectifyBilSeqToOrthoSteppedProcess::currentStepName() const {
 
     if (_bilSequence == nullptr) {
         return "";
@@ -140,12 +142,14 @@ bool RectifyBilSeqToOrthoSteppedProcess::doNextStep() {
     QTextStream out(stdout);
 
     if (_bilSequence == nullptr) {
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Missing bil sequence!"));
         return false;
     }
 
     int step = currentStep();
 
     if (step == -1) {
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Invalid step number!"));
         return false;
     }
 
@@ -186,6 +190,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::doNextStep() {
         return computeNextTile(tileId);
     }
 
+    sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Invalid step number, no action to perform!"));
     return false;
 }
 
@@ -204,12 +209,14 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeBilProjection(int bilId) {
     QFileInfo bil_file_info(bil_file_path);
 
     if (!bil_file_info.exists()) {
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Missing bil file at path \"%1\"!").arg(bil_file_path));
         return false;
     }
 
     StereoVisionApp::Mounting* leverArm = _bilSequence->getAssignedMounting();
 
     if (leverArm == nullptr) {
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Missing lever arm!"));
         return false;
     }
 
@@ -220,6 +227,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeBilProjection(int bilId) {
     int nLines = times.size();
 
     if (nLines <= 0) {
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("No lines in timing file!"));
         return false;
     }
 
@@ -236,6 +244,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeBilProjection(int bilId) {
     bool ok = tmpProjections.open(QFile::WriteOnly);
 
     if (!ok) {
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Could not open temporary projection file!"));
         return false;
     }
 
@@ -381,6 +390,8 @@ bool RectifyBilSeqToOrthoSteppedProcess::exportBilProjection(int bilId, QString 
 
     if (!outPathInfos.isDir()) {
         out << "Trying to export to a non directory: " << exportPath << ", aborting!" << Qt::endl;
+
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Trying to export to non existent directory \"%1\"!").arg(exportPath));
         return false;
     }
 
@@ -390,6 +401,8 @@ bool RectifyBilSeqToOrthoSteppedProcess::exportBilProjection(int bilId, QString 
 
     if (!bil_file_info.exists()) {
         out << "File for bil id: " << bilId << " (" << bil_file_path << ") does not exist" << Qt::endl;
+
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Trying to export to non existent directory \"%1\"!").arg(exportPath));
         return false;
     }
 
@@ -403,12 +416,14 @@ bool RectifyBilSeqToOrthoSteppedProcess::exportBilProjection(int bilId, QString 
 
     if (!ok) {
         out << "Could not open bil id: " << bilId << " projection data in file " << tmpFilePath << Qt::endl;
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Could not open temporary projection data for bil id: %1!").arg(bilId));
         return false;
     }
 
     StereoVisionApp::Mounting* leverArm = _bilSequence->getAssignedMounting();
 
     if (leverArm == nullptr) {
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Missing lever arm!"));
         return false;
     }
 
@@ -451,6 +466,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::exportBilProjection(int bilId, QString 
     PJ_CONTEXT* ctx = proj_context_create();
 
     if (ctx == 0) {
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Could not get PROJ context!"));
         return false;
     }
 
@@ -463,6 +479,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::exportBilProjection(int bilId, QString 
 
     if (ecef2terrain == 0) { //in case of error
         proj_context_destroy(ctx);
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Could not setup PROJ transform!"));
         return false;
     }
 
@@ -472,6 +489,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::exportBilProjection(int bilId, QString 
     if (geo2ecef == 0) { //in case of error
         proj_destroy(ecef2terrain);
         proj_context_destroy(ctx);
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Could not setup PROJ geo to ecef transform!"));
         return false;
     }
 
@@ -482,6 +500,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::exportBilProjection(int bilId, QString 
         proj_destroy(ecef2terrain);
         proj_destroy(geo2ecef);
         proj_context_destroy(ctx);
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Could not setup PROJ ecef to geo transform!"));
         return false;
     }
 
@@ -562,6 +581,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::exportBilProjection(int bilId, QString 
 
         if (read != projectedCoordinates.flatLenght()*sizeof (float)) {
             out << "Projection read error" << Qt::endl;
+            sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Projection read error!"));
             return false;
         }
 
@@ -646,6 +666,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::exportBilProjection(int bilId, QString 
 
     if (!ok) {
         out << "Could not write header file: " << headerFilePath << Qt::endl;
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Could not write header file \"%1\"!").arg(headerFilePath));
         return false;
     }
 
@@ -677,6 +698,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::exportBilProjection(int bilId, QString 
 
     if (!ok) {
         out << "Could not write header file: " << anglesHeaderFilePath << Qt::endl;
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Could not write header file \"%1\"!").arg(anglesHeaderFilePath));
         return false;
     }
 
@@ -702,6 +724,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::exportBilProjection(int bilId, QString 
 
     if (!ok) {
         out << "Could not write bsq file: " << bsqFilePath << Qt::endl;
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Could not write bsq file \"%1\"!").arg(bsqFilePath));
         return false;
     }
 
@@ -715,6 +738,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::exportBilProjection(int bilId, QString 
 
     if (!ok) {
         out << "Could not write bsq file: " << anglesBsqFilePath << Qt::endl;
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Could not write bsq file \"%1\"!").arg(anglesBsqFilePath));
         return false;
     }
 
@@ -891,6 +915,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeNextTile(int tileId) {
         bool ok = tmpProjections.open(QFile::ReadOnly);
 
         if (!ok) {
+            sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Could not open temporary projection files!"));
             return false;
         }
 
@@ -1185,18 +1210,21 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeNextTile(int tileId) {
 bool RectifyBilSeqToOrthoSteppedProcess::init() {
 
     if (_bilSequence == nullptr) {
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("No bil sequence!"));
         return false;
     }
 
     StereoVisionApp::PushBroomPinholeCamera* cam = _bilSequence->getAssignedCamera();
 
     if (cam == nullptr) {
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Missing camera!"));
         return false;
     }
 
     StereoVisionApp::Project* project = _bilSequence->getProject();
 
     if (project == nullptr) {
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Missing project!"));
         return false;
     }
 
@@ -1205,6 +1233,12 @@ bool RectifyBilSeqToOrthoSteppedProcess::init() {
     StereoVisionApp::Trajectory* trajectory = project->getDataBlock<StereoVisionApp::Trajectory>(trajId);
 
     if (trajectory == nullptr) {
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Missing trajectory!"));
+        return false;
+    }
+
+    if (_inputDtm == nullptr) {
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Missing input DTM/DSM!"));
         return false;
     }
 
@@ -1215,6 +1249,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::init() {
     auto dtm = readGeoRasterData<double, 2>(_inputDtm->getDataSource().toStdString());
 
     if (!dtm.has_value()) {
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Could not load DTM/DSM from \"%1\"!").arg(_inputDtm->getDataSource()));
         return false;
     }
 
@@ -1254,6 +1289,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::init() {
     PJ* reprojector = proj_create_crs_to_crs(ctx, _terrain.crsInfos.c_str(), wgs84_ecef, nullptr);
 
     if (reprojector == 0) { //in case of error
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Could not init PROJ Reprojector!"));
         return false;
     }
 
@@ -1296,6 +1332,15 @@ bool RectifyBilSeqToOrthoSteppedProcess::init() {
 
     //load bill data
 
+    //bill paths
+    _bilPaths = _bilSequence->getBilFiles();
+
+    if (_bilPaths.isEmpty()) {
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Empty bil sequence!"));
+        return false;
+    }
+
+    //trajectory
     if (_useOptimzedTrajectory) {
 
         constexpr bool resample = true;
@@ -1304,6 +1349,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::init() {
                 trajectory->optimizedTrajectoryECEF(resample);
 
         if (!trajOpt.isValid()) {
+            sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Could not load trajectory!"));
             return false;
         }
 
@@ -1315,14 +1361,13 @@ bool RectifyBilSeqToOrthoSteppedProcess::init() {
                 trajectory->loadTrajectorySequence();
 
         if (!trajOpt.isValid()) {
+            sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Could not load trajectory!"));
             return false;
         }
 
         _bil_trajectory = trajOpt.value();
 
     }
-
-    _bilPaths = _bilSequence->getBilFiles();
 
     _bilFilesROI.clear();
     _bilFilesROI.resize(_bilPaths.size());
@@ -1332,10 +1377,12 @@ bool RectifyBilSeqToOrthoSteppedProcess::init() {
     auto header = readBilHeaderData(_bilPaths.first().toStdString());
 
     if (!header.has_value()) {
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Could not read bil header data from \"%1\"!").arg(_bilPaths.first()));
         return false;
     }
 
     if (header->count("bands") <= 0) {
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Bil header do not contain the \"bands\" field!"));
         return false;
     }
 
@@ -1343,10 +1390,13 @@ bool RectifyBilSeqToOrthoSteppedProcess::init() {
         _bands = std::stoi(header.value()["bands"]);
     }
     catch(std::invalid_argument const& e) {
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Bil header do field \"bands\" value \"%1\" cannot be converted to int!")
+                                                                   .arg(QString::fromStdString(header.value()["bands"])));
         return false;
     }
 
     if (header->count("samples") <= 0) {
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Bil header do not contain the \"samples\" field!"));
         return false;
     }
 
@@ -1354,6 +1404,8 @@ bool RectifyBilSeqToOrthoSteppedProcess::init() {
         _nSamples = std::stoi(header.value()["samples"]);
     }
     catch(std::invalid_argument const& e) {
+        sendErrorMessageToQtHandlers(SteppedProcess::Critical, tr("Bil header do field \"samples\" value \"%1\" cannot be converted to int!")
+                                                                   .arg(QString::fromStdString(header.value()["samples"])));
         return false;
     }
 

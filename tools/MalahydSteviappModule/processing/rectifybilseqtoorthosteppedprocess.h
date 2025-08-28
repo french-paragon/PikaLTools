@@ -33,7 +33,7 @@ public:
     ~RectifyBilSeqToOrthoSteppedProcess();
 
     virtual int numberOfSteps() override;
-    virtual QString currentStepName() override;
+    virtual QString currentStepName() const override;
 
     inline void configure(BilSequenceAcquisitionData* bilSequence, InputDtm* inputDtm, QString const& outFile) {
         _bilSequence = bilSequence;
