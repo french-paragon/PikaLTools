@@ -13,6 +13,8 @@
 
 namespace PikaLTools {
 
+namespace PushBroomRelativeOffsets {
+
 enum class PushBroomCovarianceShiftEstimateFlags {
     WithSubPixel = 1,
     Normalized = 2
@@ -256,6 +258,172 @@ std::vector<float> estimatePushBroomHorizontalShiftCorr(Multidim::Array<T,3> con
     return deltas;
 }
 
+
+enum class PushBroomInflexionPointsIntensityPerLineFlags {
+    Relative = 1
+};
+
+/*!
+ * \brief estimateInflexionPointsIntensityPerLine estimate the strenght of inflexions points per line in the image
+ * \param image the input push broom image
+ * \param countWeight the weighting on the count of inflexion points
+ * \param magnitudeWeight the weighting on the intensity of inflexion points
+ * \return for each line except the first and last, an estimate of the number/total intensity of the inflexion points on the line.
+ *
+ * The idea is that a large number of inflexion points is indicative of distortions caused by pitch motion
+ * Spike in the number of inflexion points can be detected and then used to rectify the image by skipping lines.
+ */
+template<typename T, int flags = int(PushBroomInflexionPointsIntensityPerLineFlags::Relative)>
+std::vector<float> estimatePushBroomInflexionPointsIntensityPerLine(Multidim::Array<T,3> const& image,
+                                                           float countWeight = 1,
+                                                           float magnitudeWeight = 0,
+                                                           int linesAxis = 0,
+                                                           int samplesAxis = 1,
+                                                           int bandsAxis = 2) {
+
+    auto shape = image.shape();
+
+    int nLines = shape[linesAxis];
+    int nSamples = shape[samplesAxis];
+    int nBands = shape[bandsAxis];
+
+    std::vector<float> ret(nLines-2);
+
+    #pragma omp parallel for
+    for(int i = 1; i < nLines-1; i++) {
+
+        int ri = i-1;
+
+        ret[ri] = 0;
+
+        for (int j = 0; j < nSamples; j++) {
+
+            for (int c = 0; c < nBands; c++) {
+                std::array<int,3> idx;
+                idx[linesAxis] = i;
+                idx[samplesAxis] = j;
+                idx[bandsAxis] = c;
+
+                float center = image.valueUnchecked(idx);
+                idx[linesAxis] = i-1;
+                float prev = image.valueUnchecked(idx);
+                idx[linesAxis] = i+1;
+                float next = image.valueUnchecked(idx);
+
+                float inflexion_intensity = 0;
+
+                if ((center < prev and center < next) or
+                    (center > prev and center > next)) {
+                    inflexion_intensity += std::min(std::abs(center - prev), std::abs(center - next));
+                } else {
+                    inflexion_intensity -= std::min(std::abs(center - prev), std::abs(center - next));
+                }
+
+                if (inflexion_intensity > 0) {
+                    ret[ri] += countWeight + magnitudeWeight*inflexion_intensity;
+                }
+            }
+        }
+
+        if (flags & static_cast<int>(PushBroomInflexionPointsIntensityPerLineFlags::Relative)) {
+            float totalHorizontal = 0;
+
+            for (int j = 1; j < nSamples-1; j++) {
+
+                for (int c = 0; c < nBands; c++) {
+                    std::array<int,3> idx;
+                    idx[linesAxis] = i;
+                    idx[samplesAxis] = j;
+                    idx[bandsAxis] = c;
+
+                    float center = image.valueUnchecked(idx);
+                    idx[samplesAxis] = j-1;
+                    float prev = image.valueUnchecked(idx);
+                    idx[samplesAxis] = j+1;
+                    float next = image.valueUnchecked(idx);
+
+                    float inflexion_intensity = 0;
+
+                    if ((center < prev and center < next) or
+                        (center > prev and center > next)) {
+                        inflexion_intensity += std::min(std::abs(center - prev), std::abs(center - next));
+                    } else {
+                        inflexion_intensity -= std::min(std::abs(center - prev), std::abs(center - next));
+                    }
+
+                    if (inflexion_intensity > 0) {
+                        totalHorizontal += countWeight + magnitudeWeight*inflexion_intensity;
+                    }
+                }
+            }
+
+            ret[ri] /= std::max(1.f,totalHorizontal);
+        }
+    }
+
+    return ret;
+
+}
+
+/*!
+ * \brief filterPushBroomLinesWithInflexion select a subset of lines as to minimize noise caused by
+ * \param inflexionData
+ * \param peakThreshold
+ * \param maxInterval
+ * \return
+ */
+inline std::vector<int> filterPushBroomLinesWithInflexion(std::vector<float> const& inflexionData,
+                                                          float peakThreshold,
+                                                          int maxInterval) {
+
+    std::vector<int> ret;
+    ret.reserve(inflexionData.size()+2);
+    ret.push_back(0);
+
+    auto isIndexPeak = [&inflexionData, peakThreshold] (int id) {
+
+        if (inflexionData[id] > peakThreshold) {
+            if (inflexionData[id] > inflexionData[std::max<int>(id-1,0)] and
+                inflexionData[id] > inflexionData[std::min<int>(id+1,inflexionData.size()-1)]) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    for (int i = 0; i < inflexionData.size(); i++) {
+
+        ret.push_back(i+1);
+
+        bool isPeak = isIndexPeak(i);
+
+        if (isPeak) {
+            int deltaK1 = 0;
+            for (int k = 2; k <= maxInterval; k++) {
+                if (isIndexPeak(i+k)) {
+                    deltaK1 = k;
+                    break;
+                }
+            }
+            int deltaK2 = 0;
+            for (int k = 2; k <= maxInterval; k++) {
+                if (isIndexPeak(i+deltaK1+k)) {
+                    deltaK2 = k;
+                    break;
+                }
+            }
+
+            if (deltaK1 > 0 and deltaK2 > 0) {
+                i += deltaK1 + deltaK2;
+            }
+        }
+
+    }
+
+    ret.push_back(inflexionData.size()+1);
+    return ret;
+}
+
 template<typename T>
 Multidim::Array<T,3> computeHorizontallyRectifiedImage(Multidim::Array<T,3> const& image,
                                                         std::vector<float> const& shifts,
@@ -340,6 +508,59 @@ Multidim::Array<T,3> computeHorizontallyRectifiedImage(Multidim::Array<T,3> cons
 
     return out;
 }
+
+template<typename T>
+Multidim::Array<T,3> removeUnfilteredLinesFromPushBroomImage(Multidim::Array<T,3> const& image,
+                                                              std::vector<int> const& selectedLines,
+                                                              int linesAxis = 0,
+                                                              int samplesAxis = 1,
+                                                              int bandsAxis = 2) {
+    auto shapeIn = image.shape();
+
+    int nLines = selectedLines.size();
+    int nSamples = shapeIn[samplesAxis];
+    int nBands = shapeIn[bandsAxis];
+
+    std::array<int,3> shapeOut;
+
+    shapeOut[linesAxis] = nLines;
+    shapeOut[samplesAxis] = nSamples;
+    shapeOut[bandsAxis] = nBands;
+
+    Multidim::Array<T,3> out(shapeOut);
+
+    #pragma omp parallel for
+    for (int i = 0; i < nLines; i++) {
+
+        int l = selectedLines[i];
+
+        std::array<int,3> idxIn;
+        idxIn[linesAxis] = l;
+
+        std::array<int,3> idxOut;
+        idxOut[linesAxis] = i;
+
+        for (int j = 0; j < nSamples; j++) {
+
+            idxIn[samplesAxis] = j;
+            idxOut[samplesAxis] = j;
+
+            for (int b = 0; b < nBands; b++) {
+
+                idxIn[bandsAxis] = b;
+                idxOut[bandsAxis] = b;
+
+                out.atUnchecked(idxOut) =  image.valueUnchecked(idxIn);
+            }
+        }
+
+    }
+
+    return out;
+
+}
+
+} // namespace PushBroomRelativeOffsets
 
 } // namespace PikaLTools
 
