@@ -106,6 +106,13 @@ void BilSequenceLandmarksOverlay::setBilWidth(int bilWidth) {
     }
 }
 
+QPointF BilSequenceLandmarksOverlay::getPointCoordinates(qint64 id) const {
+    BilSequenceLandmark* lm = _currentDataBlock->getBilSequenceLandmark(id);
+    QPointF coords = lm->bilSequenceCoordinates();
+    coords.ry() -= _initialLine;
+    return coords;
+}
+
 void BilSequenceLandmarksOverlay::requestFullRepainting() {
     Q_EMIT repaintingRequested(QRect());
 }
@@ -134,8 +141,7 @@ void BilSequenceLandmarksOverlay::paintItemImpl(QPainter* painter) const {
             continue;
         }
 
-        auto coords = lm->bilSequenceCoordinates();
-        coords.ry() -= _initialLine;
+        auto coords = getPointCoordinates(id);
 
         if (coords.y() < -5 or coords.y() > extend.height() + 5 ) {
             continue; //skipe points outside of current line range.
@@ -535,11 +541,29 @@ qint64 BilSequenceLandmarksOverlay::pointAt(QImageDisplay::ImageWidget* interact
         return -1;
     }
 
-    QPointF imCoord = interactionWidget->widgetToImageCoordinates(widgetCoordinate);
+    QTransform img2paint = imageToPaintArea();
 
-    imCoord.ry() += _initialLine;
+    QVector<qint64> pointsids = _currentDataBlock->listTypedSubDataBlocks(BilSequenceLandmark::staticMetaObject.className());
 
-    return _currentDataBlock->getBilSequenceLandmarkAt(imCoord, 600./interactionWidget->zoom());
+    qint64 rId = -1;
+    float distSrq = 9; //3px
+
+    for(qint64 id : pointsids) {
+
+        QPointF coords = img2paint.map(getPointCoordinates(id));
+
+        float dx = coords.x() - widgetCoordinate.x();
+        float dy = coords.y() - widgetCoordinate.y();
+
+        float dSqr = dx*dx + dy*dy;
+
+        if (dSqr < distSrq) {
+            distSrq = dSqr;
+            rId = id;
+        }
+    }
+
+    return rId;
 }
 
 

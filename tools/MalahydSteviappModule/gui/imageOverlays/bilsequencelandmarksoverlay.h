@@ -74,6 +74,8 @@ Q_SIGNALS:
 
 protected:
 
+    virtual QPointF getPointCoordinates(qint64 id) const;
+
     void requestFullRepainting();
 
     void paintItemImpl(QPainter* painter) const override;

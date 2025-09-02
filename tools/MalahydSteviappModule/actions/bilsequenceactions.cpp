@@ -43,6 +43,7 @@
 
 #include "../gui/trajectoryvieweditor.h"
 #include "../gui/bilcubevieweditor.h"
+#include "../gui/prerectifiedbillvieweditor.h"
 #include "../gui/exportorthophotooptionsdialog.h"
 #include "../gui/pushbroomoptimizationconfigdialog.h"
 #include "../gui/simulatepushbroomtiepointsoptiondialog.h"
@@ -69,6 +70,11 @@
 #include <QInputDialog>
 #include <QFileInfo>
 #include <QDesktopServices>
+#include <QDialog>
+#include <QHBoxLayout>
+#include <QGroupBox>
+#include <QSpinBox>
+#include <QDoubleSpinBox>
 
 #include <algorithm>
 #include <random>
@@ -2278,6 +2284,213 @@ bool estimateBilShiftVertical(BilSequenceAcquisitionData *bilSequence) {
     outSelectedStream.flush();
 
     return true;
+
+}
+
+bool estimateBilShiftHorizontalAndVertical(BilSequenceAcquisitionData *bilSequence) {
+
+    if (bilSequence == nullptr) {
+        return false;
+    }
+
+    QWidget* mw = StereoVisionApp::MainWindow::getActiveMainWindow();
+
+    QString dirPath = QStandardPaths::writableLocation(QStandardPaths::StandardLocation::PicturesLocation);
+    QString filter = BilSequenceAcquisitionData::tr("Tiff Image (*.tiff)");
+
+    QString saveFile = QFileDialog::getSaveFileName(mw, BilSequenceAcquisitionData::tr("Save rectified sequence to"), dirPath, filter);
+
+    if (saveFile.isEmpty()) {
+        return true;
+    }
+
+    if (!saveFile.endsWith(".tif", Qt::CaseInsensitive) and
+        !saveFile.endsWith(".tiff", Qt::CaseInsensitive)) {
+        saveFile += ".tiff";
+    }
+
+    QFileInfo infos(saveFile);
+    QString shiftSaveFile = infos.dir().filePath(infos.baseName() + "_shifts.csv");
+
+    QString horizontalRectSaveFile = infos.dir().filePath(infos.baseName() + "_horizontal_shifts.tiff");
+    QString horizontalRectMaskSaveFile = infos.dir().filePath(infos.baseName() + "_horizontal_mask_shifts.tiff");
+
+    QString inflexionsSaveFile = infos.dir().filePath(infos.baseName() + "_inflexions.csv");
+    QString selectedSaveFile = infos.dir().filePath(infos.baseName() + "_selected.csv");
+
+    int nLines = bilSequence->nLinesInSequence();
+
+    std::vector<int> channels = bilSequence->assumedRgbChannels();
+
+    Multidim::Array<float, 3> data = bilSequence->getFloatBilData(0, nLines, channels);
+
+    if (data.empty()) {
+        return false;
+    }
+
+    Multidim::Array<float, 3> normalized = StereoVision::ImageProcessing::normalizeImageChannels(data);
+
+    std::vector<float> shifts = PushBroomRelativeOffsets::estimatePushBroomHorizontalShiftCorr(data);
+
+    Multidim::Array<float, 3> horizontalRectified = PushBroomRelativeOffsets::computeHorizontallyRectifiedImage(normalized, shifts);
+    Multidim::Array<bool, 2> horizontalRectifiedMask = PushBroomRelativeOffsets::computeHorizontallyRectifiedImageMask(normalized, shifts);
+
+    StereoVision::IO::writeImage<float>(horizontalRectSaveFile.toStdString(), horizontalRectified);
+    StereoVision::IO::writeImage<uint8_t>(horizontalRectMaskSaveFile.toStdString(), horizontalRectifiedMask);
+
+    if (!shiftSaveFile.isEmpty()) {
+        QFile out(shiftSaveFile);
+
+        if (!out.open(QFile::WriteOnly)) {
+            return false;
+        }
+
+        QTextStream outStream(&out);
+
+        for (float shift : shifts) {
+            outStream << shift << "\n";
+        }
+
+        outStream.flush();
+    }
+
+    constexpr float countWeight = 1;
+    constexpr float magnitudeWeight = 0;
+    std::vector<float> inflexions = PushBroomRelativeOffsets::estimatePushBroomInflexionPointsIntensityPerLine(horizontalRectified,
+                                                                                                               horizontalRectifiedMask,
+                                                                                                               countWeight,
+                                                                                                               magnitudeWeight);
+
+    constexpr float peakInflexionQuantile = 0.5;
+
+    int nThElement = std::max<int>(0,peakInflexionQuantile*(inflexions.size()-1));
+
+    std::vector<float> sortedInflexions = inflexions;
+
+    std::nth_element(sortedInflexions.begin(), sortedInflexions.begin() + nThElement, sortedInflexions.end());
+
+    float peakThreshold = 1; //sortedInflexions[nThElement];
+    int maxInterval = 5;
+
+    std::vector<int> selected = PushBroomRelativeOffsets::filterPushBroomLinesWithInflexion(inflexions, peakThreshold, maxInterval);
+
+    Multidim::Array<float, 3> finalImage = PushBroomRelativeOffsets::removeUnfilteredLinesFromPushBroomImage(horizontalRectified, selected);
+
+    StereoVision::IO::writeImage<float>(saveFile.toStdString(), finalImage);
+
+    QFile outInflexions(inflexionsSaveFile);
+
+    if (!outInflexions.open(QFile::WriteOnly)) {
+        return false;
+    }
+
+    QTextStream outInflexionsStream(&outInflexions);
+
+    for (float count : inflexions) {
+        outInflexionsStream << count << "\n";
+    }
+
+    outInflexionsStream.flush();
+
+    QFile outSelected(selectedSaveFile);
+
+    if (!outSelected.open(QFile::WriteOnly)) {
+        return false;
+    }
+
+    QTextStream outSelectedStream(&outSelected);
+
+    for (float count : selected) {
+        outSelectedStream << count << "\n";
+    }
+
+    outSelectedStream.flush();
+
+    return true;
+}
+
+
+
+bool viewPreRectifiedBill(BilSequenceAcquisitionData *bilSequence) {
+
+    if (bilSequence == nullptr) {
+        return false;
+    }
+
+    StereoVisionApp::MainWindow* mw = StereoVisionApp::MainWindow::getActiveMainWindow();
+
+    if (mw == nullptr) {
+        return false; //need main windows to display trajectory
+    }
+
+    int nLines = bilSequence->nLinesInSequence();
+
+    std::vector<int> channels = bilSequence->assumedRgbChannels();
+
+    Multidim::Array<float, 3> data = bilSequence->getFloatBilData(0, nLines, channels);
+
+    if (data.empty()) {
+        return false;
+    }
+
+    Multidim::Array<float, 3> normalized = StereoVision::ImageProcessing::normalizeImageChannels(data);
+
+    std::vector<float> shifts = PushBroomRelativeOffsets::estimatePushBroomHorizontalShiftCorr(data);
+    std::vector<float> accumulatedShifts(shifts.size());
+    accumulatedShifts[0] = shifts[0];
+
+    for (int i = 1; i < accumulatedShifts.size(); i++) {
+        accumulatedShifts[i] = shifts[i] + accumulatedShifts[i-1];
+    }
+
+    Multidim::Array<float, 3> horizontalRectified = PushBroomRelativeOffsets::computeHorizontallyRectifiedImage(normalized, shifts);
+    Multidim::Array<bool, 2> horizontalRectifiedMask = PushBroomRelativeOffsets::computeHorizontallyRectifiedImageMask(normalized, shifts);
+    constexpr float countWeight = 1;
+    constexpr float magnitudeWeight = 0;
+    std::vector<float> inflexions = PushBroomRelativeOffsets::estimatePushBroomInflexionPointsIntensityPerLine(horizontalRectified,
+                                                                                                               horizontalRectifiedMask,
+                                                                                                               countWeight,
+                                                                                                               magnitudeWeight);
+
+    constexpr float peakInflexionQuantile = 0.5;
+
+    int nThElement = std::max<int>(0,peakInflexionQuantile*(inflexions.size()-1));
+
+    std::vector<float> sortedInflexions = inflexions;
+
+    std::nth_element(sortedInflexions.begin(), sortedInflexions.begin() + nThElement, sortedInflexions.end());
+
+    float peakThreshold = 1; //sortedInflexions[nThElement];
+    int maxInterval = 5;
+
+    std::vector<int> selected = PushBroomRelativeOffsets::filterPushBroomLinesWithInflexion(inflexions, peakThreshold, maxInterval);
+
+    Multidim::Array<float, 3> finalImage = PushBroomRelativeOffsets::removeUnfilteredLinesFromPushBroomImage(horizontalRectified, selected);
+
+    //open editor
+
+    StereoVisionApp::Editor* e = mw->openEditor(PreRectifiedBillViewEditor::staticMetaObject.className(),
+                                                QString("%1").arg(bilSequence->internalId()));
+
+    PreRectifiedBillViewEditor* prbve = qobject_cast<PreRectifiedBillViewEditor*>(e);
+
+    if (prbve == nullptr) {
+        return false;
+    }
+
+    //since channels data have been normalized
+    constexpr float whiteLevel = 1;
+    constexpr float blackLevel = 0;
+
+    prbve->setImageFromArray(bilSequence,
+                             QVector<int>(selected.begin(), selected.end()),
+                             QVector<float>(accumulatedShifts.begin(), accumulatedShifts.end()),
+                             finalImage,
+                             whiteLevel,
+                             blackLevel);
+
+    return true;
+
 
 }
 

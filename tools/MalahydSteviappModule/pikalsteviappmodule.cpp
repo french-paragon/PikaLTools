@@ -19,6 +19,7 @@
 
 #include "./gui/trajectoryvieweditor.h"
 #include "./gui/bilcubevieweditor.h"
+#include "./gui/prerectifiedbillvieweditor.h"
 #include "./gui/dtmrastervieweditor.h"
 
 #include "actions/bilsequenceactionmanager.h"
@@ -56,6 +57,7 @@ int PikaLSteviappModule::loadModule(StereoVisionApp::StereoVisionApplication* ap
     if (w != nullptr) {
         w->installEditor(new TrajectoryViewEditorFactory(app));
         w->installEditor(new BilCubeViewEditorFactory(app));
+        w->installEditor(new PreRectifiedBillViewEditorFactory(app));
         w->installEditor(new DTMRasterViewEditorFactory(app));
     }
 

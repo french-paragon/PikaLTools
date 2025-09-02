@@ -62,6 +62,7 @@ set(MODULE_SRC
 add_library(
     ${MODULE_NAME} MODULE
     ${MODULE_SRC}
+    gui/prerectifiedbillvieweditor.h gui/prerectifiedbillvieweditor.cpp
 )
 
 #ensure the path to the submodule libraries is set

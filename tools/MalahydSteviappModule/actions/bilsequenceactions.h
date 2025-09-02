@@ -66,6 +66,10 @@ bool exportImageGeometry(BilSequenceAcquisitionData *bilSequence);
 bool estimateBilShift(BilSequenceAcquisitionData *bilSequence);
 bool estimateBilShiftVertical(BilSequenceAcquisitionData *bilSequence);
 
+bool estimateBilShiftHorizontalAndVertical(BilSequenceAcquisitionData *bilSequence);
+
+bool viewPreRectifiedBill(BilSequenceAcquisitionData *bilSequence);
+
 } // namespace PikaLTools
 
 #endif // BILSEQUENCEACTIONS_H

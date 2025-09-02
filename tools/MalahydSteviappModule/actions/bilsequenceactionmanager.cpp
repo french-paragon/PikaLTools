@@ -137,7 +137,7 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
         exportImageGeometry(bilSeq);
     });
 
-    QAction* analyzeShift = new QAction(tr("Analyze horizontal shift"), parent);
+    /*QAction* analyzeShift = new QAction(tr("Analyze horizontal shift"), parent);
     connect(analyzeShift, &QAction::triggered, [bilSeq] () {
         estimateBilShift(bilSeq);
     });
@@ -145,6 +145,16 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
     QAction* analyzeVShift = new QAction(tr("Analyze vertical shift"), parent);
     connect(analyzeVShift, &QAction::triggered, [bilSeq] () {
         estimateBilShiftVertical(bilSeq);
+    });*/
+
+    QAction* analyzeHVShift = new QAction(tr("Analyze horizontal and vertical shift"), parent);
+    connect(analyzeHVShift, &QAction::triggered, [bilSeq] () {
+        estimateBilShiftHorizontalAndVertical(bilSeq);
+    });
+
+    QAction* viewHVShift = new QAction(tr("View pre-rectified bil sequence"), parent);
+    connect(viewHVShift, &QAction::triggered, [bilSeq] () {
+        viewPreRectifiedBill(bilSeq);
     });
 
     QAction* compute_corrMat = new QAction(tr("Show data correlation"), parent);
@@ -182,8 +192,8 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
                          compute_orthophoto,
                          exportIgm,
                          compute_corrMat,
-                         analyzeShift,
-                         analyzeVShift,
+                         analyzeHVShift,
+                         viewHVShift,
                          estimateTime,
                          analyzeProj,
                          exportTraj};

@@ -275,11 +275,12 @@ enum class PushBroomInflexionPointsIntensityPerLineFlags {
  */
 template<typename T, int flags = int(PushBroomInflexionPointsIntensityPerLineFlags::Relative)>
 std::vector<float> estimatePushBroomInflexionPointsIntensityPerLine(Multidim::Array<T,3> const& image,
-                                                           float countWeight = 1,
-                                                           float magnitudeWeight = 0,
-                                                           int linesAxis = 0,
-                                                           int samplesAxis = 1,
-                                                           int bandsAxis = 2) {
+                                                                    Multidim::Array<bool,2> const& mask,
+                                                                    float countWeight = 1,
+                                                                    float magnitudeWeight = 0,
+                                                                    int linesAxis = 0,
+                                                                    int samplesAxis = 1,
+                                                                    int bandsAxis = 2) {
 
     auto shape = image.shape();
 
@@ -298,10 +299,28 @@ std::vector<float> estimatePushBroomInflexionPointsIntensityPerLine(Multidim::Ar
 
         for (int j = 0; j < nSamples; j++) {
 
+            if (!mask.empty()) {
+                std::array<int,2> m_idx;
+                m_idx[samplesAxis] = j;
+
+                m_idx[linesAxis] = i;
+                int maskCurrent = mask.valueUnchecked(m_idx);
+                m_idx[linesAxis] = i-1;
+                int maskPrevious = mask.valueUnchecked(m_idx);
+                m_idx[linesAxis] = i+1;
+                int maskNext = mask.valueUnchecked(m_idx);
+
+                if (!(maskCurrent and maskPrevious and maskNext)) {
+                    continue; //all lines need to be within the mask to count this entry
+                }
+            }
+
+            std::array<int,3> idx;
+            idx[samplesAxis] = j;
+
             for (int c = 0; c < nBands; c++) {
-                std::array<int,3> idx;
+
                 idx[linesAxis] = i;
-                idx[samplesAxis] = j;
                 idx[bandsAxis] = c;
 
                 float center = image.valueUnchecked(idx);
@@ -330,10 +349,27 @@ std::vector<float> estimatePushBroomInflexionPointsIntensityPerLine(Multidim::Ar
 
             for (int j = 1; j < nSamples-1; j++) {
 
+                if (!mask.empty()) {
+                    std::array<int,2> m_idx;
+                    m_idx[samplesAxis] = j;
+
+                    m_idx[linesAxis] = i;
+                    int maskCurrent = mask.valueUnchecked(m_idx);
+                    m_idx[linesAxis] = i-1;
+                    int maskPrevious = mask.valueUnchecked(m_idx);
+                    m_idx[linesAxis] = i+1;
+                    int maskNext = mask.valueUnchecked(m_idx);
+
+                    if (!(maskCurrent and maskPrevious and maskNext)) {
+                        continue; //all lines need to be within the mask to count this entry
+                    }
+                }
+
+                std::array<int,3> idx;
+                idx[samplesAxis] = j;
+
                 for (int c = 0; c < nBands; c++) {
-                    std::array<int,3> idx;
                     idx[linesAxis] = i;
-                    idx[samplesAxis] = j;
                     idx[bandsAxis] = c;
 
                     float center = image.valueUnchecked(idx);
@@ -363,6 +399,22 @@ std::vector<float> estimatePushBroomInflexionPointsIntensityPerLine(Multidim::Ar
 
     return ret;
 
+}
+
+template<typename T, int flags = int(PushBroomInflexionPointsIntensityPerLineFlags::Relative)>
+std::vector<float> estimatePushBroomInflexionPointsIntensityPerLine(Multidim::Array<T,3> const& image,
+                                                                    float countWeight = 1,
+                                                                    float magnitudeWeight = 0,
+                                                                    int linesAxis = 0,
+                                                                    int samplesAxis = 1,
+                                                                    int bandsAxis = 2) {
+    return estimatePushBroomInflexionPointsIntensityPerLine(image,
+                                                            Multidim::Array<bool,2>(),
+                                                            countWeight,
+                                                            magnitudeWeight,
+                                                            linesAxis,
+                                                            samplesAxis,
+                                                            bandsAxis);
 }
 
 /*!
@@ -502,6 +554,84 @@ Multidim::Array<T,3> computeHorizontallyRectifiedImage(Multidim::Array<T,3> cons
                 out.atUnchecked(outCoords) = interpolated;
 
             }
+        }
+
+    }
+
+    return out;
+}
+
+template<typename T>
+Multidim::Array<bool,2> computeHorizontallyRectifiedImageMask(Multidim::Array<T,3> const& image,
+                                                        std::vector<float> const& shifts,
+                                                        int linesAxis = 0,
+                                                        int samplesAxis = 1,
+                                                        int bandsAxis = 2)
+{
+
+    int maskLineAxis = linesAxis;
+    int maskSampleAxis = samplesAxis;
+
+    if (bandsAxis < linesAxis) {
+        maskLineAxis--;
+    }
+
+    if (bandsAxis < samplesAxis) {
+        maskSampleAxis--;
+    }
+
+    auto shape = image.shape();
+
+    int nLines = shape[linesAxis];
+    int nSamples = shape[samplesAxis];
+
+    int outWidth = nSamples;
+
+    float shiftMin = 0;
+    float shiftMax = 0;
+    float accumulatedShift = 0;
+
+    for (float shift : shifts) {
+        accumulatedShift -= shift; //disparity of +n pix mean the object is further on the right, so the line has to be pushed on the left to compensate.
+        shiftMin = std::min(shiftMin, accumulatedShift);
+        shiftMax = std::max(shiftMax, accumulatedShift);
+    }
+
+    int minDelta = std::floor(shiftMin);
+    int maxDelta = std::ceil(shiftMax);
+
+    int delta_w = maxDelta - minDelta;
+
+    outWidth += delta_w;
+
+    std::array<int,2> out_shape;
+
+    out_shape[maskLineAxis] = nLines;
+    out_shape[maskSampleAxis] = outWidth;
+
+    Multidim::Array<bool,2> out(out_shape);
+
+    accumulatedShift = -minDelta; //start at -minDelta, so that when reaching the minDelta region, the pixels starts at index 0
+
+    #pragma omp parallel for
+    for (int i = 0; i < nLines; i++) {
+        float shift = 0;
+
+        if (i > 0) {
+            shift = shifts[i-1];
+        }
+
+        accumulatedShift -= shift;
+
+        for (int j = 0; j < outWidth; j++) {
+
+            float fracCoord = j - accumulatedShift;
+
+            std::array<int,2> outCoords;
+            outCoords[maskLineAxis] = i;
+            outCoords[maskSampleAxis] = j;
+
+            out.atUnchecked(outCoords) = fracCoord >= 0 and fracCoord < nSamples;
         }
 
     }
