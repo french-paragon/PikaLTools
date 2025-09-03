@@ -2436,12 +2436,9 @@ bool viewPreRectifiedBill(BilSequenceAcquisitionData *bilSequence) {
     Multidim::Array<float, 3> normalized = StereoVision::ImageProcessing::normalizeImageChannels(data);
 
     std::vector<float> shifts = PushBroomRelativeOffsets::estimatePushBroomHorizontalShiftCorr(data);
-    std::vector<float> accumulatedShifts(shifts.size());
-    accumulatedShifts[0] = shifts[0];
 
-    for (int i = 1; i < accumulatedShifts.size(); i++) {
-        accumulatedShifts[i] = shifts[i] + accumulatedShifts[i-1];
-    }
+    PushBroomRelativeOffsets::AccumulatedShiftsInfos<float> accumulated =
+        PushBroomRelativeOffsets::computeAccumulatedFromRelativeShifts(shifts);
 
     Multidim::Array<float, 3> horizontalRectified = PushBroomRelativeOffsets::computeHorizontallyRectifiedImage(normalized, shifts);
     Multidim::Array<bool, 2> horizontalRectifiedMask = PushBroomRelativeOffsets::computeHorizontallyRectifiedImageMask(normalized, shifts);
@@ -2484,7 +2481,7 @@ bool viewPreRectifiedBill(BilSequenceAcquisitionData *bilSequence) {
 
     prbve->setImageFromArray(bilSequence,
                              QVector<int>(selected.begin(), selected.end()),
-                             QVector<float>(accumulatedShifts.begin(), accumulatedShifts.end()),
+                             QVector<float>(accumulated.accumulatedShifts.begin(), accumulated.accumulatedShifts.end()),
                              finalImage,
                              whiteLevel,
                              blackLevel);

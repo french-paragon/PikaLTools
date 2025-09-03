@@ -477,6 +477,41 @@ inline std::vector<int> filterPushBroomLinesWithInflexion(std::vector<float> con
 }
 
 template<typename T>
+struct AccumulatedShiftsInfos {
+    std::vector<T> accumulatedShifts;
+    int minDelta;
+    int maxDelta;
+};
+
+template<typename T>
+AccumulatedShiftsInfos<T> computeAccumulatedFromRelativeShifts(std::vector<T> const& shifts) {
+
+    float shiftMin = 0;
+    float shiftMax = 0;
+    float accumulatedShift = 0;
+
+    for (int i = 0; i < shifts.size(); i++) {
+        accumulatedShift -= shifts[i]; //disparity of +n pix mean the object is further on the right, so the line has to be pushed on the left to compensate.
+        shiftMin = std::min(shiftMin, accumulatedShift);
+        shiftMax = std::max(shiftMax, accumulatedShift);
+    }
+
+    AccumulatedShiftsInfos<T> ret;
+
+    ret.minDelta = std::floor(shiftMin);
+    ret.maxDelta = std::ceil(shiftMax);
+
+    ret.accumulatedShifts.resize(shifts.size()+1);
+    ret.accumulatedShifts[0] = -ret.minDelta; //start at -minDelta, so that when reaching the minDelta region, the pixels starts at index 0
+
+    for (int i = 1; i <= shifts.size(); i++) {
+        ret.accumulatedShifts[i] = ret.accumulatedShifts[i-1] - shifts[i-1];
+    }
+
+    return ret;
+}
+
+template<typename T>
 Multidim::Array<T,3> computeHorizontallyRectifiedImage(Multidim::Array<T,3> const& image,
                                                         std::vector<float> const& shifts,
                                                         int linesAxis = 0,
@@ -491,20 +526,9 @@ Multidim::Array<T,3> computeHorizontallyRectifiedImage(Multidim::Array<T,3> cons
 
     int outWidth = nSamples;
 
-    float shiftMin = 0;
-    float shiftMax = 0;
-    float accumulatedShift = 0;
+    AccumulatedShiftsInfos<float> accumulated = computeAccumulatedFromRelativeShifts(shifts);
 
-    for (float shift : shifts) {
-        accumulatedShift -= shift; //disparity of +n pix mean the object is further on the right, so the line has to be pushed on the left to compensate.
-        shiftMin = std::min(shiftMin, accumulatedShift);
-        shiftMax = std::max(shiftMax, accumulatedShift);
-    }
-
-    int minDelta = std::floor(shiftMin);
-    int maxDelta = std::ceil(shiftMax);
-
-    int delta_w = maxDelta - minDelta;
+    int delta_w = accumulated.maxDelta - accumulated.minDelta;
 
     outWidth += delta_w;
 
@@ -516,17 +540,10 @@ Multidim::Array<T,3> computeHorizontallyRectifiedImage(Multidim::Array<T,3> cons
 
     Multidim::Array<T,3> out(out_shape);
 
-    accumulatedShift = -minDelta; //start at -minDelta, so that when reaching the minDelta region, the pixels starts at index 0
-
     #pragma omp parallel for
     for (int i = 0; i < nLines; i++) {
-        float shift = 0;
 
-        if (i > 0) {
-            shift = shifts[i-1];
-        }
-
-        accumulatedShift -= shift;
+        float& accumulatedShift = accumulated.accumulatedShifts[i];
 
         for (int b = 0; b < nBands; b++) {
 
@@ -587,20 +604,9 @@ Multidim::Array<bool,2> computeHorizontallyRectifiedImageMask(Multidim::Array<T,
 
     int outWidth = nSamples;
 
-    float shiftMin = 0;
-    float shiftMax = 0;
-    float accumulatedShift = 0;
+    AccumulatedShiftsInfos<float> accumulated = computeAccumulatedFromRelativeShifts(shifts);
 
-    for (float shift : shifts) {
-        accumulatedShift -= shift; //disparity of +n pix mean the object is further on the right, so the line has to be pushed on the left to compensate.
-        shiftMin = std::min(shiftMin, accumulatedShift);
-        shiftMax = std::max(shiftMax, accumulatedShift);
-    }
-
-    int minDelta = std::floor(shiftMin);
-    int maxDelta = std::ceil(shiftMax);
-
-    int delta_w = maxDelta - minDelta;
+    int delta_w = accumulated.maxDelta - accumulated.minDelta;
 
     outWidth += delta_w;
 
@@ -611,17 +617,10 @@ Multidim::Array<bool,2> computeHorizontallyRectifiedImageMask(Multidim::Array<T,
 
     Multidim::Array<bool,2> out(out_shape);
 
-    accumulatedShift = -minDelta; //start at -minDelta, so that when reaching the minDelta region, the pixels starts at index 0
-
     #pragma omp parallel for
     for (int i = 0; i < nLines; i++) {
-        float shift = 0;
 
-        if (i > 0) {
-            shift = shifts[i-1];
-        }
-
-        accumulatedShift -= shift;
+        float& accumulatedShift = accumulated.accumulatedShifts[i];
 
         for (int j = 0; j < outWidth; j++) {
 

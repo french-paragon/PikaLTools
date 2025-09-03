@@ -137,7 +137,7 @@ QPointF PreRectifiedBillViewEditor::mapToOriginalSequence(QPointF const& source)
 
     int horizontalOffsetId = std::max(0, std::min(_horizontalLinesOffsets.size()-1, originalLine));
 
-    QPointF ret (source.x() + _horizontalLinesOffsets[horizontalOffsetId],
+    QPointF ret (source.x() - _horizontalLinesOffsets[horizontalOffsetId],
                 originalLine + deltaLine);
 
     return ret;
@@ -166,7 +166,7 @@ QPointF PreRectifiedBillViewEditor::mapFromOriginalSequence(QPointF const& sourc
 
     int horizontalOffsetId = std::max(0, std::min(_horizontalLinesOffsets.size()-1, line));
 
-    float x = source.x() - _horizontalLinesOffsets[horizontalOffsetId];
+    float x = source.x() + _horizontalLinesOffsets[horizontalOffsetId];
 
     return QPointF(x,y);
 }
