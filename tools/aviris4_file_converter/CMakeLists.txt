@@ -9,4 +9,4 @@ add_executable(
 
 #ensure the path to the submodule libraries is set
 
-target_link_libraries(${EXEC_NAME} StereoVision::stevi ${IO_LIB} ${GUI_LIB} Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets)
+target_link_libraries(${EXEC_NAME} StereoVision::stevi ${IO_LIB} ${GUI_LIB} Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets MultidimArrays::MultidimArrays)

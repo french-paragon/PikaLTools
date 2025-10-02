@@ -9,4 +9,4 @@ add_library(
     ${LIB_SRC}
 )
 
-target_link_libraries(${GEO_LIB} SteviappSdk::StereoVisionAppGeo)
+target_link_libraries(${GEO_LIB} SteviappSdk::StereoVisionAppGeo MultidimArrays::MultidimArrays)

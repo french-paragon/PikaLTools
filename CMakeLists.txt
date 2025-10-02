@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.5)
 
 project(PikaLTools LANGUAGES CXX)
 
+include(FetchContent)
+
 option(BUILD_TESTS "Build the test suite" ON)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -16,6 +18,16 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fopenmp -march=native -
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/libs)
+
+#find dependancies
+
+FetchContent_Declare(
+  MultidimArrays
+  GIT_REPOSITORY https://github.com/french-paragon/MultidimArrays.git
+  GIT_TAG 6b816b3b0ab8f1a484cfa695daa9f64f11ea2348
+  FIND_PACKAGE_ARGS
+)
+FetchContent_MakeAvailable(MultidimArrays)
 
 find_package(QT NAMES Qt5 COMPONENTS Core Test Widgets PrintSupport REQUIRED)
 find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Core Test Widgets PrintSupport REQUIRED)

@@ -79,5 +79,6 @@ target_link_libraries(${MODULE_NAME}
     StereoVision::qImageWidget #qImageWidget lib from the Steviapp SDK
     ${IO_LIB}
     ${PROCESSING_LIB}
+    MultidimArrays::MultidimArrays
     Qt${QT_VERSION_MAJOR}::Core
     Qt${QT_VERSION_MAJOR}::Widgets)

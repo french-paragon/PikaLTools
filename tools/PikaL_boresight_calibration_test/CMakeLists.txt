@@ -12,5 +12,6 @@ target_link_libraries(${EXEC_NAME}
     StereoVision::qImageWidget
     ${IO_LIB}
     ${GEO_LIB}
+    MultidimArrays::MultidimArrays
     Qt${QT_VERSION_MAJOR}::Core
     )

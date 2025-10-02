@@ -14,3 +14,5 @@ add_library(
     ${LIB_SRC}
     relativeoffsetsestimator.h
 )
+
+target_link_libraries(${PROCESSING_LIB} MultidimArrays::MultidimArrays)

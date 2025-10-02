@@ -15,6 +15,7 @@ target_link_libraries(${EXEC_NAME}
     StereoVision::stevi
     StereoVision::qImageWidget
     ${IO_LIB}
+    MultidimArrays::MultidimArrays
     Qt${QT_VERSION_MAJOR}::Core
     Qt${QT_VERSION_MAJOR}::Widgets
     ${QCUSTOMPLOT_LIBRARY})

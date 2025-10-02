@@ -14,4 +14,5 @@ target_link_libraries(${EXEC_NAME}
     JPEG::JPEG
     TIFF::TIFF
     PNG::PNG
+    MultidimArrays::MultidimArrays
     Qt${QT_VERSION_MAJOR}::Core )

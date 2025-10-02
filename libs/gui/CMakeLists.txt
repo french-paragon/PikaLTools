@@ -10,4 +10,4 @@ add_library(
     ${LIB_SRC}
 )
 
-target_link_libraries(${GUI_LIB} Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets)
+target_link_libraries(${GUI_LIB} Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Widgets MultidimArrays::MultidimArrays)
