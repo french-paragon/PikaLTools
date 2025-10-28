@@ -126,6 +126,12 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
         openBilSequenceFolder(bilSeq);
     });
 
+    QAction* make_path_relative = new QAction(tr("Make bil files paths relative"), parent);
+
+    connect(make_path_relative, &QAction::triggered, [bilSeq] () {
+        bilSeq->makeBilPathsRelative();
+    });
+
     QAction* compute_orthophoto = new QAction(tr("Compute orthophoto"), parent);
 
     connect(compute_orthophoto, &QAction::triggered, [bilSeq] () {
@@ -188,6 +194,7 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
                          assignToMounting,
                          view_bil_cube,
                          view_files,
+                         make_path_relative,
                          export_landmarks,
                          compute_orthophoto,
                          exportIgm,

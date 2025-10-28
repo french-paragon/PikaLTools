@@ -64,6 +64,7 @@ public:
     public:
 
         BilAcquisitionData(QString path = "");
+        BilAcquisitionData(BilSequenceAcquisitionData* parent, QString path = "");
 
         void setBilFilePath(QString filePath);
 
@@ -90,9 +91,12 @@ public:
         int getLcfNLines() const;
 
     protected:
+        BilSequenceAcquisitionData* _parent;
         QString _bil_file_path;
         mutable std::optional<int> _nLines;
         mutable std::optional<int> _nLcfLines;
+
+        friend class BilSequenceAcquisitionData;
     };
 
     void setBilSequence(const QList<QString> &bilFiles);
@@ -104,6 +108,8 @@ public:
     inline QList<BilAcquisitionData> const& getBilInfos() const {
         return _bilSequence;
     }
+
+    bool makeBilPathsRelative();
 
     void clearOptimized() override;
     bool hasOptimizedParameters() const override;

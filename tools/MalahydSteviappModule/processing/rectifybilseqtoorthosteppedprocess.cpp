@@ -196,6 +196,8 @@ bool RectifyBilSeqToOrthoSteppedProcess::doNextStep() {
 
 bool RectifyBilSeqToOrthoSteppedProcess::computeBilProjection(int bilId) {
 
+    StereoVisionApp::Project* proj = _bilSequence->getProject();
+
     double min_x = std::numeric_limits<double>::infinity();
     double max_x = -std::numeric_limits<double>::infinity();
 

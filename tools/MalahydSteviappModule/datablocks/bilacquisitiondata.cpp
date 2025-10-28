@@ -37,6 +37,15 @@ BilSequenceAcquisitionData::BilSequenceAcquisitionData(StereoVisionApp::Project 
     extendDataModel();
 }
 BilSequenceAcquisitionData::BilAcquisitionData::BilAcquisitionData(QString path) :
+    _parent(nullptr),
+    _bil_file_path(path),
+    _nLines(std::nullopt),
+    _nLcfLines(std::nullopt)
+{
+
+}
+BilSequenceAcquisitionData::BilAcquisitionData::BilAcquisitionData(BilSequenceAcquisitionData* parent, QString path) :
+    _parent(parent),
     _bil_file_path(path),
     _nLines(std::nullopt),
     _nLcfLines(std::nullopt)
@@ -53,17 +62,24 @@ void BilSequenceAcquisitionData::BilAcquisitionData::setBilFilePath(QString file
 }
 
 QString BilSequenceAcquisitionData::BilAcquisitionData::bilFilePath() const {
+    if (_parent != nullptr) {
+        StereoVisionApp::Project* proj = _parent->getProject();
+        if (proj != nullptr) {
+            return proj->relativeFilePathToAbsolute(_bil_file_path);
+        }
+    }
     return _bil_file_path;
 }
 QString BilSequenceAcquisitionData::BilAcquisitionData::headerFilePath() const {
-    return _bil_file_path + ".hdr";
+    return bilFilePath() + ".hdr";
 }
 QString BilSequenceAcquisitionData::BilAcquisitionData::lcfFilePath() const {
-    return _bil_file_path.mid(0, _bil_file_path.size()-4)+".lcf";
+    QString bilFile = bilFilePath();
+    return bilFile.mid(0, bilFile.size()-4)+".lcf";
 }
 
 QMap<QString, QString> BilSequenceAcquisitionData::BilAcquisitionData::headerData() const {
-    std::optional<std::map<std::string, std::string>> optData = readBilHeaderData(_bil_file_path.toStdString());
+    std::optional<std::map<std::string, std::string>> optData = readBilHeaderData(bilFilePath().toStdString());
 
     if (!optData.has_value()) {
         return QMap<QString, QString>();
@@ -103,7 +119,7 @@ void BilSequenceAcquisitionData::setBilSequence(QList<QString> const& bilFiles) 
         same = true;
 
         for (int i = 0; i < _bilSequence.size(); i++) {
-            if (_bilSequence[i].bilFilePath() != bilFiles[i]) {
+            if (_bilSequence[i]._bil_file_path != bilFiles[i]) {
                 same = false;
                 break;
             }
@@ -118,7 +134,7 @@ void BilSequenceAcquisitionData::setBilSequence(QList<QString> const& bilFiles) 
     _bilSequence.reserve(bilFiles.size());
 
     for (int i = 0; i < bilFiles.size(); i++) {
-        _bilSequence.push_back(BilAcquisitionData(bilFiles[i]));
+        _bilSequence.push_back(BilAcquisitionData(this, bilFiles[i]));
     }
 
     int nLines = nLinesInSequence();
@@ -132,13 +148,39 @@ void BilSequenceAcquisitionData::setBilSequence(QList<QString> const& bilFiles) 
 
 QList<QString> BilSequenceAcquisitionData::getBilFiles() const {
 
+    StereoVisionApp::Project* project = getProject();
+
     QList<QString> ret;
     ret.reserve(_bilSequence.size());
 
     for (int i = 0; i < _bilSequence.size(); i++) {
-        ret.push_back(_bilSequence[i].bilFilePath());
+        QString path = _bilSequence[i].bilFilePath();
+        if (project != nullptr) {
+            path = project->relativeFilePathToAbsolute(path);
+        }
+        ret.push_back(path);
     }
     return ret;
+}
+
+bool BilSequenceAcquisitionData::makeBilPathsRelative() {
+
+    StereoVisionApp::Project* project = getProject();
+    constexpr bool onlyIfNested = false;
+
+    if (project == nullptr) {
+        return false;
+    }
+
+    for (int i = 0; i < _bilSequence.size(); i++) {
+        QString path = _bilSequence[i]._bil_file_path;
+        if (project != nullptr) {
+            path = project->relativePath(path, onlyIfNested);
+        }
+        _bilSequence[i]._bil_file_path = path;
+    }
+
+    return true;
 }
 
 
@@ -249,6 +291,8 @@ void BilSequenceAcquisitionData::setSequenceInfos(const SequenceInfos &newSequen
 
 double BilSequenceAcquisitionData::getTimeFromPixCoord(double yPos) const {
 
+    StereoVisionApp::Project* proj = getProject();
+
     if (isInfosOnly()) {
         return _sequenceInfos.initial_time + yPos*_sequenceInfos.time_per_line;
     }
@@ -267,6 +311,10 @@ double BilSequenceAcquisitionData::getTimeFromPixCoord(double yPos) const {
         int bilnLines = _bilSequence[i].getNLines();
 
         QString bilFilePath = _bilSequence[i].bilFilePath();
+
+        if (proj != nullptr) {
+            bilFilePath = proj->relativeFilePathToAbsolute(bilFilePath);
+        }
 
         if (!_loadedTimes[nLines]) {
 
@@ -882,12 +930,21 @@ int BilSequenceAcquisitionData::countPointsRefered(QVector<qint64> const& exclud
 
 QJsonObject BilSequenceAcquisitionData::encodeJson() const {
 
+    StereoVisionApp::Project* proj = getProject();
+    constexpr bool onlyIfNested = true;
+
     QJsonObject obj;
 
     QJsonArray bilFiles;
 
     for (int i = 0; i < _bilSequence.size(); i++) {
-        bilFiles.push_back(_bilSequence[i].bilFilePath());
+
+        QString bilFile = _bilSequence[i]._bil_file_path;
+
+        if (proj != nullptr) {
+            bilFile = proj->relativePath(bilFile, onlyIfNested);
+        }
+        bilFiles.push_back(bilFile);
     }
     obj.insert("bilFiles", bilFiles);
 
