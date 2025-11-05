@@ -15,4 +15,4 @@ add_library(
     relativeoffsetsestimator.h
 )
 
-target_link_libraries(${PROCESSING_LIB} MultidimArrays::MultidimArrays)
+target_link_libraries(${PROCESSING_LIB} StereoVision::stevi MultidimArrays::MultidimArrays)
