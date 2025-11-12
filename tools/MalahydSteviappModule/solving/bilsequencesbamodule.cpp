@@ -177,6 +177,11 @@ bool BilSequenceSBAModule::setupParameters(StereoVisionApp::ModularSBASolver* so
             continue;
         }
 
+        StereoVisionApp::ModularSBASolver::ItemTrajectoryInfos trajectoryInfos
+            {.datablockId=seqId,.TrajId=trajId,.ExternalLeverArmId=mountingId};
+
+        solver->registerItemTrajectoryInfos(trajectoryInfos);
+
         QMap<QString, QString> sequence_header = seq->getBilInfos()[0].headerData();
 
         double sensorWidth = sequence_header.value("samples").toDouble();
