@@ -16,6 +16,10 @@ InputDtm::InputDtm(StereoVisionApp::Project *parent) :
 }
 
 QString InputDtm::getDataSource() const {
+    StereoVisionApp::Project* proj = getProject();
+    if (proj != nullptr) {
+        return proj->relativeFilePathToAbsolute(_dataSource);
+    }
     return _dataSource;
 }
 void InputDtm::setDataSource(QString const& source) {
