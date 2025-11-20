@@ -82,3 +82,49 @@ target_link_libraries(${MODULE_NAME}
     MultidimArrays::MultidimArrays
     Qt${QT_VERSION_MAJOR}::Core
     Qt${QT_VERSION_MAJOR}::Widgets)
+
+if (BUILD_TESTS)
+
+    add_executable(testMalahydModuleOpt tests/test_malahyd_module_opt.cpp
+
+        solving/bilsequencesbamodule.h
+        solving/bilsequencesbamodule.cpp
+        solving/dtmtiepointsmodule.h
+        solving/dtmtiepointsmodule.cpp
+        solving/cost_functors/pinholepushbroomuvprojector.h
+        solving/cost_functors/pinholepushbroomuvprojector.cpp
+        solving/cost_functors/parametrizedxyz2pushbroom.h
+        solving/cost_functors/parametrizedxyz2pushbroom.cpp
+        solving/cost_functors/orientationspeedconsistency.h
+        solving/cost_functors/orientationspeedconsistency.cpp
+
+        datablocks/bilacquisitiondata.h
+        datablocks/bilacquisitiondata.cpp
+        datablocks/inputdtm.h
+        datablocks/inputdtm.cpp
+        datablocks/comparisontrajectory.h
+        datablocks/comparisontrajectory.cpp
+    )
+
+    target_link_libraries(testMalahydModuleOpt
+        SteviappSdk::StereoVisionAppControl
+        SteviappSdk::StereoVisionAppData
+        SteviappSdk::StereoVisionAppGui
+        SteviappSdk::StereoVisionAppSolving
+        SteviappSdk::StereoVisionAppProcessing
+        SteviappSdk::StereoVisionAppTestUtils
+        StereoVision::stevi #stereovision lib from the Steviapp SDK
+        StereoVision::qImageWidget #qImageWidget lib from the Steviapp SDK
+        ${IO_LIB}
+        ${PROCESSING_LIB}
+        MultidimArrays::MultidimArrays
+        Ceres::ceres
+        PROJ::proj
+        Qt${QT_VERSION_MAJOR}::Core
+        Qt${QT_VERSION_MAJOR}::Widgets
+        Qt${QT_VERSION_MAJOR}::Test
+    )
+
+    add_test(TestMalahydModuleOpt testMalahydModuleOpt)
+
+endif (BUILD_TESTS)

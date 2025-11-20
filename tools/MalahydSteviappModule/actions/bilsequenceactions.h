@@ -3,6 +3,8 @@
 
 #include <QString>
 
+#include <optional>
+
 namespace StereoVisionApp{
     class Project;
 }
@@ -69,6 +71,23 @@ bool estimateBilShiftVertical(BilSequenceAcquisitionData *bilSequence);
 bool estimateBilShiftHorizontalAndVertical(BilSequenceAcquisitionData *bilSequence);
 
 bool viewPreRectifiedBill(BilSequenceAcquisitionData *bilSequence);
+
+/*!
+ * \brief cornerMatchRawBill open a bill sequence in the corner matching editor
+ * \param bilSequence the bill sequence to open
+ * \param lineMin the start line of the range of lines to load (0 mean first line, negative numbers are wrapped via modulo, nullopt means query the user via a dialog).
+ * \param lineMax the end line of the range of lines to load (-1 mean last line, negative numbers are wrapped via modulo, nullopt means query the user via a dialog).
+ * \return true on success, false otherwise
+ */
+bool cornerMatchRawBill(BilSequenceAcquisitionData *bilSequence, std::optional<int> lineMin = std::nullopt, std::optional<int> lineMax = std::nullopt);
+/*!
+ * \brief cornerMatchPreRectifiedBill open a bill sequence in the corner matching editor, applying pre-rectification on the fly
+ * \param bilSequence the bill sequence to open
+ * \param lineMin the start line of the range of lines to load (0 mean first line, negative numbers are wrapped via modulo, nullopt means query the user via a dialog).
+ * \param lineMax the end line of the range of lines to load (-1 mean last line, negative numbers are wrapped via modulo, nullopt means query the user via a dialog).
+ * \return true on success, false otherwise
+ */
+bool cornerMatchPreRectifiedBill(BilSequenceAcquisitionData *bilSequence, std::optional<int> lineMin = std::nullopt, std::optional<int> lineMax = std::nullopt);
 
 } // namespace PikaLTools
 

@@ -12,6 +12,7 @@
 #include <steviapp/gui/stepprocessmonitorbox.h>
 #include <steviapp/gui/imageviewer.h>
 #include <steviapp/gui/imageadapters/imagedatadisplayadapter.h>
+#include <steviapp/gui/cornermatchingeditor.h>
 
 #include <steviapp/datablocks/project.h>
 #include <steviapp/datablocks/landmark.h>
@@ -60,6 +61,8 @@
 #include "processing/texturegeneration.h"
 #include "processing/pushbroomprojections.h"
 #include "processing/relativeoffsetsestimator.h"
+
+#include "bilsequenceactionmanager.h"
 
 #include <QList>
 #include <QDir>
@@ -2489,6 +2492,136 @@ bool viewPreRectifiedBill(BilSequenceAcquisitionData *bilSequence) {
     return true;
 
 
+}
+
+class DirectBillMatchBuilder : public StereoVisionApp::CornerMatchingEditor::MatchBuilder {
+public:
+    DirectBillMatchBuilder(BilSequenceAcquisitionData* seq, int startLine) :
+        _seq(seq),
+        _startLine(startLine)
+    {
+        _im_width = seq->getBilWidth();
+    }
+    virtual StereoVisionApp::Correspondences::Generic correspondanceFromUV(float u, float v) const {
+        StereoVisionApp::Correspondences::Typed<StereoVisionApp::Correspondences::UVT> ret;
+        ret.blockId = _seq->internalId();
+        ret.u = u;
+        ret.v = 0;
+        ret.t = _seq->getTimeFromPixCoord(_startLine + v);
+        return ret;
+    }
+    virtual QString targetTitle() const {
+        return _seq->objectName();
+    }
+protected:
+    BilSequenceAcquisitionData* _seq;
+    int _startLine;
+    double _im_width;
+};
+
+bool cornerMatchRawBill(BilSequenceAcquisitionData *bilSequence, std::optional<int> lineMin, std::optional<int> lineMax) {
+
+    if (bilSequence == nullptr) {
+        return false;
+    }
+
+    StereoVisionApp::MainWindow* mw = StereoVisionApp::MainWindow::getActiveMainWindow();
+
+    if (mw == nullptr) {
+        return false; //need main windows to display trajectory
+    }
+
+    StereoVisionApp::Editor* editor = mw->openEditor(StereoVisionApp::CornerMatchingEditor::staticMetaObject.className());
+
+    if (editor == nullptr) {
+        QMessageBox::warning(mw, BilSequenceActionManager::tr("Could not open corner matching editor"), BilSequenceActionManager::tr("Missing editor!"));
+        return false;
+    }
+
+    StereoVisionApp::CornerMatchingEditor* cmte = qobject_cast<StereoVisionApp::CornerMatchingEditor*>(editor);
+
+    if (cmte == nullptr) {
+        QMessageBox::warning(mw, BilSequenceActionManager::tr("Could not open corner matching editor"), BilSequenceActionManager::tr("Editor type mismatch!"));
+        return false;
+    }
+
+    int nLines = bilSequence->nLinesInSequence();
+
+    int start = lineMin.value_or(0);
+    int end = lineMax.value_or(-1);
+
+    bool ok = true;
+
+    if (!lineMin.has_value()) {
+        start = QInputDialog::getInt(mw, BilSequenceActionManager::tr("Range start line"), BilSequenceActionManager::tr("Line#"), start, -nLines, nLines-1, 1, &ok);
+    }
+
+    if (!ok) {
+        return false;
+    }
+
+    if (!lineMax.has_value()) {
+        end = QInputDialog::getInt(mw, BilSequenceActionManager::tr("Range end line"), BilSequenceActionManager::tr("Line#"), end, -nLines, nLines-1, 1, &ok);
+    }
+
+    if (!ok) {
+        return false;
+    }
+
+    if (start < 0) {
+        start += nLines;
+    }
+
+    if (end < 0) {
+        end += nLines;
+    }
+
+    if (start < 0 or start >= nLines) {
+        return false;
+    }
+
+    if (start < 0 or start >= nLines) {
+        return false;
+    }
+
+    if (start == end) {
+        return false;
+    }
+
+    if (start > end) {
+        int tmp = start;
+        start = end;
+        end = tmp;
+    }
+
+    std::vector<int> channels = bilSequence->assumedRgbChannels();
+
+    Multidim::Array<float, 3> data = bilSequence->getFloatBilData(start, end, channels);
+
+    if (data.empty()) {
+        QMessageBox::warning(mw, BilSequenceActionManager::tr("Could not load bil sequence data"), BilSequenceActionManager::tr("Unknown error"));
+        return false;
+    }
+
+    QString name = QString("%1_l%2-l%3").arg(bilSequence->objectName()).arg(start).arg(end);
+
+    auto normalized = StereoVision::ImageProcessing::normalizeImageChannels(data);
+
+    for (int i = 0; i < normalized.shape()[0]; i++) {
+        for (int j = 0; j < normalized.shape()[1]; j++) {
+            for (int k = 0; k < normalized.shape()[2]; k++) {
+                normalized.atUnchecked(i,j,k) *= 255;
+            }
+        }
+    }
+
+    cmte->addImageData(name, normalized, new DirectBillMatchBuilder(bilSequence, start));
+    return true;
+
+
+}
+bool cornerMatchPreRectifiedBill(BilSequenceAcquisitionData *bilSequence, std::optional<int> lineMin, std::optional<int> lineMax) {
+    return false;
 }
 
 } // namespace PikaLTools

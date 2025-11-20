@@ -182,13 +182,6 @@ bool BilSequenceSBAModule::setupParameters(StereoVisionApp::ModularSBASolver* so
 
         solver->registerItemTrajectoryInfos(trajectoryInfos);
 
-        QMap<QString, QString> sequence_header = seq->getBilInfos()[0].headerData();
-
-        double sensorWidth = sequence_header.value("samples").toDouble();
-
-        double fov = sequence_header.value("field of view").toDouble();
-        double fov_rad = fov*M_PI/180.;
-
     }
 
     return true;
@@ -244,9 +237,17 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
             continue;
         }
 
-        QMap<QString, QString> sequence_header = seq->getBilInfos()[0].headerData();
+        double sensorWidth;
 
-        double sensorWidth = sequence_header.value("samples").toDouble();
+        qint64 camId = seq->assignedCamera();
+
+        StereoVisionApp::PushBroomPinholeCamera* cam = currentProject->getDataBlock<StereoVisionApp::PushBroomPinholeCamera>(seqId);
+
+        if (cam != nullptr) {
+            sensorWidth = cam->imWidth();
+        } else {
+            sensorWidth = seq->getBilWidth();
+        }
 
         QVector<qint64> imlmids = seq->listTypedSubDataBlocks(BilSequenceLandmark::staticMetaObject.className());
 

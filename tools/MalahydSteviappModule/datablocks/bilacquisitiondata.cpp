@@ -300,6 +300,10 @@ double BilSequenceAcquisitionData::getTimeFromPixCoord(double yPos) const {
     int floor = std::floor(yPos);
     int ceil = floor + 1;
 
+    if (floor < 0 or ceil >= _loadedTimes.size()) {
+        return std::nan("");
+    }
+
     int nLines = 0;
 
     if (_loadedTimes[floor] and _loadedTimes[ceil]) {

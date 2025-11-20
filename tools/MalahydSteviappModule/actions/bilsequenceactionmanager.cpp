@@ -163,6 +163,11 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
         viewPreRectifiedBill(bilSeq);
     });
 
+    QAction* autoDetectCorners = new QAction(tr("Auto detect tie points"), parent);
+    connect(autoDetectCorners, &QAction::triggered, [bilSeq] () {
+        cornerMatchRawBill(bilSeq);
+    });
+
     QAction* compute_corrMat = new QAction(tr("Show data correlation"), parent);
 
     connect(compute_corrMat, &QAction::triggered, [bilSeq] () {
@@ -201,6 +206,7 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
                          compute_corrMat,
                          analyzeHVShift,
                          viewHVShift,
+                         autoDetectCorners,
                          estimateTime,
                          analyzeProj,
                          exportTraj};
