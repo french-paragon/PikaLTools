@@ -21,6 +21,12 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/libs)
 
 #find dependancies
 
+find_package(SteviappSdk)
+
+if(${SteviappSdk_FOUND})
+    message("Found steviapp sdk")
+endif()
+
 FetchContent_Declare(
   MultidimArrays
   GIT_REPOSITORY https://github.com/french-paragon/MultidimArrays.git
@@ -32,7 +38,7 @@ FetchContent_MakeAvailable(MultidimArrays)
 FetchContent_Declare(
   StereoVision
   GIT_REPOSITORY https://github.com/french-paragon/LibStevi.git
-  GIT_TAG 8175f3a85d28b12033ca0717891e58cf310f6539
+  GIT_TAG 28da8b530013fb49799a8cb270a8b0f558d2b4c3
   FIND_PACKAGE_ARGS
 )
 set(buildGui ON) #ensuire gui is built for stereo vision
@@ -66,12 +72,6 @@ include_directories(${CERES_INCLUDE_DIRS})
 
 find_package(Eigen3 3.3 REQUIRED)
 include_directories(${EIGEN3_INCLUDE_DIR})
-
-find_package(SteviappSdk)
-
-if(${SteviappSdk_FOUND})
-    message("Found steviapp sdk")
-endif()
 
 add_subdirectory(libs)
 
