@@ -815,20 +815,19 @@ bool initBilSequencesTiePoints() {
 
         int nMeasures = pointsInfos[lmId].size();
 
-        //We build a system of equations d x (x - t) = 0, where x is the coordinate of the landmark, d is the ray direction and t is the ray origin
-        // (or, alternatively, d x x = d x t
+        //We build a system of equations d x (x - t) = 0, where x is the coordinate of the landmark, d is the ray direction and p is the ray origin
+        // (or, alternatively, d x x = d x p
         Eigen::Matrix<double,Eigen::Dynamic,3> A;
         Eigen::Matrix<double,Eigen::Dynamic,1> b;
 
         A.resize(3*nMeasures,3);
         b.resize(3*nMeasures,1);
 
-        #ifndef NDEBUG //be able to check positions and directions in debug variables
-        Eigen::Matrix<double,Eigen::Dynamic,1> d;
-        d.resize(3*nMeasures,1);
-        Eigen::Matrix<double,Eigen::Dynamic,1> p;
-        p.resize(3*nMeasures,1);
-        #endif
+        //used as check
+        Eigen::Matrix<double,Eigen::Dynamic,3> d;
+        d.resize(nMeasures,3);
+        Eigen::Matrix<double,Eigen::Dynamic,3> p;
+        p.resize(nMeasures,3);
 
         bool ok = true;
 
@@ -861,10 +860,8 @@ bool initBilSequencesTiePoints() {
                 break;
             }
 
-            #ifndef NDEBUG
-            d.block<3,1>(i*3,0) = rayInfos.value().col(1);
-            p.block<3,1>(i*3,0) = rayInfos.value().col(0);
-            #endif
+            d.row(i) = rayInfos.value().col(1);
+            p.row(i) = rayInfos.value().col(0);
 
             A.block<3,3>(i*3,0) = StereoVision::Geometry::skew<double>(rayInfos.value().col(1));
 
@@ -877,6 +874,24 @@ bool initBilSequencesTiePoints() {
         }
 
         Eigen::Vector3d lsInteresctPos = A.matrix().colPivHouseholderQr().solve(b);
+
+        //check that the projection is in front of all rays...
+        Eigen::Matrix<double, Eigen::Dynamic,1> check = (d * ((-p).rowwise() + (lsInteresctPos.transpose())).transpose()).diagonal();
+
+        if ((check.array() <= 0).any()) { //the rays intersection is behind some of the rays
+
+            double distance = std::max<double>(10,(p.rowwise() - lsInteresctPos.transpose()).rowwise().norm().mean());
+
+            lsInteresctPos = (p + distance*(d.rowwise().normalized())).colwise().mean().transpose().eval();
+
+            Eigen::Matrix<double, Eigen::Dynamic,1> check = (d * ((-p).rowwise() + (lsInteresctPos.transpose())).transpose()).diagonal();
+
+            if ((check.array() <= 0).any()) { //pretty hard
+                out << "Skipping point: " << lmId << " (cannot reproject in front of the cameras)" << Qt::endl;
+                continue;
+            }
+
+        }
 
         constexpr bool optimized = true;
         lm->setPositionFromEcef(local2ecef*lsInteresctPos, optimized);
@@ -1836,7 +1851,9 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
 
     double principalPoint = cam->opticalCenterX().value();
     if (optimized) {
-        principalPoint = cam->optimizedOpticalCenterX().value();
+        if (cam->optimizedOpticalCenterX().isSet()) {
+            principalPoint = cam->optimizedOpticalCenterX().value();
+        }
     }
 
     std::array<double,3> leverArmOrientation = {body2sensor.r.x(), body2sensor.r.y(), body2sensor.r.z()};
@@ -1845,32 +1862,36 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
     std::array<double,6> horizontalDistortion;
     std::array<double,6> verticalDistortion;
 
+    horizontalDistortion = {cam->a0().value(),
+                            cam->a1().value(),
+                            cam->a2().value(),
+                            cam->a3().value(),
+                            cam->a4().value(),
+                            cam->a5().value()};
+    verticalDistortion = {cam->b0().value(),
+                          cam->b1().value(),
+                          cam->b2().value(),
+                          cam->b3().value(),
+                          cam->b4().value(),
+                          cam->b5().value()};
+
     if (optimized) {
+        if (cam->optimizedAsAreSet()) {
         horizontalDistortion = {cam->optimizedA0().value(),
                                 cam->optimizedA1().value(),
                                 cam->optimizedA2().value(),
                                 cam->optimizedA3().value(),
                                 cam->optimizedA4().value(),
                                 cam->optimizedA5().value()};
+        }
+        if (cam->optimizedBsAreSet()) {
         verticalDistortion = {cam->optimizedB0().value(),
                                 cam->optimizedB1().value(),
                                 cam->optimizedB2().value(),
                                 cam->optimizedB3().value(),
                                 cam->optimizedB4().value(),
                                 cam->optimizedB5().value()};
-    } else {
-        horizontalDistortion = {cam->a0().value(),
-                               cam->a1().value(),
-                               cam->a2().value(),
-                               cam->a3().value(),
-                               cam->a4().value(),
-                               cam->a5().value()};
-        verticalDistortion = {cam->b0().value(),
-                              cam->b1().value(),
-                              cam->b2().value(),
-                              cam->b3().value(),
-                              cam->b4().value(),
-                              cam->b5().value()};
+        }
     }
 
     QVector<qint64> imlmids = bilSequence->listTypedSubDataBlocks(BilSequenceLandmark::staticMetaObject.className());
