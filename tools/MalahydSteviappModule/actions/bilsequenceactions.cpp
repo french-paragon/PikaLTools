@@ -19,6 +19,7 @@
 #include <steviapp/datablocks/trajectory.h>
 
 #include <steviapp/vision/indexed_timed_sequence.h>
+#include <steviapp/vision/type_conversions.h>
 
 #include <steviapp/sparsesolver/sbagraphreductor.h>
 #include <steviapp/sparsesolver/modularsbasolver.h>
@@ -31,6 +32,9 @@
 
 #include "steviapp/sparsesolver/costfunctors/modularuvprojection.h"
 #include "steviapp/sparsesolver/costfunctors/posedecoratorfunctors.h"
+
+#include "steviapp/control/cornerdetectionactions.h"
+#include "steviapp/control/imagebaseactions.h"
 
 #include <StereoVision/geometry/core.h>
 #include <StereoVision/geometry/rotations.h>
@@ -2517,9 +2521,10 @@ bool viewPreRectifiedBill(BilSequenceAcquisitionData *bilSequence) {
 
 class DirectBillMatchBuilder : public StereoVisionApp::CornerMatchingEditor::MatchBuilder {
 public:
-    DirectBillMatchBuilder(BilSequenceAcquisitionData* seq, int startLine) :
+    DirectBillMatchBuilder(BilSequenceAcquisitionData* seq, int startLine, int endLine) :
         _seq(seq),
-        _startLine(startLine)
+        _startLine(startLine),
+        _endLine(endLine)
     {
         _im_width = seq->getBilWidth();
     }
@@ -2532,11 +2537,12 @@ public:
         return ret;
     }
     virtual QString targetTitle() const {
-        return _seq->objectName();
+        return _seq->objectName() + "-lines" + QString("%1").arg(_startLine) + "-" + QString("%1").arg(_endLine);
     }
 protected:
     BilSequenceAcquisitionData* _seq;
     int _startLine;
+    int _endLine;
     double _im_width;
 };
 
@@ -2636,13 +2642,297 @@ bool cornerMatchRawBill(BilSequenceAcquisitionData *bilSequence, std::optional<i
         }
     }
 
-    cmte->addImageData(name, normalized, new DirectBillMatchBuilder(bilSequence, start));
+    cmte->addImageData(name, normalized, new DirectBillMatchBuilder(bilSequence, start, end));
     return true;
 
 
 }
 bool cornerMatchPreRectifiedBill(BilSequenceAcquisitionData *bilSequence, std::optional<int> lineMin, std::optional<int> lineMax) {
     return false;
+}
+
+StereoVisionApp::StatusOptionalReturn<void> addBilSequenceHeadless(QMap<QString,QString> const& kwargs, QStringList const& argv) {
+
+    StereoVisionApp::StereoVisionApplication* app = StereoVisionApp::StereoVisionApplication::GetAppInstance();
+
+    if (app == nullptr) {
+        return StereoVisionApp::StatusOptionalReturn<void>::error("could not load app instance!");
+    }
+
+    StereoVisionApp::Project* p = app->getCurrentProject();
+
+    if (p == nullptr) {
+        return StereoVisionApp::StatusOptionalReturn<void>::error("could not access any active project!");
+    }
+
+    //load the files
+
+    QStringList const& filesPaths = argv;
+
+    //other arguments
+
+    QString name = "new bilsequence";
+
+    if (kwargs.contains("name")) {
+        name = kwargs["name"];
+    }
+
+    //create a bilsequence with the list
+    qint64 id = p->createDataBlock(BilSequenceAcquisitionData::staticMetaObject.className());
+
+    if (id < 0) {
+        return StereoVisionApp::StatusOptionalReturn<void>::error("could not create bilsequence in active project!");
+    }
+
+    BilSequenceAcquisitionData* sequence = p->getDataBlock<BilSequenceAcquisitionData>(id);
+
+    if (sequence == nullptr) {
+        return StereoVisionApp::StatusOptionalReturn<void>::error("could not load bilsequence from active project!");
+    }
+
+    sequence->setBilSequence(filesPaths);
+    sequence->setObjectName(name);
+
+    return StereoVisionApp::StatusOptionalReturn<void>();
+}
+
+StereoVisionApp::StatusOptionalReturn<void> autoDetectBilSequencesTiePointsHeadless(QMap<QString,QString> const& kwargs, QStringList const& argv) {
+
+    StereoVisionApp::StereoVisionApplication* app = StereoVisionApp::StereoVisionApplication::GetAppInstance();
+
+    if (app == nullptr) {
+        return StereoVisionApp::StatusOptionalReturn<void>::error("could not load app instance!");
+    }
+
+    StereoVisionApp::Project* p = app->getCurrentProject();
+
+    if (p == nullptr) {
+        return StereoVisionApp::StatusOptionalReturn<void>::error("could not access any active project!");
+    }
+
+    //images
+
+    if (argv.size() < 2) {
+        return StereoVisionApp::StatusOptionalReturn<void>::error("Invalid number of arguments, expected at least two images");
+    }
+
+    QString const& sequence1UrlStr = argv[0];
+    QString const& sequence2UrlStr = argv[1];
+
+    QVector<qint64> sequence1Url = StereoVisionApp::DataBlock::decodeUrl(sequence1UrlStr);
+    QVector<qint64> sequence2Url = StereoVisionApp::DataBlock::decodeUrl(sequence2UrlStr);
+
+    BilSequenceAcquisitionData* seq1 = qobject_cast<BilSequenceAcquisitionData*>(p->getByUrl(sequence1Url));
+    BilSequenceAcquisitionData* seq2 = qobject_cast<BilSequenceAcquisitionData*>(p->getByUrl(sequence2Url));
+
+    if (seq1 == nullptr or seq2 == nullptr) {
+        return StereoVisionApp::StatusOptionalReturn<void>::error("Could not load bil sequences, invalid references! Are the datablock present in the project?");
+    }
+
+    int seq1LineStart = 0;
+    int seq1LineEnd = -1;
+
+    int seq2LineStart = 0;
+    int seq2LineEnd = -1;
+
+    if (argv.size() >= 3) {
+        bool ok = true;
+        seq1LineStart = argv[2].toInt(&ok);
+
+        if (!ok) {
+            return StereoVisionApp::StatusOptionalReturn<void>::error("invalid 3rd positional argument, expected seq1LineStart convertible to int)");
+        }
+    }
+
+    if (argv.size() >= 4) {
+        bool ok = true;
+        seq1LineEnd = argv[3].toInt(&ok);
+
+        if (!ok) {
+            return StereoVisionApp::StatusOptionalReturn<void>::error("invalid 4th positional argument, expected seq1LineEnd convertible to int)");
+        }
+    }
+
+    if (argv.size() >= 5) {
+        bool ok = true;
+        seq2LineStart = argv[4].toInt(&ok);
+
+        if (!ok) {
+            return StereoVisionApp::StatusOptionalReturn<void>::error("invalid 5th positional argument, expected seq2LineStart convertible to int)");
+        }
+    }
+
+    if (argv.size() >= 6) {
+        bool ok = true;
+        seq2LineEnd = argv[5].toInt(&ok);
+
+        if (!ok) {
+            return StereoVisionApp::StatusOptionalReturn<void>::error("invalid 6th positional argument, expected seq2LineEnd convertible to int)");
+        }
+    }
+
+    int nLines1 = seq1->nLinesInSequence();
+
+    if (seq1LineStart < 0) {
+        seq1LineStart = nLines1 + seq1LineStart;
+    }
+
+    if (seq1LineEnd < 0) {
+        seq1LineEnd = nLines1 + seq1LineEnd;
+    }
+
+    int nLines2 = seq2->nLinesInSequence();
+
+    if (seq2LineStart < 0) {
+        seq2LineStart = nLines2 + seq2LineStart;
+    }
+
+    if (seq2LineEnd < 0) {
+        seq2LineEnd = nLines2 + seq2LineEnd;
+    }
+
+    //matching pipeline configuration
+
+    using ComputeType = float;
+
+    using CornerDetecor = StereoVisionApp::HarrisCornerDetectorModule<ComputeType>;
+    using MatchModule = StereoVisionApp::HungarianCornerMatchModule<ComputeType>;
+    using InlierModule = StereoVisionApp::GenericInlinerSelectionModule<ComputeType>;
+
+    using MatchingPipeline = StereoVisionApp::ModularSparseMatchingPipeline<ComputeType,
+                                                           CornerDetecor,
+                                                           MatchModule,
+                                                           StereoVisionApp::GenericTiePointsRenfinementModule<ComputeType>,
+                                                           StereoVisionApp::GenericInlinerSelectionModule<ComputeType>>;
+
+    int lowPassRadius = 3;
+    int nonMaxSupprRadius = 3;
+    int maxNCorners = 1000;
+
+    if (kwargs.contains("cornerLowPassRadius")) {
+        bool ok = true;
+        lowPassRadius = kwargs["cornerLowPassRadius"].toInt(&ok);
+
+        if (!ok) {
+            return StereoVisionApp::StatusOptionalReturn<void>::error("argument cornerLowPassRadius has invalid value (must be convertible to int)");
+        }
+    }
+
+    if (kwargs.contains("cornerNonMaxSupprRadius")) {
+        bool ok = true;
+        nonMaxSupprRadius = kwargs["cornerNonMaxSupprRadius"].toInt(&ok);
+
+        if (!ok) {
+            return StereoVisionApp::StatusOptionalReturn<void>::error("argument cornerNonMaxSupprRadius has invalid value (must be convertible to int)");
+        }
+    }
+
+    if (kwargs.contains("cornerMaxNCorners")) {
+        bool ok = true;
+        maxNCorners = kwargs["cornerMaxNCorners"].toInt(&ok);
+
+        if (!ok) {
+            return StereoVisionApp::StatusOptionalReturn<void>::error("argument cornerMaxNCorners has invalid value (must be convertible to int)");
+        }
+    }
+
+    // not used at the moment
+    constexpr int patchRadius = 100;
+    constexpr int nSamples = 100;
+
+    int nRansacIterations = 2000;
+
+    if (kwargs.contains("ransacIterations")) {
+        bool ok = true;
+        nRansacIterations = kwargs["ransacIterations"].toInt(&ok);
+
+        if (!ok) {
+            return StereoVisionApp::StatusOptionalReturn<void>::error("argument ransacIterations has invalid value (must be convertible to int)");
+        }
+    }
+
+    float ransacThreshold = 20;
+
+    if (kwargs.contains("ransacThreshold")) {
+        bool ok = true;
+        float threshold = kwargs["ransacThreshold"].toFloat(&ok);
+
+        if (!ok) {
+            return StereoVisionApp::StatusOptionalReturn<void>::error("argument ransacThreshold has invalid value (must be convertible to float)");
+        }
+        ransacThreshold = threshold;
+    }
+
+    CornerDetecor* baseCornerDetectionModule = new CornerDetecor(lowPassRadius, nonMaxSupprRadius, maxNCorners);
+    MatchModule* basePointsMatchingModule = new StereoVisionApp::HungarianCornerMatchModule<ComputeType>(patchRadius, nSamples);
+    InlierModule* baseInlierModule = new StereoVisionApp::RansacPerspectiveInlinerSelectionModule<ComputeType>(nRansacIterations, ransacThreshold);
+
+    MatchingPipeline matchingPipeline(baseCornerDetectionModule, basePointsMatchingModule, nullptr, baseInlierModule);
+    //run the pipeline
+
+    std::vector<int> channels = seq1->assumedRgbChannels();
+
+    Multidim::Array<float,3> img1_data = seq1->getFloatBilData(seq1LineStart, seq1LineEnd, channels);
+
+    if (img1_data.empty()) {
+        return StereoVisionApp::StatusOptionalReturn<void>::error("Could not load raster data from sequence 1!");
+    }
+
+    auto img1_normalized = StereoVision::ImageProcessing::normalizeImageChannels(img1_data);
+
+    channels = seq2->assumedRgbChannels();
+
+    Multidim::Array<float,3> img2_data = seq2->getFloatBilData(seq2LineStart, seq2LineEnd, channels);
+
+    if (img2_data.empty()) {
+        return StereoVisionApp::StatusOptionalReturn<void>::error("Could not load raster data from sequence 2!");
+    }
+
+    auto img2_normalized = StereoVision::ImageProcessing::normalizeImageChannels(img2_data);
+
+    matchingPipeline.setupPipeline(img1_normalized, img2_normalized);
+    constexpr bool verbose = true;
+    matchingPipeline.runAllSteps(verbose);
+
+    if (!matchingPipeline.lastErrorMessage().isEmpty()) {
+        return StereoVisionApp::StatusOptionalReturn<void>::error(qPrintable(QString("Error during matching process: %1").arg(matchingPipeline.lastErrorMessage())));
+    }
+
+    DirectBillMatchBuilder builder1(seq1, seq1LineStart, seq1LineEnd);
+    DirectBillMatchBuilder builder2(seq2, seq2LineStart, seq2LineEnd);
+
+    auto[uvs1, uvs2] = matchingPipeline.filteredCorners();
+
+    auto status = StereoVisionApp::CorrespondencesSet::writeUVCorrespondancesToSet(&builder1, uvs1, &builder2, uvs2, p);
+
+    if (!status.isValid()) {
+        return StereoVisionApp::StatusOptionalReturn<void>::error(status.errorMessage());
+    }
+
+    if (kwargs.contains("outFile")) {
+        QString outFile = kwargs["outFile"];
+
+        QPixmap img1_pixmap = StereoVisionApp::pixmapFromImgdata(img1_normalized);
+        QPixmap img2_pixmap = StereoVisionApp::pixmapFromImgdata(img2_normalized);
+
+        QVector<QPointF> coords1(uvs1.size());
+        QVector<QPointF> coords2(uvs2.size());
+
+        for (int i = 0; i < coords1.size(); i++) {
+            coords1[i] = QPointF(uvs1[i][1], uvs1[i][0]);
+        }
+
+        for (int i = 0; i < coords2.size(); i++) {
+            coords2[i] = QPointF(uvs2[i][1], uvs2[i][0]);
+        }
+
+        return StereoVisionApp::exportCorrespondancesFromImages(
+            outFile, builder1.targetTitle(), builder2.targetTitle(),
+            img1_pixmap, img2_pixmap,
+            coords1, coords2);
+    }
+
+    return StereoVisionApp::StatusOptionalReturn<void>();
 }
 
 } // namespace PikaLTools

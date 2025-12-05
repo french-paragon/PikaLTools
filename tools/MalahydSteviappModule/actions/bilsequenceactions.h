@@ -5,6 +5,8 @@
 
 #include <optional>
 
+#include <steviapp/utils/statusoptionalreturn.h>
+
 namespace StereoVisionApp{
     class Project;
 }
@@ -88,6 +90,9 @@ bool cornerMatchRawBill(BilSequenceAcquisitionData *bilSequence, std::optional<i
  * \return true on success, false otherwise
  */
 bool cornerMatchPreRectifiedBill(BilSequenceAcquisitionData *bilSequence, std::optional<int> lineMin = std::nullopt, std::optional<int> lineMax = std::nullopt);
+
+StereoVisionApp::StatusOptionalReturn<void> addBilSequenceHeadless(QMap<QString,QString> const& kwargs, QStringList const& argv);
+StereoVisionApp::StatusOptionalReturn<void> autoDetectBilSequencesTiePointsHeadless(QMap<QString,QString> const& kwargs, QStringList const& argv);
 
 } // namespace PikaLTools
 

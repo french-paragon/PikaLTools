@@ -23,6 +23,7 @@
 #include "./gui/dtmrastervieweditor.h"
 
 #include "actions/bilsequenceactionmanager.h"
+#include "actions/bilsequenceactions.h"
 #include "actions/comparisonsequenceactionmanager.h"
 #include "actions/inputdtmactionmanager.h"
 
@@ -76,6 +77,9 @@ int PikaLSteviappModule::loadModule(StereoVisionApp::StereoVisionApplication* ap
             return new DtmTiePointsModule();
         });
     }
+
+    app->registerHeadlessAction("PikaLTools", "addBilSequence", addBilSequenceHeadless);
+    app->registerHeadlessAction("PikaLTools", "autoDetectBilSequencesTiePoints", autoDetectBilSequencesTiePointsHeadless);
 
     out << "PikaL Steviapp module loaded!" << Qt::endl;
 
