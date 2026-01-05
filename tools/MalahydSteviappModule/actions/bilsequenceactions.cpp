@@ -360,7 +360,7 @@ bool exportBilRectifiedLandmarks(BilSequenceAcquisitionData *bilSequence, bool o
             continue;
         }
 
-        out << alm->objectName() << "," << time << "," << u << "," << v << "\n";
+        out << alm->objectName() << "," << QString("%1").arg(time, 0, 'f', 4) << "," << u << "," << v << "\n";
     }
 
     fout.close();
