@@ -21,6 +21,7 @@
 #include <QDir>
 #include <QRectF>
 #include <QPointF>
+#include <QDebug>
 
 #include <proj.h>
 
@@ -1257,6 +1258,10 @@ bool RectifyBilSeqToOrthoSteppedProcess::init() {
 
     _terrain = dtm.value();
 
+    if (!_inputDtm->getCrsOverride().isEmpty()) {
+        _terrain.crsInfos = _inputDtm->getCrsOverride().toStdString(); //override the crs if needed.
+    }
+
     Multidim::Array<double,2> corner_vecs({3, 3}, {3,1});
 
     for (int c = 0; c < 3; c++) {
@@ -1331,6 +1336,15 @@ bool RectifyBilSeqToOrthoSteppedProcess::init() {
     }
 
     _terrain_projector = new StereoVisionApp::Geo::TerrainProjector<double>(_terrain);
+
+#ifndef NDEBUG
+    auto msg = _terrain_projector->fullStateCheck();
+
+    if (msg.has_value()) {
+        qDebug() << "Issue detected in terrain projector: " << msg.value().c_str();
+    }
+
+#endif
 
     //load bill data
 
