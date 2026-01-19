@@ -116,7 +116,7 @@ std::optional<StereoVisionApp::Geo::GeoRasterData<float, 2>> InputDtm::dtmData()
     }
 
     _dtmDataCache = readGeoRasterData<float,2>(getDataSource().toStdString());
-    if (!_crs_override.isEmpty()) {
+    if (_dtmDataCache.has_value() and !_crs_override.isEmpty()) {
         _dtmDataCache.value().crsInfos = _crs_override.toStdString();
     }
     return _dtmDataCache;
