@@ -10,7 +10,7 @@
 
 #include "geo/coordinate_conversions.h"
 
-#include "solving/cost_functors/pinholepushbroomuvprojector.h"
+#include <steviapp/sparsesolver/sbamodules/pinholecameraprojectormodule.h>
 
 #include <QJsonArray>
 
@@ -392,7 +392,7 @@ std::vector<std::array<double, 3>> BilSequenceAcquisitionData::getSensorViewDire
     }
 
     std::vector<std::array<double, 3>> viewDirectionsSensor(nSamples);
-    PinholePushbroomUVProjector projector(nSamples);
+    StereoVisionApp::PinholePushbroomUVProjector projector(nSamples);
 
     std::array<double*,4> params = {&f_len_pix, &optical_center, as.data(), bs.data()};
 

@@ -9,7 +9,7 @@
 #include <steviapp/sparsesolver/costfunctors/modularuvprojection.h>
 #include <steviapp/sparsesolver/costfunctors/posedecoratorfunctors.h>
 
-#include "cost_functors/pinholepushbroomuvprojector.h"
+#include <steviapp/sparsesolver/sbamodules/pinholecameraprojectormodule.h>
 
 #include <steviapp/sparsesolver/costfunctors/fixedsizenormalprior.h>
 
@@ -17,7 +17,7 @@ namespace PikaLTools {
 
 const char* BilSequenceSBAModule::ModuleName = "PikaLTools::SBAModule::BilSequence";
 
-using PushBroomUVProj = PinholePushbroomUVProjector;
+using PushBroomUVProj = StereoVisionApp::PinholePushbroomUVProjector;
 using PushBroomUVCostInterpolated =
 StereoVisionApp::InterpolatedPose< //need to interpolate
 StereoVisionApp::LeverArm< //need to add lever arm
