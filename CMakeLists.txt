@@ -25,6 +25,8 @@ find_package(SteviappSdk)
 
 if(${SteviappSdk_FOUND})
     message("Found steviapp sdk")
+else()
+    message("Steviapp sdk not found!")
 endif()
 
 FetchContent_Declare(
