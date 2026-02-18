@@ -4,6 +4,8 @@
 #include <steviapp/gui/editor.h>
 #include <steviapp/gui/imageadapters/imagedatadisplayadapter.h>
 
+#include "processing/relativeoffsetsestimator.h"
+
 class QComboBox;
 
 namespace QImageDisplay {
@@ -88,8 +90,7 @@ private:
 
     BilSequenceAcquisitionData* _sequence;
 
-    QVector<int> _verticalLinesMatch;
-    QVector<float> _horizontalLinesOffsets;
+    PushBroomRelativeOffsets::RelativeShiftConverter _shiftConverter;
 };
 
 

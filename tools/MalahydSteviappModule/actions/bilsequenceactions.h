@@ -94,6 +94,8 @@ bool cornerMatchPreRectifiedBill(BilSequenceAcquisitionData *bilSequence, std::o
 StereoVisionApp::StatusOptionalReturn<void> addBilSequenceHeadless(QMap<QString,QString> const& kwargs, QStringList const& argv);
 StereoVisionApp::StatusOptionalReturn<void> autoDetectBilSequencesTiePointsHeadless(QMap<QString,QString> const& kwargs, QStringList const& argv);
 
+StereoVisionApp::StatusOptionalReturn<void> addBillSequence2HeadlessTiePointDetector(QMap<QString,QString> const& kwargs, QStringList const& argv);
+
 } // namespace PikaLTools
 
 #endif // BILSEQUENCEACTIONS_H

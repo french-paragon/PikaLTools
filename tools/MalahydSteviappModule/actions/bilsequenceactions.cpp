@@ -20,6 +20,7 @@
 
 #include <steviapp/vision/indexed_timed_sequence.h>
 #include <steviapp/vision/type_conversions.h>
+#include <steviapp/vision/sparseMatchingPipeline.h>
 
 #include <steviapp/sparsesolver/sbagraphreductor.h>
 #include <steviapp/sparsesolver/modularsbasolver.h>
@@ -2546,6 +2547,41 @@ protected:
     double _im_width;
 };
 
+class PreRectifiedBillMatchBuilder : public StereoVisionApp::CornerMatchingEditor::MatchBuilder {
+public:
+    PreRectifiedBillMatchBuilder(BilSequenceAcquisitionData* seq,
+                                 int startLine, int endLine,
+                                 std::vector<int> && verticalLinesMatch,
+                                 std::vector<float> && horizontalLinesOffsets) :
+        _seq(seq),
+        _startLine(startLine),
+        _endLine(endLine),
+        _shiftConverter(verticalLinesMatch,
+                        horizontalLinesOffsets)
+    {
+        _im_width = seq->getBilWidth();
+    }
+
+    virtual StereoVisionApp::Correspondences::Generic correspondanceFromUV(float u, float v) const {
+        StereoVisionApp::Correspondences::Typed<StereoVisionApp::Correspondences::UVT> ret;
+        auto converted = _shiftConverter.mapToOriginalSequence(std::array<float,2>{u,v});
+        ret.blockId = _seq->internalId();
+        ret.u = converted[0];
+        ret.v = 0;
+        ret.t = _seq->getTimeFromPixCoord(_startLine + converted[1]);
+        return ret;
+    }
+    virtual QString targetTitle() const {
+        return _seq->objectName() + "-lines" + QString("%1").arg(_startLine) + "-" + QString("%1").arg(_endLine);
+    }
+protected:
+    BilSequenceAcquisitionData* _seq;
+    int _startLine;
+    int _endLine;
+    PushBroomRelativeOffsets::RelativeShiftConverter _shiftConverter;
+    double _im_width;
+};
+
 bool cornerMatchRawBill(BilSequenceAcquisitionData *bilSequence, std::optional<int> lineMin, std::optional<int> lineMax) {
 
     if (bilSequence == nullptr) {
@@ -2648,7 +2684,133 @@ bool cornerMatchRawBill(BilSequenceAcquisitionData *bilSequence, std::optional<i
 
 }
 bool cornerMatchPreRectifiedBill(BilSequenceAcquisitionData *bilSequence, std::optional<int> lineMin, std::optional<int> lineMax) {
-    return false;
+
+    if (bilSequence == nullptr) {
+        return false;
+    }
+
+    StereoVisionApp::MainWindow* mw = StereoVisionApp::MainWindow::getActiveMainWindow();
+
+    if (mw == nullptr) {
+        return false; //need main windows to display trajectory
+    }
+
+    StereoVisionApp::Editor* editor = mw->openEditor(StereoVisionApp::CornerMatchingEditor::staticMetaObject.className());
+
+    if (editor == nullptr) {
+        QMessageBox::warning(mw, BilSequenceActionManager::tr("Could not open corner matching editor"), BilSequenceActionManager::tr("Missing editor!"));
+        return false;
+    }
+
+    StereoVisionApp::CornerMatchingEditor* cmte = qobject_cast<StereoVisionApp::CornerMatchingEditor*>(editor);
+
+    if (cmte == nullptr) {
+        QMessageBox::warning(mw, BilSequenceActionManager::tr("Could not open corner matching editor"), BilSequenceActionManager::tr("Editor type mismatch!"));
+        return false;
+    }
+
+    int nLines = bilSequence->nLinesInSequence();
+
+    int start = lineMin.value_or(0);
+    int end = lineMax.value_or(-1);
+
+    bool ok = true;
+
+    if (!lineMin.has_value()) {
+        start = QInputDialog::getInt(mw, BilSequenceActionManager::tr("Range start line"), BilSequenceActionManager::tr("Line#"), start, -nLines, nLines-1, 1, &ok);
+    }
+
+    if (!ok) {
+        return false;
+    }
+
+    if (!lineMax.has_value()) {
+        end = QInputDialog::getInt(mw, BilSequenceActionManager::tr("Range end line"), BilSequenceActionManager::tr("Line#"), end, -nLines, nLines-1, 1, &ok);
+    }
+
+    if (!ok) {
+        return false;
+    }
+
+    if (start < 0) {
+        start += nLines;
+    }
+
+    if (end < 0) {
+        end += nLines;
+    }
+
+    if (start < 0 or start >= nLines) {
+        return false;
+    }
+
+    if (start < 0 or start >= nLines) {
+        return false;
+    }
+
+    if (start == end) {
+        return false;
+    }
+
+    if (start > end) {
+        int tmp = start;
+        start = end;
+        end = tmp;
+    }
+
+    std::vector<int> channels = bilSequence->assumedRgbChannels();
+
+    Multidim::Array<float, 3> data = bilSequence->getFloatBilData(start, end, channels);
+
+    if (data.empty()) {
+        QMessageBox::warning(mw, BilSequenceActionManager::tr("Could not load bil sequence data"), BilSequenceActionManager::tr("Unknown error"));
+        return false;
+    }
+
+    QString name = QString("%1_l%2-l%3").arg(bilSequence->objectName()).arg(start).arg(end);
+
+    auto normalized = StereoVision::ImageProcessing::normalizeImageChannels(data);
+
+    std::vector<float> shifts = PushBroomRelativeOffsets::estimatePushBroomHorizontalShiftCorr(normalized);
+
+    PushBroomRelativeOffsets::AccumulatedShiftsInfos<float> accumulated =
+        PushBroomRelativeOffsets::computeAccumulatedFromRelativeShifts(shifts);
+
+    Multidim::Array<float, 3> horizontalRectified = PushBroomRelativeOffsets::computeHorizontallyRectifiedImage(normalized, shifts);
+    Multidim::Array<bool, 2> horizontalRectifiedMask = PushBroomRelativeOffsets::computeHorizontallyRectifiedImageMask(normalized, shifts);
+    constexpr float countWeight = 1;
+    constexpr float magnitudeWeight = 0;
+    std::vector<float> inflexions = PushBroomRelativeOffsets::estimatePushBroomInflexionPointsIntensityPerLine(horizontalRectified,
+                                                                                                               horizontalRectifiedMask,
+                                                                                                               countWeight,
+                                                                                                               magnitudeWeight);
+
+    constexpr float peakInflexionQuantile = 0.5;
+
+    int nThElement = std::max<int>(0,peakInflexionQuantile*(inflexions.size()-1));
+
+    std::vector<float> sortedInflexions = inflexions;
+
+    std::nth_element(sortedInflexions.begin(), sortedInflexions.begin() + nThElement, sortedInflexions.end());
+
+    float peakThreshold = 1; //sortedInflexions[nThElement];
+    int maxInterval = 5;
+
+    std::vector<int> selected = PushBroomRelativeOffsets::filterPushBroomLinesWithInflexion(inflexions, peakThreshold, maxInterval);
+
+    Multidim::Array<float, 3> finalImage = PushBroomRelativeOffsets::removeUnfilteredLinesFromPushBroomImage(horizontalRectified, selected);
+
+    for (int i = 0; i < finalImage.shape()[0]; i++) {
+        for (int j = 0; j < finalImage.shape()[1]; j++) {
+            for (int k = 0; k < finalImage.shape()[2]; k++) {
+                finalImage.atUnchecked(i,j,k) *= 255;
+            }
+        }
+    }
+
+    cmte->addImageData(name, finalImage, new PreRectifiedBillMatchBuilder(bilSequence, start, end,
+                                                                          std::move(selected), std::move(accumulated.accumulatedShifts)));
+    return true;
 }
 
 StereoVisionApp::StatusOptionalReturn<void> addBilSequenceHeadless(QMap<QString,QString> const& kwargs, QStringList const& argv) {
@@ -2931,6 +3093,91 @@ StereoVisionApp::StatusOptionalReturn<void> autoDetectBilSequencesTiePointsHeadl
             img1_pixmap, img2_pixmap,
             coords1, coords2);
     }
+
+    return StereoVisionApp::StatusOptionalReturn<void>();
+}
+
+StereoVisionApp::StatusOptionalReturn<void> addBillSequence2HeadlessTiePointDetector(QMap<QString,QString> const& kwargs, QStringList const& argv) {
+
+    StereoVisionApp::StereoVisionApplication* app = StereoVisionApp::StereoVisionApplication::GetAppInstance();
+
+    if (app == nullptr) {
+        return StereoVisionApp::StatusOptionalReturn<void>::error("could not load app instance!");
+    }
+
+    StereoVisionApp::Project* p = app->getCurrentProject();
+
+    if (p == nullptr) {
+        return StereoVisionApp::StatusOptionalReturn<void>::error("could not access any active project!");
+    }
+
+    StereoVisionApp::HeadlessSparseMatchingPipelineInterface* interface = StereoVisionApp::getAppHeadlessSparseMatchingInterface();
+
+    if (interface == nullptr) {
+        return StereoVisionApp::StatusOptionalReturn<void>::error("Impossible to load headless matching interface!");
+    }
+
+    //images
+
+    if (argv.size() < 2) {
+        return StereoVisionApp::StatusOptionalReturn<void>::error("Invalid number of arguments, expected at least two images");
+    }
+
+    QString const& sequenceUrlStr = argv[0];
+
+    QVector<qint64> sequenceUrl = StereoVisionApp::DataBlock::decodeUrl(sequenceUrlStr);
+
+    BilSequenceAcquisitionData* seq = qobject_cast<BilSequenceAcquisitionData*>(p->getByUrl(sequenceUrl));
+
+    if (seq == nullptr) {
+        return StereoVisionApp::StatusOptionalReturn<void>::error("Could not load bil sequence, invalid reference! Is the datablock present in the project?");
+    }
+
+    int seqLineStart = 0;
+    int seqLineEnd = -1;
+
+    if (argv.size() >= 2) {
+        bool ok = true;
+        seqLineStart = argv[1].toInt(&ok);
+
+        if (!ok) {
+            return StereoVisionApp::StatusOptionalReturn<void>::error("invalid 3rd positional argument, expected seqLineStart convertible to int)");
+        }
+    }
+
+    if (argv.size() >= 3) {
+        bool ok = true;
+        seqLineEnd = argv[2].toInt(&ok);
+
+        if (!ok) {
+            return StereoVisionApp::StatusOptionalReturn<void>::error("invalid 4th positional argument, expected seqLineEnd convertible to int)");
+        }
+    }
+
+    int nLines = seq->nLinesInSequence();
+
+    if (seqLineStart < 0) {
+        seqLineStart = nLines + seqLineStart;
+    }
+
+    if (seqLineEnd < 0) {
+        seqLineEnd = nLines + seqLineEnd;
+    }
+
+    //load the data
+    std::vector<int> channels = seq->assumedRgbChannels();
+
+    Multidim::Array<float,3> img_data = seq->getFloatBilData(seqLineStart, seqLineEnd, channels);
+
+    if (img_data.empty()) {
+        return StereoVisionApp::StatusOptionalReturn<void>::error("Could not load raster data from sequence 1!");
+    }
+
+    auto img_normalized = StereoVision::ImageProcessing::normalizeImageChannels(img_data);
+
+    DirectBillMatchBuilder* builder = new DirectBillMatchBuilder(seq, seqLineStart, seqLineEnd);
+
+    interface->configureImageData(builder->targetTitle(), std::move(img_normalized), builder);
 
     return StereoVisionApp::StatusOptionalReturn<void>();
 }

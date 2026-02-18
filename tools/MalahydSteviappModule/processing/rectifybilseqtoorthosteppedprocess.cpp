@@ -596,7 +596,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::exportBilProjection(int bilId, QString 
             Eigen::Vector3d dmsCoord(dsm_j, dsm_i,1);
             Eigen::Vector3d mapCoord = dsmToMap*dmsCoord;
 
-            constexpr auto Kernel = StereoVision::Interpolation::pyramidFunction<double,2>;
+            constexpr auto Kernel = StereoVision::Interpolation::pyramidFunction<float,2>;
             constexpr int radius = 1;
 
             double z = StereoVision::Interpolation::interpolateValue<2,double, Kernel, radius>

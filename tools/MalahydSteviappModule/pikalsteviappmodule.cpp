@@ -80,6 +80,7 @@ int PikaLSteviappModule::loadModule(StereoVisionApp::StereoVisionApplication* ap
 
     app->registerHeadlessAction("PikaLTools", "addBilSequence", addBilSequenceHeadless);
     app->registerHeadlessAction("PikaLTools", "autoDetectBilSequencesTiePoints", autoDetectBilSequencesTiePointsHeadless);
+    app->registerHeadlessAction("PikaLTools", "addBillSequenceToHeadlessTiePointDetector", addBillSequence2HeadlessTiePointDetector);
 
     out << "PikaL Steviapp module loaded!" << Qt::endl;
 

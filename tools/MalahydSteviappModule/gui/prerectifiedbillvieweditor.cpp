@@ -121,54 +121,15 @@ PreRectifiedBillViewEditor::~PreRectifiedBillViewEditor() {
 }
 
 QPointF PreRectifiedBillViewEditor::mapToOriginalSequence(QPointF const& source) const {
-    int line = std::round(source.y());
+    auto converted = _shiftConverter.mapToOriginalSequence(std::array<qreal,2>{source.x(), source.y()});
 
-    int deltaLine = 0;
-
-    if (line < 0) {
-        deltaLine = line;
-        line = 0;
-    } else if (line >= _verticalLinesMatch.size()) {
-        deltaLine = line - _verticalLinesMatch.size() + 1;
-        line = _verticalLinesMatch.size()-1;
-    }
-
-    int originalLine = _verticalLinesMatch[line];
-
-    int horizontalOffsetId = std::max(0, std::min(_horizontalLinesOffsets.size()-1, originalLine));
-
-    QPointF ret (source.x() - _horizontalLinesOffsets[horizontalOffsetId],
-                originalLine + deltaLine);
-
-    return ret;
+    return QPointF(converted[0],converted[1]);
 }
 
 QPointF PreRectifiedBillViewEditor::mapFromOriginalSequence(QPointF const& source) const {
-    int line = std::round(source.y());
+    auto converted = _shiftConverter.mapFromOriginalSequence(std::array<qreal,2>{source.x(), source.y()});
 
-    float y = line;
-
-    if (line > 0 and line < _verticalLinesMatch.last()) {
-
-        for (int i = 1; i < _verticalLinesMatch.size(); i++) {
-            if (_verticalLinesMatch[i-1] <= line and _verticalLinesMatch[i] >= line) {
-                float alpha = float(line - _verticalLinesMatch[i-1])/
-                              float(_verticalLinesMatch[i] - _verticalLinesMatch[i-1]);
-
-                y = i-1+alpha;
-            }
-        }
-
-    } else if (line >= _verticalLinesMatch.last()) {
-        int delta = line - _verticalLinesMatch.last();
-        y = _verticalLinesMatch.size() + delta;
-    }
-
-    int horizontalOffsetId = std::max(0, std::min(_horizontalLinesOffsets.size()-1, line));
-
-    float x = source.x() + _horizontalLinesOffsets[horizontalOffsetId];
-
-    return QPointF(x,y);
+    return QPointF(converted[0],converted[1]);
 }
 
 void PreRectifiedBillViewEditor::setSequenceData(BilSequenceAcquisitionData* sequence,
@@ -181,8 +142,9 @@ void PreRectifiedBillViewEditor::setSequenceData(BilSequenceAcquisitionData* seq
     _img_landmark_overlay->setInitialLine(0);
     _img_landmark_overlay->setFinalLine(imgShape[0]);
     _img_landmark_overlay->setBilWidth(imgShape[1]);
-    _verticalLinesMatch = verticalLinesMatch;
-    _horizontalLinesOffsets = horizontalLinesOffsets;
+    _shiftConverter = PushBroomRelativeOffsets::RelativeShiftConverter(
+        verticalLinesMatch.begin(), verticalLinesMatch.end(),
+        horizontalLinesOffsets.begin(), horizontalLinesOffsets.end());
 }
 
 void PreRectifiedBillViewEditor::afterProjectChange(StereoVisionApp::Project* op) {

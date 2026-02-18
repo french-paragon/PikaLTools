@@ -164,9 +164,21 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
     });
 
     QAction* autoDetectCorners = new QAction(tr("Auto detect tie points"), parent);
-    connect(autoDetectCorners, &QAction::triggered, [bilSeq] () {
+    QMenu* autoDetectCornersMenu = new QMenu();
+    autoDetectCorners->setMenu(autoDetectCornersMenu);
+
+    QAction* autoDetectCornersDirect = new QAction(tr("direct"), parent);
+    connect(autoDetectCornersDirect, &QAction::triggered, [bilSeq] () {
         cornerMatchRawBill(bilSeq);
     });
+
+    QAction* autoDetectCornersPreRectified = new QAction(tr("pre-rectified"), parent);
+    connect(autoDetectCornersPreRectified, &QAction::triggered, [bilSeq] () {
+        cornerMatchPreRectifiedBill(bilSeq);
+    });
+
+    autoDetectCornersMenu->addAction(autoDetectCornersDirect);
+    autoDetectCornersMenu->addAction(autoDetectCornersPreRectified);
 
     QAction* compute_corrMat = new QAction(tr("Show data correlation"), parent);
 
