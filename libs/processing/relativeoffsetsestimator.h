@@ -13,6 +13,7 @@
 #include <StereoVision/interpolation/interpolation.h>
 #include <StereoVision/statistics/covarianceKernels.h>
 #include <StereoVision/utils/iterative_numerical_algorithm_output.h>
+#include <StereoVision/utils/combinatorial.h>
 #include <StereoVision/optimization/bfgs.h>
 
 #include <iostream>
@@ -20,6 +21,53 @@
 namespace PikaLTools {
 
 namespace PushBroomRelativeOffsets {
+
+
+template<typename T>
+struct AccumulatedShiftsInfos {
+    std::vector<T> accumulatedShifts;
+    int minDelta;
+    int maxDelta;
+};
+
+template<bool meanZero = false, typename T>
+AccumulatedShiftsInfos<T> computeAccumulatedFromRelativeShifts(std::vector<T> const& shifts) {
+
+    float shiftMin = 0;
+    float shiftMax = 0;
+    float accumulatedShift = 0;
+
+    for (int i = 0; i < shifts.size(); i++) {
+        accumulatedShift -= shifts[i]; //disparity of +n pix mean the object is further on the right, so the line has to be pushed on the left to compensate.
+        shiftMin = std::min(shiftMin, accumulatedShift);
+        shiftMax = std::max(shiftMax, accumulatedShift);
+    }
+
+    AccumulatedShiftsInfos<T> ret;
+
+    ret.minDelta = std::floor(shiftMin);
+    ret.maxDelta = std::ceil(shiftMax);
+
+    ret.accumulatedShifts.resize(shifts.size()+1);
+    ret.accumulatedShifts[0] = -ret.minDelta; //start at -minDelta, so that when reaching the minDelta region, the pixels starts at index 0
+
+    for (int i = 1; i <= shifts.size(); i++) {
+        ret.accumulatedShifts[i] = ret.accumulatedShifts[i-1] - shifts[i-1];
+    }
+
+    if constexpr (meanZero) {
+        T mean = 0;
+        for (int i = 0; i <= ret.accumulatedShifts.size(); i++) {
+            mean += ret.accumulatedShifts[i];
+        }
+        mean /= ret.accumulatedShifts.size();
+        for (int i = 0; i <= ret.accumulatedShifts.size(); i++) {
+            ret.accumulatedShifts[i] -= mean;
+        }
+    }
+
+    return ret;
+}
 
 enum class PushBroomCovarianceShiftEstimateFlags {
     WithSubPixel = 1,
@@ -626,6 +674,10 @@ inline double estimateMaternScaleFromPushBroom(Multidim::Array<T,3,constNess> co
 
     std::array<int,3> shape = image.shape();
 
+    if (shape[samplesAxis] <= 1) {
+        return initialGuess; //canot guess anything with just 1 px
+    }
+
     double guess = std::max<double>(1,initialGuess);
     constexpr double nu = 1.5; //use 3./2. by default;
 
@@ -1081,6 +1133,372 @@ StereoVision::IterativeNumericalAlgorithmOutput<std::vector<float>> estimatePush
 
 }
 
+/*!
+ * \brief estimatePushBroomVerticalReorderBayesian estimate the most likely order of the lines in an image based on a stochastic model
+ * \param image the image
+ * \param hwindow the horizontal window to compute the stochastic model
+ * \param searchRadius the maximal distance any line is considered to still be a neighboor of.
+ * \param linesAxis the axis representing sucesive lines
+ * \param samplesAxis the axis representing different pixels in the sensor
+ * \param bandsAxis the axis representing the channels in the data.
+ * \return the estimated order of the lines
+ *
+ * This function transform the estimation problem into a traveling salesman problem and uses the Bellman–Held–Karp algorithm to solve it.
+ * It also uses the assumption that any line cannot be matched past a certain distance to prune the search space a lot, reducing the algorithm complexity.
+ *
+ * More precisely, assuming the lines in the image are labelled 0 to n, and the start and end point is -1 (and n+1), the order in which the nodes are explored
+ * in the traveling salesman solution is the order in which the image lines will be sorted. We enforce that any path finishing at node i has length between
+ * i - r and i + r (i.e. enforece that the rectified line index of unrectified line i is between i-r and i+r). This impose that paths of lengths j contains
+ * at least all nodes up to j - r. This drastically reduces the number of path to consider in the Bellman–Held–Karp algorithm, as the subset of points that
+ * can either be or not be within a path of lenght j is limited between j-r and j+r. So when considering the candidate paths in the forward search of the
+ * Bellman–Held–Karp algorithm, we need to consider 2r+1 possible end nodes. Since j+r can only be at the end of a path of lenght j (since it cannot be part of
+ * a path smaller than j), and j-r has to be in all paths of lenght j (still needs to be considered as possible end node) only (2r-2)!/() possible intermediate nodes
+ * needs to be considered for each end node and each node length.
+ *
+ * The overall complexity of the modified algorithm is O(l*(2*r+1)(2r-2)!), i.e., it should be able to process large images, but only perform a search at reasonably small range.
+ */
+template<bool verbose = false, typename T, Multidim::ArrayDataAccessConstness constNess>
+std::vector<int> estimatePushBroomVerticalReorderBayesian(
+    Multidim::Array<T,3,constNess> const& image,
+    std::vector<double> const& horizontalShifts,
+    int hwindow,
+    int searchRadius,
+    int linesAxis = 0,
+    int samplesAxis = 1,
+    int bandsAxis = 2) {
+
+    using ComputeT = double;
+    using ParamsVecT = Eigen::Matrix<ComputeT, Eigen::Dynamic, 1>;
+    using CovKer = StereoVision::Statistics::CovarianceKernels::Matern<ComputeT>;
+    using CovKerProbEstimate = CovarianceKernelProbEstimate<T, CovKer, ComputeT>;
+
+    auto shape = image.shape();
+    int const& nLines = shape[linesAxis];
+
+    if (nLines == 0) {
+        return std::vector<int> {};
+    }
+
+    if (nLines == 1) {
+        return std::vector<int> {0};
+    }
+
+    if (nLines == 2) {
+        return std::vector<int> {0,1};
+    }
+
+    struct internalDetails {
+
+        /*
+         * \brief choicesToShifts convert the choices index to actual shifts
+         * \param choices the choices vector produced by choicesFromIdx
+         * \param dr the current shift under consideration
+         * \return the shifts for the node constituting the intermediate node of the considered path
+         *
+         */
+        static inline std::vector<int> choicesToShifts(std::vector<int> const& choices, int dr, int searchRadius) {
+            int nExtras = 1;
+            if (dr == -searchRadius) {
+                nExtras = 0;
+            }
+
+            std::vector<int> ret(choices.size()+nExtras);
+            int di = 0;
+
+            if (dr != -searchRadius) {
+                ret[0] = -searchRadius;
+                di = 1;
+            }
+
+            for (int i = 0; i < choices.size(); i++) {
+                int& current = ret[i+di];
+
+                current = choices[i] - searchRadius + 1;
+
+                if (current >= dr and dr != -searchRadius) {
+                    current += 1;
+                }
+            }
+            return ret;
+        }
+        static inline std::vector<int> shiftsToChoices(std::vector<int> const& shifts, int dr, int searchRadius) {
+            int nRedundant = 1;
+            if (dr == -searchRadius) {
+                nRedundant = 0;
+            }
+            std::vector<int> ret(shifts.size()-nRedundant);
+            int di = (nRedundant > 0) ? 1 : 0;
+            for (int i = 0; i < ret.size(); i++) {
+                int s = shifts[i+di];
+                s += searchRadius-1;
+
+                for (int j = i-1; j >= 0; j++) {
+                    if (s >= ret[j]) {
+                        s--;
+                    }
+                }
+                ret[i] = s;
+            }
+            return ret;
+        }
+
+    };
+
+    struct PathInfos {
+        std::vector<int> intermediateDeltas;
+        int finalDelta;
+    };
+
+    //the set of of all lines that can be mapped to line j with our constraints has size 2*searchRadius+1,
+    // all the lines up to j-searchradius-1 have to have been mapped at that point. (i.e. the nodes in all paths of len j-searchRadius-1 are known)
+    // to get a path of lenght j, we still need to choose between searchRadius+1 nodes.
+
+    //in a normal step, we have the node terminating the path, and we need to include the node j-searchRadius
+    // (since all path of size j+1 have to contain it, when investigating paths of length j they would discard any path not containing it).
+    // finally, if it is not the last node, the node j+searchRadius cannot be present, as it cannot be a part of any path of len smaller than j
+    //This mean 2 nodes are already selected (we need only searchRadius-1 more nodes) and the search space is 2*searchRadius-2 nodes
+    StereoVision::Combinatorial::ChooseInSetIndexer standardChoiceIndexer(2*searchRadius-2,searchRadius-1);
+    int nSubPathsPerStep = standardChoiceIndexer.nChoices();
+    //in the case the node j-searchRadius is the last in the path then it does not have to be selected in the intermediate nodes
+    //meaning that the selectable nodes sets is 1 node larger and the number of choices we have to do is 1 more
+    StereoVision::Combinatorial::ChooseInSetIndexer firstChoiceIndexer(2*searchRadius-1,searchRadius);
+    int nSubPathsPerFirstStep = firstChoiceIndexer.nChoices();
+    //If the last node is j+searchRadius, the search space increase by 1 node, but we still need to select only searchRadius-1 nodes
+    //as j-searchRadius still has to be integrated in the path
+    StereoVision::Combinatorial::ChooseInSetIndexer lastChoiceIndexer(2*searchRadius-1,searchRadius-1);
+    int nSubPathsPerLastStep = lastChoiceIndexer.nChoices();
+
+    int nPathsPerStep = (2*searchRadius-1)*nSubPathsPerStep + nSubPathsPerFirstStep + nSubPathsPerLastStep;
+
+    std::vector<StereoVision::Combinatorial::ChooseInSetIndexer*> indexerPerDelta(2*searchRadius+1);
+    std::fill(indexerPerDelta.begin(), indexerPerDelta.end(), &standardChoiceIndexer);
+    indexerPerDelta[0] = &firstChoiceIndexer;
+    indexerPerDelta.back() = &lastChoiceIndexer;
+
+    auto drFromPathIdx = [nSubPathsPerStep, nSubPathsPerFirstStep, nSubPathsPerLastStep, searchRadius] (int i) {
+        if (i < nSubPathsPerFirstStep) {
+            return -searchRadius;
+        } else if (i >= nSubPathsPerFirstStep + (2*searchRadius-1)*nSubPathsPerStep) {
+            return searchRadius;
+        } else {
+            return (i - nSubPathsPerFirstStep)/nSubPathsPerStep - searchRadius + 1;
+        }
+    };
+
+    auto drIdxZero = [nSubPathsPerStep, nSubPathsPerFirstStep, nSubPathsPerLastStep, searchRadius] (int dr) {
+        if (dr == -searchRadius) {
+            return 0;
+        } else if (dr == searchRadius) {
+            return nSubPathsPerFirstStep + (2*searchRadius-1)*nSubPathsPerStep;
+        } else {
+            return nSubPathsPerFirstStep + dr*nSubPathsPerStep;
+        }
+    };
+
+    //build the cost matrix
+    int nComps = 2*searchRadius;
+
+    Multidim::Array<float,2> logProbs(nLines, nComps);
+
+    int s_j = (shape[samplesAxis] % hwindow) / 2;
+    int jJump = std::min(hwindow,shape[samplesAxis]);
+
+    auto tuple = estimateGaussianProcessMeanAndVar(image, linesAxis, samplesAxis, bandsAxis);
+    std::vector<double>& means = std::get<0>(tuple);
+    std::vector<double>& vars = std::get<1>(tuple);
+
+    constexpr int nIterations = 50;
+    double expectedScale = 10.;
+    double scaleResidualThreshold = 1e-5;
+
+    double optimizedScale = estimateMaternScaleFromPushBroom(image, means, vars, expectedScale,
+                                                             nIterations, scaleResidualThreshold,
+                                                             linesAxis, samplesAxis, bandsAxis);
+
+    constexpr double nu = 1.5; //select by default
+    StereoVision::Statistics::CovarianceKernels::Matern<double> kernel(nu, optimizedScale);
+
+    for (int i = 0; i < nLines; i++) {
+        for (int c = 0; c < nComps; c++) {
+
+            int j = i + c + 1;
+
+            if (j >= nLines) {
+                logProbs.atUnchecked(i,c) = std::numeric_limits<float>::infinity();
+                continue;
+            }
+
+            Multidim::Array<T,2,constNess> line1 = image.sliceView(linesAxis,i);
+            Multidim::Array<T,2,constNess> line2 = image.sliceView(linesAxis,j);
+
+            //measurements
+            double objective = 0;
+            double dx = horizontalShifts[i]-horizontalShifts[j];
+
+            for (int j = s_j; j <= shape[samplesAxis]-jJump; j+= jJump) {
+
+                for (int c = 0; c < shape[bandsAxis]; c++) {
+                    Multidim::Array<T,2> patch1 = line1.subView(Multidim::DimSlice(j,j+hwindow), Multidim::DimSlice(c,c+1));
+                    Multidim::Array<T,2> patch2 = line2.subView(Multidim::DimSlice(j,j+hwindow), Multidim::DimSlice(c,c+1));
+
+                    double sigma0 = vars[c];
+                    double mean = means[c];
+
+                    auto probData = CovKerProbEstimate::logProb(patch1,
+                                                                patch2,
+                                                                kernel,
+                                                                mean,
+                                                                sigma0,
+                                                                dx, 1);
+                    objective += probData.neglogProb;
+                }
+
+            }
+            logProbs.atUnchecked(i,c) = objective;
+        }
+    }
+
+    //forward pass
+    std::vector<double> previousCosts(nPathsPerStep);
+    std::vector<double> currentCosts(nPathsPerStep);
+
+    Multidim::Array<int,2> previousPathIdx(nLines-1, nPathsPerStep);
+
+    //init the costs
+
+    for (int i = 0; i < nPathsPerStep; i++) {
+        int finalDelta = drFromPathIdx(i);
+        if (finalDelta >= 0) { //any line in the range 0 to search radius can be the first
+            previousCosts[i] = 0; //cost is assumed to be 0 to be in first alone
+        } else {
+            previousCosts[i] = std::numeric_limits<double>::infinity();
+        }
+    }
+
+    if (verbose) {
+        std::cout << "Reorder estimation:" << std::endl;
+    }
+
+    for (int pathLen = 1; pathLen < nLines; pathLen++) { //for increasing path len
+
+        if (verbose) {
+            std::cout << "\tConsidering path len " << pathLen << std::endl;
+        }
+
+        for (int i = 0; i < nPathsPerStep; i++) {
+
+            int dr = drFromPathIdx(i);
+            auto& indexer = *(indexerPerDelta[dr+searchRadius]);
+            int choiceIdx = i - drIdxZero(dr);
+            std::vector<int> choice = indexer.idx2set(choiceIdx);
+            int nItems = indexer.itemsSetSize();
+            int nChoices = indexer.choiceSetSize();
+
+            int currentLineId = pathLen+dr;
+
+            std::vector<int> intermediateDeltas = internalDetails::choicesToShifts(choice, dr, searchRadius);
+            std::vector<int> possiblesSecondToLast(intermediateDeltas.size()+1);
+            possiblesSecondToLast[0] = -searchRadius; // the node search radius away is always present
+            bool lastIsPresent = false;
+            for (int i = 1; i <= intermediateDeltas.size(); i++) {
+                int prev = intermediateDeltas[i-1]+1;
+                possiblesSecondToLast[i] = prev; //consider the deltas with respect to the last path len, so +1
+                if (prev == searchRadius) {
+                    lastIsPresent = true;
+                }
+            }
+
+            double currentCost = std::numeric_limits<double>::infinity();
+            int currentBestSecond2LastIdx = -1;
+
+            for (int secToLast : possiblesSecondToLast) { //for all possible second to last nodes
+
+                if (lastIsPresent and secToLast != searchRadius) { //if the last possible node for a path of size j-1 is present, then it has to be the second to last..., as it cannot be part of a path of size j-2
+                    continue;
+                }
+
+                std::vector<int> previousIntermediateDelta;
+                previousIntermediateDelta.reserve(intermediateDeltas.size());
+
+                for (int prev : possiblesSecondToLast) {
+                    if (prev == secToLast) {
+                        continue;
+                    }
+                    previousIntermediateDelta.push_back(prev);
+                }
+
+                int prevNItems = 2*searchRadius-2;
+
+                if (secToLast == -searchRadius) {
+                    prevNItems = 2*searchRadius-1;
+                }
+
+                auto& prev_indexer = *(indexerPerDelta[secToLast+searchRadius]);
+
+                auto choice = internalDetails::shiftsToChoices(previousIntermediateDelta, secToLast, searchRadius);
+                int prevChoiceIdx = prev_indexer.set2idx(choice);
+
+                int prevIdx = drIdxZero(secToLast) + prevChoiceIdx;
+
+
+                int secToLastLineId = pathLen-1+secToLast;
+                assert(secToLastLineId != currentLineId);
+
+                int minLineId = std::min(secToLastLineId, currentLineId);
+                int maxLineId = std::max(secToLastLineId, currentLineId);
+
+                double costCand = previousCosts[prevIdx];
+
+                if (pathLen < nLines) {
+                    costCand += logProbs.valueOrAlt({minLineId,maxLineId-minLineId-1},
+                                                    std::numeric_limits<double>::infinity());
+                }
+
+                if (costCand < currentCost) {
+                    currentCost = costCand;
+                    currentBestSecond2LastIdx = prevIdx;
+                }
+            }
+
+            currentCosts[i] = currentCost;
+
+            previousPathIdx.atUnchecked(pathLen-1,i) = currentBestSecond2LastIdx;
+        }
+
+        std::swap(currentCosts, previousCosts);
+
+    }
+
+    //reconstruct path backward
+
+    int lastId = -1;
+    double bestCost = std::numeric_limits<double>::infinity();
+
+    for (int i = 0; i < nPathsPerStep; i++) {
+        if (previousCosts[i] < bestCost) {
+            bestCost = previousCosts[i];
+            lastId = i;
+        }
+    }
+
+    std::vector<int> path;
+    path.reserve(nLines);
+    for (int pathLen = nLines-1; pathLen >= 0; pathLen--) {
+
+        int dr = drFromPathIdx(lastId);
+        int lineId = pathLen+dr;
+        path.push_back(lineId);
+        if (pathLen > 0) {
+            lastId = previousPathIdx.valueUnchecked(pathLen-1,lastId);
+        }
+    }
+
+    std::reverse(path.begin(), path.end());
+
+    return path;
+
+}
+
 template<bool verbose = false, typename T, Multidim::ArrayDataAccessConstness constNess>
 inline StereoVision::IterativeNumericalAlgorithmOutput<std::vector<LineShiftInfos>>
 estimateGlobalPushBroomPreRectification(
@@ -1123,8 +1541,26 @@ estimateGlobalPushBroomPreRectification(
     ParamsVecT params;
     params.resize(nParams);
 
+    //initialize the optimized with horizontally undistorted image
+    auto horizontalRectificationDataInfos = estimatePushBroomHorizontalShiftBayesian<verbose>(
+        image,
+        hwindow,
+        dx_pos_lambda,
+        nIterations,
+        residual_treshold,
+        linesAxis,
+        samplesAxis,
+        bandsAxis);
+
+    if (verbose) {
+        std::cout << '\n';
+    }
+
+    constexpr bool meanZero = true;
+    auto accumulated = computeAccumulatedFromRelativeShifts<meanZero>(horizontalRectificationDataInfos.value());
+
     for (int i = 0; i < nDirParams; i++) {
-        params[i] = 0; //horizontal shifts
+        params[i] = -accumulated.accumulatedShifts[i]; //horizontal shifts
         params[i+nDirParams] = i; //vertical position
     }
 
@@ -1460,47 +1896,13 @@ estimateGlobalPushBroomPreRectification(
     std::vector<LineShiftInfos> optimized(nDirParams);
 
     for (int i = 0; i < nDirParams; i++) {
-        optimized[i] = LineShiftInfos{.dx = float(params[i]), .y = float(params[i+nDirParams])};
+        optimized[i] = LineShiftInfos{.dx = -float(params[i]), .y = float(params[i+nDirParams])};
     }
 
     return RType(optimized, cType);
 
 }
 
-template<typename T>
-struct AccumulatedShiftsInfos {
-    std::vector<T> accumulatedShifts;
-    int minDelta;
-    int maxDelta;
-};
-
-template<typename T>
-AccumulatedShiftsInfos<T> computeAccumulatedFromRelativeShifts(std::vector<T> const& shifts) {
-
-    float shiftMin = 0;
-    float shiftMax = 0;
-    float accumulatedShift = 0;
-
-    for (int i = 0; i < shifts.size(); i++) {
-        accumulatedShift -= shifts[i]; //disparity of +n pix mean the object is further on the right, so the line has to be pushed on the left to compensate.
-        shiftMin = std::min(shiftMin, accumulatedShift);
-        shiftMax = std::max(shiftMax, accumulatedShift);
-    }
-
-    AccumulatedShiftsInfos<T> ret;
-
-    ret.minDelta = std::floor(shiftMin);
-    ret.maxDelta = std::ceil(shiftMax);
-
-    ret.accumulatedShifts.resize(shifts.size()+1);
-    ret.accumulatedShifts[0] = -ret.minDelta; //start at -minDelta, so that when reaching the minDelta region, the pixels starts at index 0
-
-    for (int i = 1; i <= shifts.size(); i++) {
-        ret.accumulatedShifts[i] = ret.accumulatedShifts[i-1] - shifts[i-1];
-    }
-
-    return ret;
-}
 
 template<bool shiftsAreAccumulated = false, typename T>
 Multidim::Array<T,3> computeHorizontallyRectifiedImage(Multidim::Array<T,3> const& image,

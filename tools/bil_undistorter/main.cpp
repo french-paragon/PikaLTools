@@ -55,10 +55,10 @@ int main(int argc, char** argv) {
     Multidim::Array<float,3> normalized = StereoVision::ImageProcessing::normalizeImageChannels(bil);
 
     double x_pos_lambda = 0.01;
-    double y_pos_lambda = 1000000;
+    double y_pos_lambda = 1;
 
     double dx_pos_lambda = 0.1;
-    double dy_pos_lambda = 10;
+    double dy_pos_lambda = 0.1;
 
     double I_lambda = 0.5;
 
@@ -76,7 +76,7 @@ int main(int argc, char** argv) {
 
     std::cout << "Start estimating distortion..." << std::endl;
 
-    /*auto rectificationDataInfos = PikaLTools::PushBroomRelativeOffsets::estimateGlobalPushBroomPreRectification<verbose>(
+    auto rectificationDataInfos = PikaLTools::PushBroomRelativeOffsets::estimateGlobalPushBroomPreRectification<verbose>(
         normalized,
         hradius,
         vradius,
@@ -90,9 +90,9 @@ int main(int argc, char** argv) {
         damping_factor,
         linesAxis,
         samplesAxis,
-        bandsAxis);*/
+        bandsAxis);
 
-    auto rectificationDataInfos = PikaLTools::PushBroomRelativeOffsets::estimatePushBroomHorizontalShiftBayesian<verbose>(
+    /*auto rectificationDataInfos = PikaLTools::PushBroomRelativeOffsets::estimatePushBroomHorizontalShiftBayesian<verbose>(
         normalized,
         hradius,
         dx_pos_lambda,
@@ -100,19 +100,19 @@ int main(int argc, char** argv) {
         residual_treshold,
         linesAxis,
         samplesAxis,
-        bandsAxis);
+        bandsAxis);*/
 
     auto& rectificationData = rectificationDataInfos.value();
 
-    auto accumulated = PikaLTools::PushBroomRelativeOffsets::computeAccumulatedFromRelativeShifts(rectificationData);
+    //auto accumulated = PikaLTools::PushBroomRelativeOffsets::computeAccumulatedFromRelativeShifts(rectificationData);
 
-    float minxShift = accumulated.minDelta;
-    float maxxShift = accumulated.maxDelta;
+    float minxShift = std::numeric_limits<float>::infinity(); // accumulated.minDelta;
+    float maxxShift = -std::numeric_limits<float>::infinity(); // accumulated.maxDelta;
 
     float minyShift = std::numeric_limits<float>::infinity();
     float maxyShift = -std::numeric_limits<float>::infinity();
 
-    /*for (int i = 0; i < rectificationData.size(); i++) {
+    for (int i = 0; i < rectificationData.size(); i++) {
         PikaLTools::PushBroomRelativeOffsets::LineShiftInfos const& shiftsInfos = rectificationData[i];
 
         minxShift = std::min(shiftsInfos.dx, minxShift);
@@ -120,27 +120,27 @@ int main(int argc, char** argv) {
 
         minyShift = std::min(shiftsInfos.y-i, minyShift);
         maxyShift = std::max(shiftsInfos.y-i, maxyShift);
-    }*/
+    }
 
     std::cout << "\tShifts stats: min x : " << minxShift << " max x : " << maxxShift << " min y : " << minyShift << " max y : " << maxyShift << "\n";
 
     std::cout << "Start rectifiying image..." << std::endl;
 
-    /*Multidim::Array<float,3> rectified = PikaLTools::PushBroomRelativeOffsets::computeHorizontallyRectifiedVerticallyReorderedImage(
+    Multidim::Array<float,3> rectified = PikaLTools::PushBroomRelativeOffsets::computeHorizontallyRectifiedVerticallyReorderedImage(
         normalized,
         rectificationData,
         linesAxis,
         samplesAxis,
-        bandsAxis);*/
+        bandsAxis);
 
-    constexpr bool shiftsAccumulated = true;
+    /*constexpr bool shiftsAccumulated = true;
 
     Multidim::Array<float,3> rectified = PikaLTools::PushBroomRelativeOffsets::computeHorizontallyRectifiedImage<shiftsAccumulated>(
         normalized,
         accumulated.accumulatedShifts,
         linesAxis,
         samplesAxis,
-        bandsAxis);
+        bandsAxis);*/
 
     std::cout << "Image rectified!" << std::endl;
 

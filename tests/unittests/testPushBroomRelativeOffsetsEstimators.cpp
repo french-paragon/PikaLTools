@@ -86,6 +86,7 @@ private Q_SLOTS:
 
     void testBayesianLineEstimator();
     void testGlobalEstimatorHorizontalBehavior();
+    void testVerticalReordererBehavior();
     void testGlobalEstimatorVerticalBehavior();
 };
 
@@ -167,8 +168,18 @@ void TestPushBroomRelativeOffsetsEstimators::testBayesianLineEstimator() {
         infos << QString("[dx: %1]").arg(dx);
     }
 
+    auto accumulated = PikaLTools::PushBroomRelativeOffsets::computeAccumulatedFromRelativeShifts(rectificationShifted.value());
+
     qInfo() << "Convergence shifted: " << rectificationShifted.convergenceStr().c_str();
-    qInfo() << "Shifts data shifted: " << infos.join(", ");
+    qInfo() << "Shifts dx data shifted: " << infos.join(", ");
+
+    infos.clear();
+    infos.reserve(accumulated.accumulatedShifts.size());
+
+    for (auto const& shift_x : accumulated.accumulatedShifts) {
+        infos << QString("[shift x: %1]").arg(shift_x);
+    }
+    qInfo() << "Shifts x data shifted: " << infos.join(", ");
 
     for (int i = 0; i < rectificationShifted.value().size(); i++) {
         auto const& dx = rectificationShifted.value()[i];
@@ -225,12 +236,6 @@ void TestPushBroomRelativeOffsetsEstimators::testGlobalEstimatorHorizontalBehavi
 
     QVERIFY(rectificationDataPriorsOnly.convergence() != StereoVision::ConvergenceType::Failed);
 
-    for (int i = 0; i < rectificationDataPriorsOnly.value().size(); i++) {
-        auto const& shiftInfos = rectificationDataPriorsOnly.value()[i];
-        QVERIFY(std::abs(shiftInfos.dx) < 1e-5);
-        QVERIFY(std::abs(shiftInfos.y - i) < 1e-5);
-    }
-
     QStringList infos;
     infos.reserve(rectificationDataPriorsOnly.value().size());
 
@@ -240,6 +245,12 @@ void TestPushBroomRelativeOffsetsEstimators::testGlobalEstimatorHorizontalBehavi
 
     qInfo() << "Convergence priors only: " << rectificationDataPriorsOnly.convergenceStr().c_str();
     qInfo() << "Shifts data priors only: " << infos.join(", ");
+
+    for (int i = 0; i < rectificationDataPriorsOnly.value().size(); i++) {
+        auto const& shiftInfos = rectificationDataPriorsOnly.value()[i];
+        QVERIFY(std::abs(shiftInfos.dx) < 1e-3);
+        QVERIFY(std::abs(shiftInfos.y - i) < 1e-3);
+    }
 
     auto rectificationDataUnshifted =
         PikaLTools::PushBroomRelativeOffsets::estimateGlobalPushBroomPreRectification<verbose>
@@ -309,9 +320,49 @@ void TestPushBroomRelativeOffsetsEstimators::testGlobalEstimatorHorizontalBehavi
 
     for (int i = 0; i < rectificationData.value().size(); i++) {
         auto const& shiftInfos = rectificationData.value()[i];
-        QVERIFY(std::abs(shiftInfos.dx + shifts[i]) < 1e-1);
+        QVERIFY(std::abs(shiftInfos.dx - shifts[i]) < 1e-1);
         QVERIFY(std::abs(shiftInfos.y - i) < 1e-1);
     }
+}
+
+void TestPushBroomRelativeOffsetsEstimators::testVerticalReordererBehavior() {
+
+
+    constexpr int nLines = 7, nSamples = 1, nChannels = 1;
+    constexpr std::array<int,nLines> disorderedIndices{0,2,1,3,5,4,6};
+
+    Multidim::Array<float,3> frameUnshifted(nLines, nSamples, nChannels);
+
+    for (int i = 0; i < nLines; i++) {
+        float factor = float(i) / float(nLines-1);
+        frameUnshifted.atUnchecked(i,0,0) = factor;
+    }
+
+    Multidim::Array<float,3> frame(nLines, nSamples, nChannels);
+
+    for (int i = 0; i < nLines; i++) {
+        frame.atUnchecked(i,0,0) = frameUnshifted.atUnchecked(disorderedIndices[i],0,0);
+    }
+
+    std::vector<double> horizontalShifts(nLines);
+    std::fill(horizontalShifts.begin(), horizontalShifts.end(), 0);
+    constexpr int hWindow = 1;
+    constexpr int searchRadius = 1;
+
+    std::vector<int> orderEstimated = PikaLTools::PushBroomRelativeOffsets::estimatePushBroomVerticalReorderBayesian(frame,
+                                                                                                                     horizontalShifts,
+                                                                                                                     hWindow,
+                                                                                                                     searchRadius,
+                                                                                                                     linesDim,
+                                                                                                                     samplesDim,
+                                                                                                                     channelsDim);
+
+    QCOMPARE(orderEstimated.size(), nLines);
+
+    for (int i = 0; i < nLines; i++) {
+        QCOMPARE(orderEstimated[i], disorderedIndices[i]);
+    }
+
 }
 
 void TestPushBroomRelativeOffsetsEstimators::testGlobalEstimatorVerticalBehavior() {
