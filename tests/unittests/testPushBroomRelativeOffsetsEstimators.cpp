@@ -329,7 +329,9 @@ void TestPushBroomRelativeOffsetsEstimators::testVerticalReordererBehavior() {
 
 
     constexpr int nLines = 7, nSamples = 1, nChannels = 1;
-    constexpr std::array<int,nLines> disorderedIndices{0,2,1,3,5,4,6};
+    constexpr std::array<int,nLines> disorderedIndicesR1{0,2,1,3,5,4,6};
+    constexpr std::array<int,nLines> disorderedIndicesR2{0,3,2,1,6,4,5};
+    constexpr std::array<int,nLines> disorderedIndicesR3{1,0,2,3,5,4,3};
 
     Multidim::Array<float,3> frameUnshifted(nLines, nSamples, nChannels);
 
@@ -340,14 +342,15 @@ void TestPushBroomRelativeOffsetsEstimators::testVerticalReordererBehavior() {
 
     Multidim::Array<float,3> frame(nLines, nSamples, nChannels);
 
+    //Maximal radius = 1
     for (int i = 0; i < nLines; i++) {
-        frame.atUnchecked(i,0,0) = frameUnshifted.atUnchecked(disorderedIndices[i],0,0);
+        frame.atUnchecked(i,0,0) = frameUnshifted.atUnchecked(disorderedIndicesR1[i],0,0);
     }
 
     std::vector<double> horizontalShifts(nLines);
     std::fill(horizontalShifts.begin(), horizontalShifts.end(), 0);
     constexpr int hWindow = 1;
-    constexpr int searchRadius = 1;
+    int searchRadius = 1;
 
     std::vector<int> orderEstimated = PikaLTools::PushBroomRelativeOffsets::estimatePushBroomVerticalReorderBayesian(frame,
                                                                                                                      horizontalShifts,
@@ -360,7 +363,47 @@ void TestPushBroomRelativeOffsetsEstimators::testVerticalReordererBehavior() {
     QCOMPARE(orderEstimated.size(), nLines);
 
     for (int i = 0; i < nLines; i++) {
-        QCOMPARE(orderEstimated[i], disorderedIndices[i]);
+        QCOMPARE(orderEstimated[i], disorderedIndicesR1[i]);
+    }
+
+    //Maximal radius = 2
+    for (int i = 0; i < nLines; i++) {
+        frame.atUnchecked(i,0,0) = frameUnshifted.atUnchecked(disorderedIndicesR2[i],0,0);
+    }
+    searchRadius = 2;
+
+    orderEstimated = PikaLTools::PushBroomRelativeOffsets::estimatePushBroomVerticalReorderBayesian(frame,
+                                                                                                    horizontalShifts,
+                                                                                                    hWindow,
+                                                                                                    searchRadius,
+                                                                                                    linesDim,
+                                                                                                    samplesDim,
+                                                                                                    channelsDim);
+
+    QCOMPARE(orderEstimated.size(), nLines);
+
+    for (int i = 0; i < nLines; i++) {
+        QCOMPARE(orderEstimated[i], disorderedIndicesR2[i]);
+    }
+
+    //Maximal radius = 3
+    for (int i = 0; i < nLines; i++) {
+        frame.atUnchecked(i,0,0) = frameUnshifted.atUnchecked(disorderedIndicesR3[i],0,0);
+    }
+    searchRadius = 3;
+
+    orderEstimated = PikaLTools::PushBroomRelativeOffsets::estimatePushBroomVerticalReorderBayesian(frame,
+                                                                                                    horizontalShifts,
+                                                                                                    hWindow,
+                                                                                                    searchRadius,
+                                                                                                    linesDim,
+                                                                                                    samplesDim,
+                                                                                                    channelsDim);
+
+    QCOMPARE(orderEstimated.size(), nLines);
+
+    for (int i = 0; i < nLines; i++) {
+        QCOMPARE(orderEstimated[i], disorderedIndicesR3[i]);
     }
 
 }

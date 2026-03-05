@@ -103,6 +103,16 @@ bool BilSequenceSBAModule::addGraphReductorObservations(StereoVisionApp::Project
 
             qint64 lmid = blm->attachedLandmarkid();
 
+            StereoVisionApp::Landmark* lm = blm->attachedLandmark();
+
+            if (lm == nullptr) {
+                continue;
+            }
+
+            if (!lm->isEnabled()) {
+                continue;
+            }
+
             graphReductor->insertObservation(seqId, lmid, 2);
         }
     }
@@ -237,18 +247,6 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
             continue;
         }
 
-        double sensorWidth;
-
-        qint64 camId = seq->assignedCamera();
-
-        StereoVisionApp::PushBroomPinholeCamera* cam = currentProject->getDataBlock<StereoVisionApp::PushBroomPinholeCamera>(seqId);
-
-        if (cam != nullptr) {
-            sensorWidth = cam->imWidth();
-        } else {
-            sensorWidth = seq->getBilWidth();
-        }
-
         QVector<qint64> imlmids = seq->listTypedSubDataBlocks(BilSequenceLandmark::staticMetaObject.className());
 
         for (qint64 imlmid : imlmids) {
@@ -271,8 +269,8 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
                 continue;
             }
 
-            if (!lm->optPos().isSet()) {
-                continue; //skip uninitialized landmarks.
+            if (!lm->optPos().isSet() or !lm->isEnabled()) {
+                continue; //skip uninitialized or disabled landmarks.
             }
 
             StereoVisionApp::ModularSBASolver::PositionNode* lmNode = solver->getPositionNode(lmid);

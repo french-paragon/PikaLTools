@@ -78,9 +78,17 @@ bool DtmTiePointsModule::addGraphReductorObservations(StereoVisionApp::Project *
 
         for (DtmLandmark* dtmLm : dtmLandmarks) {
 
-            qint64 lmid = dtmLm->attachedLandmarkid();
+            StereoVisionApp::Landmark* lm = dtmLm->attachedLandmark();
 
-            graphReductor->insertSelfObservation(lmid, 3);
+            if (lm == nullptr) {
+                continue;
+            }
+
+            if (!lm->isEnabled()) {
+                continue;
+            }
+
+            graphReductor->insertSelfObservation(lm->internalId(), 3);
         }
 
     }
@@ -147,7 +155,17 @@ bool DtmTiePointsModule::init(StereoVisionApp::ModularSBASolver* solver, ceres::
 
         for (DtmLandmark* dtmLm : dtmLandmarks) {
 
-            qint64 lmid = dtmLm->attachedLandmarkid();
+            StereoVisionApp::Landmark* lm = dtmLm->attachedLandmark();
+
+            if (lm == nullptr) {
+                continue;
+            }
+
+            if (!lm->isEnabled()) {
+                continue;
+            }
+
+            qint64 lmid = lm->internalId();
 
             StereoVisionApp::ModularSBASolver::PositionNode* lmNode = solver->getNodeForLandmark(lmid, true);
 
@@ -247,8 +265,6 @@ bool DtmTiePointsModule::init(StereoVisionApp::ModularSBASolver* solver, ceres::
                 {lmNode->pos.data()};
 
             QString lmName = "Missing Landmark";
-
-            StereoVisionApp::Landmark* lm = currentProject->getDataBlock<StereoVisionApp::Landmark>(lmNode->datablockId);
 
             if (lm != nullptr) {
                 lmName = lm->objectName();
