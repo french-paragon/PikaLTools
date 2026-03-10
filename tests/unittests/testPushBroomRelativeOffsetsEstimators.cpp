@@ -331,7 +331,11 @@ void TestPushBroomRelativeOffsetsEstimators::testVerticalReordererBehavior() {
     constexpr int nLines = 7, nSamples = 1, nChannels = 1;
     constexpr std::array<int,nLines> disorderedIndicesR1{0,2,1,3,5,4,6};
     constexpr std::array<int,nLines> disorderedIndicesR2{0,3,2,1,6,4,5};
-    constexpr std::array<int,nLines> disorderedIndicesR3{1,0,2,3,5,4,3};
+    constexpr std::array<int,nLines> disorderedIndicesR3{1,0,2,6,5,4,3};
+
+    constexpr std::array<int,nLines> disorderedInvIndicesR1{0,2,1,3,5,4,6};
+    constexpr std::array<int,nLines> disorderedInvIndicesR2{0,3,2,1,5,6,4};
+    constexpr std::array<int,nLines> disorderedInvIndicesR3{1,0,2,6,5,4,3};
 
     Multidim::Array<float,3> frameUnshifted(nLines, nSamples, nChannels);
 
@@ -360,10 +364,18 @@ void TestPushBroomRelativeOffsetsEstimators::testVerticalReordererBehavior() {
                                                                                                                      samplesDim,
                                                                                                                      channelsDim);
 
+    QStringList orderStr;
+    for (int idx : orderEstimated) {
+        orderStr << QString("%1").arg(idx);
+    }
+    QString orderEstimatedR1Str = "orderEstimated R1: [" + orderStr.join(", ") + "]";
+
+    qInfo() << orderEstimatedR1Str;
+
     QCOMPARE(orderEstimated.size(), nLines);
 
     for (int i = 0; i < nLines; i++) {
-        QCOMPARE(orderEstimated[i], disorderedIndicesR1[i]);
+        QCOMPARE(orderEstimated[i], disorderedInvIndicesR1[i]);
     }
 
     //Maximal radius = 2
@@ -380,10 +392,18 @@ void TestPushBroomRelativeOffsetsEstimators::testVerticalReordererBehavior() {
                                                                                                     samplesDim,
                                                                                                     channelsDim);
 
+    orderStr.clear();
+    for (int idx : orderEstimated) {
+        orderStr << QString("%1").arg(idx);
+    }
+    QString orderEstimatedR2Str = "orderEstimated R2: [" + orderStr.join(", ") + "]";
+
+    qInfo() << orderEstimatedR2Str;
+
     QCOMPARE(orderEstimated.size(), nLines);
 
     for (int i = 0; i < nLines; i++) {
-        QCOMPARE(orderEstimated[i], disorderedIndicesR2[i]);
+        QCOMPARE(orderEstimated[i], disorderedInvIndicesR2[i]);
     }
 
     //Maximal radius = 3
@@ -400,10 +420,18 @@ void TestPushBroomRelativeOffsetsEstimators::testVerticalReordererBehavior() {
                                                                                                     samplesDim,
                                                                                                     channelsDim);
 
+    orderStr.clear();
+    for (int idx : orderEstimated) {
+        orderStr << QString("%1").arg(idx);
+    }
+    QString orderEstimatedR3Str = "orderEstimated R3: [" + orderStr.join(", ") + "]";
+
+    qInfo() << orderEstimatedR3Str;
+
     QCOMPARE(orderEstimated.size(), nLines);
 
     for (int i = 0; i < nLines; i++) {
-        QCOMPARE(orderEstimated[i], disorderedIndicesR3[i]);
+        QCOMPARE(orderEstimated[i], disorderedInvIndicesR3[i]);
     }
 
 }

@@ -1230,13 +1230,13 @@ std::vector<int> estimatePushBroomVerticalReorderBayesian(
             int di = (nRedundant > 0) ? 1 : 0;
             for (int i = 0; i < ret.size(); i++) {
                 int s = shifts[i+di];
+
+                if (s >= dr+1 and dr != -searchRadius) {
+                    s-=1;
+                }
+
                 s += searchRadius-1;
 
-                for (int j = i-1; j >= 0; j++) {
-                    if (s >= ret[j]) {
-                        s--;
-                    }
-                }
                 ret[i] = s;
             }
             return ret;
@@ -1288,10 +1288,8 @@ std::vector<int> estimatePushBroomVerticalReorderBayesian(
     auto drIdxZero = [nSubPathsPerStep, nSubPathsPerFirstStep, nSubPathsPerLastStep, searchRadius] (int dr) {
         if (dr == -searchRadius) {
             return 0;
-        } else if (dr == searchRadius) {
-            return nSubPathsPerFirstStep + (2*searchRadius-1)*nSubPathsPerStep;
         } else {
-            return nSubPathsPerFirstStep + dr*nSubPathsPerStep;
+            return nSubPathsPerFirstStep + (dr-1+searchRadius)*nSubPathsPerStep;
         }
     };
 
@@ -1368,7 +1366,22 @@ std::vector<int> estimatePushBroomVerticalReorderBayesian(
 
     for (int i = 0; i < nPathsPerStep; i++) {
         int finalDelta = drFromPathIdx(i);
-        if (finalDelta >= 0) { //any line in the range 0 to search radius can be the first
+
+        auto& indexer = *(indexerPerDelta[finalDelta+searchRadius]);
+        int choiceIdx = i - drIdxZero(finalDelta);
+        std::vector<int> choice = indexer.idx2set(choiceIdx);
+
+        std::vector<int> intermediateDeltas = internalDetails::choicesToShifts(choice, finalDelta, searchRadius);
+
+        bool pathValid = true;
+        for (int d : intermediateDeltas) {
+            if (d >= 0) { //any path which require assignin a line to a negative index is invalid
+                pathValid = false;
+                break;
+            }
+        }
+
+        if (finalDelta >= 0 and pathValid) { //any line in the range 0 to search radius can be the first
             previousCosts[i] = 0; //cost is assumed to be 0 to be in first alone
         } else {
             previousCosts[i] = std::numeric_limits<double>::infinity();
