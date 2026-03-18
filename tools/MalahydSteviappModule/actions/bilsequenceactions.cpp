@@ -1735,7 +1735,8 @@ bool estimateTimeDeltaRough(BilSequenceAcquisitionData *bilSequence) {
 
 bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
 
-    using UVCost = StereoVisionApp::InvertPose<StereoVisionApp::UV2ParametrizedXYZCost<StereoVisionApp::PinholePushbroomUVProjector,1,1,6,6>,0>;
+    constexpr int UVCostFlags = StereoVisionApp::UVProjFlags::PlaneCost;
+    using UVCost = StereoVisionApp::InvertPose<StereoVisionApp::UV2ParametrizedXYZCost<StereoVisionApp::PinholePushbroomUVProjector,UVCostFlags,1,1,6,6>,0>;
     using LeverArmCost = StereoVisionApp::LeverArm<UVCost,StereoVisionApp::Body2World|StereoVisionApp::Body2Sensor,0>;
     using PoseTransformCost = StereoVisionApp::PoseTransform<UVCost,StereoVisionApp::PoseTransformDirection::SourceToInitial,0>;
     using PoseTransformLeverArmCost = StereoVisionApp::PoseTransform<LeverArmCost,StereoVisionApp::PoseTransformDirection::SourceToInitial,0>;
