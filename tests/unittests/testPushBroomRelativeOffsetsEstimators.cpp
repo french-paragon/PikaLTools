@@ -2,6 +2,8 @@
 
 #include "processing/relativeoffsetsestimator.h"
 
+#include <random>
+
 constexpr int linesDim = 0, samplesDim = 1, channelsDim = 2;
 constexpr int lines_test_frame_nLines = 7, lines_test_frame_nSamples = 5, lines_test_frame_nChannels = 3;
 
@@ -77,6 +79,36 @@ Multidim::Array<float,3> renderReorderedLinesTestFrame(std::array<int,lines_test
 
 }
 
+std::vector<int> generateShuffledIdxs(int nPoints, int shuffleRadius, int seed = 42) {
+    std::vector<int> ret(nPoints);
+
+    std::default_random_engine re;
+    re.seed(seed);
+
+    for (int i = 0; i < nPoints; i++) {
+        ret[i] = i;
+    }
+
+    std::uniform_int_distribution advanceDist(1,shuffleRadius);
+
+    int prev = 0;
+    int next = std::min(nPoints-1, prev + advanceDist(re));
+
+    while (prev < nPoints-1) {
+        std::shuffle(ret.data()+prev, ret.data()+next, re); //points cannot be shuffled more than searchRadius position away from their original position
+        prev = next+1;
+        next = std::min(nPoints-1, prev + advanceDist(re));
+    }
+
+    #ifndef NDEBUG
+    for (int i = 0; i < nPoints; i++) {
+        assert(std::abs(ret[i] - i) <= shuffleRadius);
+    }
+    #endif
+
+    return ret;
+}
+
 class TestPushBroomRelativeOffsetsEstimators : public QObject {
 
     Q_OBJECT
@@ -87,6 +119,8 @@ private Q_SLOTS:
     void testBayesianLineEstimator();
     void testGlobalEstimatorHorizontalBehavior();
     void testVerticalReordererBehavior();
+    void testComputeVerticallyReorderedImage();
+    void testTSPGreedyHeuristic();
     void testGlobalEstimatorVerticalBehavior();
 };
 
@@ -434,6 +468,132 @@ void TestPushBroomRelativeOffsetsEstimators::testVerticalReordererBehavior() {
         QCOMPARE(orderEstimated[i], disorderedInvIndicesR3[i]);
     }
 
+}
+void TestPushBroomRelativeOffsetsEstimators::testComputeVerticallyReorderedImage() {
+
+    constexpr int nPoints = 7, nSamples = 1, nChannels = 1;
+    constexpr int searchRadius = nPoints;
+
+    Multidim::Array<int,3> frameUnshifted(nPoints, nSamples, nChannels);
+    Multidim::Array<int,3> frameShifted(nPoints, nSamples, nChannels);
+
+    std::vector<int> shuffleIdxs = generateShuffledIdxs(nPoints, searchRadius);
+
+    for (int i = 0; i < nPoints; i++) {
+        frameUnshifted.atUnchecked(i,0,0) = i;
+        frameShifted.atUnchecked(i,0,0) = shuffleIdxs[i];
+    }
+
+    Multidim::Array<int,3> reordered =
+        PikaLTools::PushBroomRelativeOffsets::computeVerticallyReorderedImage(frameShifted,
+                                                                          shuffleIdxs,
+                                                                          linesDim,
+                                                                          samplesDim,
+                                                                          channelsDim);
+
+    for (int i = 0; i < nPoints; i++) {
+        QCOMPARE(reordered.atUnchecked(i,0,0), i);
+    }
+
+
+}
+
+void TestPushBroomRelativeOffsetsEstimators::testTSPGreedyHeuristic() {
+
+    int nPoints = 100;
+
+    int searchRadius = 25;
+
+    std::vector<float> positions(nPoints);
+    std::vector<int> shuffleIdxs = generateShuffledIdxs(nPoints, searchRadius);
+    std::vector<float> shuffled_positions(nPoints);
+    std::vector<int> shuffled_idxs(nPoints);
+
+    for (int i = 0; i < nPoints; i++) {
+        float pos = float(i)/4 + std::sin(4*M_PI*float(i)/nPoints);
+        positions[i] = pos;
+    }
+
+    #ifndef NDEBUG
+    for (int i = 1; i < nPoints; i++) {
+        assert(positions[i] > positions[i-1]);
+    }
+    #endif
+
+    for (int i = 0; i < nPoints; i++) {
+        shuffled_positions[shuffleIdxs[i]] = positions[i];
+        shuffled_idxs[shuffleIdxs[i]] = i;
+    }
+
+    #ifndef NDEBUG
+    std::vector<int> unshuffled_idxs(nPoints);
+
+    for (int i = 0; i < nPoints; i++) {
+        unshuffled_idxs[i] = shuffled_idxs[shuffleIdxs[i]];
+        assert(unshuffled_idxs[i] == i);
+    }
+    std::vector<int> sorting_idxs(nPoints);
+
+    for (int i = 0; i < nPoints; i++) {
+        sorting_idxs[i] = i;
+    }
+
+    std::sort(sorting_idxs.begin(), sorting_idxs.end(), [&shuffled_positions] (int i1, int i2) {
+        return shuffled_positions[i1] < shuffled_positions[i2];
+    });
+
+    for (int i = 0; i < nPoints; i++) {
+        assert(sorting_idxs[i] == shuffleIdxs[i]);
+    }
+
+    #endif
+
+    int nComps = std::min(nPoints-1,2*searchRadius);
+
+    Multidim::Array<float,2> costs(nPoints, nComps);
+
+    for (int i = 0; i < nPoints; i++) {
+        for (int c = 0; c < nComps; c++) {
+            float dist = std::numeric_limits<float>::infinity();
+
+            int j = i+c+1;
+
+            if (j < nPoints) {
+                dist = std::abs(shuffled_positions[i] - shuffled_positions[j]);
+            }
+
+            costs.atUnchecked(i,c) = dist;
+        }
+    }
+
+    std::vector<int> orderEstimated = PikaLTools::PushBroomRelativeOffsets::radiusLimitedGreedyTsp(costs);
+
+    if (orderEstimated.back() < orderEstimated.front()) {
+        std::reverse(orderEstimated.begin(), orderEstimated.end());
+    }
+
+    QCOMPARE(orderEstimated.size(), nPoints);
+
+    for (int i = 0; i < nPoints; i++) {
+        QCOMPARE(orderEstimated[i], shuffleIdxs[i]);
+    }
+
+    Multidim::Array<float,3> frameShifted(nPoints, 1, 1);
+
+    for (int i = 0; i < nPoints; i++) {
+        frameShifted.atUnchecked(i,0,0) = shuffled_positions[i];
+    }
+
+    Multidim::Array<float,3> reordered =
+        PikaLTools::PushBroomRelativeOffsets::computeVerticallyReorderedImage(frameShifted,
+                                                                              orderEstimated,
+                                                                              linesDim,
+                                                                              samplesDim,
+                                                                              channelsDim);
+
+    for (int i = 0; i < nPoints; i++) {
+        QCOMPARE(reordered.valueUnchecked(i,0,0), positions[i]);
+    }
 }
 
 void TestPushBroomRelativeOffsetsEstimators::testGlobalEstimatorVerticalBehavior() {

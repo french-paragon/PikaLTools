@@ -10,6 +10,7 @@
 #include <MultidimArrays/MultidimArrays.h>
 
 #include <StereoVision/correlation/matching_costs.h>
+#include <StereoVision/correlation/cross_correlations.h>
 #include <StereoVision/interpolation/interpolation.h>
 #include <StereoVision/statistics/covarianceKernels.h>
 #include <StereoVision/utils/iterative_numerical_algorithm_output.h>
@@ -323,6 +324,7 @@ public:
         ComputeT dnegLogProb_ddy;
     };
 
+    template<bool withGradient = true>
     static Result logProb(Multidim::Array<ImageT,2> const& patch1,
                           Multidim::Array<ImageT,2> const& patch2,
                           CovKer const& kernel,
@@ -340,8 +342,13 @@ public:
 
         VType I(mSize);
         MType Sigma = MType::Zero(mSize,mSize);
-        MType dSigma_ddx = MType::Zero(mSize,mSize);
-        MType dSigma_ddy = MType::Zero(mSize,mSize);
+        MType dSigma_ddx;
+        MType dSigma_ddy;
+
+        if constexpr (withGradient) {
+            dSigma_ddx = MType::Zero(mSize,mSize);
+            dSigma_ddy = MType::Zero(mSize,mSize);
+        }
 
         for (int i = 0; i < nElements; i++) {
             for (int c = 0; c < nChannels; c++) {
@@ -380,6 +387,10 @@ public:
                     Sigma(patch1Idx,patch2Idx2) = sigma_rowline;
                     Sigma(patch2Idx2,patch1Idx) = sigma_rowline;
 
+                    if constexpr (!withGradient) {
+                        continue;
+                    }
+
                     ComputeT d_sigma = kernel.diff(d_rowline);
 
                     //pixels on the same row are not influenced by the dx and dy parameters
@@ -404,8 +415,10 @@ public:
         }
 
         Sigma *= sigma0;
-        dSigma_ddx *= sigma0;
-        dSigma_ddy *= sigma0;
+        if constexpr (withGradient) {
+            dSigma_ddx *= sigma0;
+            dSigma_ddy *= sigma0;
+        }
 
         auto decomposition = Sigma.partialPivLu();
 
@@ -424,12 +437,62 @@ public:
         // d I^T*Sigma(x)^-1*I / d Sigma is given by Sigma(x)^-1 I I^T Sigma(x)^-1
         // (remember that Sigma(x) = Sigma(x)^T and Sigma(x)^-1 = Sigma(x)^-T, else the relations are not correct)
         // we also used the relation d M^-1(x) / d x = -M^-1(x) d M(x) / d x M^-1(x), which implies that d a^T M^-1 b / d d M = - M^-T a b^T M^-T
-        auto diffMat = SigmaInv - SigmaInv*I*I.transpose()*SigmaInv;
-        ret.dnegLogProb_ddx = diffMat.cwiseProduct(dSigma_ddx).sum();
-        ret.dnegLogProb_ddy = diffMat.cwiseProduct(dSigma_ddy).sum();
+
+        if constexpr (withGradient) {
+            auto diffMat = SigmaInv - SigmaInv*I*I.transpose()*SigmaInv;
+            ret.dnegLogProb_ddx = diffMat.cwiseProduct(dSigma_ddx).sum();
+            ret.dnegLogProb_ddy = diffMat.cwiseProduct(dSigma_ddy).sum();
+        }
 
         return ret;
     }
+};
+
+template<typename ImageT, StereoVision::Correlation::matchingFunctions matchFunc, typename ComputeT = float>
+class MatchFuncCostCompute {
+public:
+
+    static ComputeT matchCost(Multidim::Array<ImageT,2> const& patch1,
+                              Multidim::Array<ImageT,2> const& patch2,
+                              ComputeT dx) {
+
+        int nElements = patch1.shape()[0];
+        int nChannels = patch1.shape()[1];
+
+        using MatchFuncTrait = StereoVision::Correlation::MatchingFunctionTraits<matchFunc>;
+
+        int di = std::ceil(dx);
+
+        int nFeatureElem = nElements - di;
+        int nFeaturePix = nChannels*nFeatureElem;
+
+        Multidim::Array<ComputeT,1> f1(nFeaturePix);
+        Multidim::Array<ComputeT,1> f2(nFeaturePix);
+
+        int id = 0;
+        for (int i = 0; i < nFeatureElem; i++) {
+            for (int c = 0; c < nChannels; c++,id++) {
+                f1.atUnchecked(id) = patch1.valueUnchecked(i,c);
+                f2.atUnchecked(id) = patch2.valueUnchecked(i+di,c); //TODO interpolate for more precision
+            }
+        }
+
+        auto f1_p = StereoVision::Correlation::getFeatureVectorForMatchFunc<matchFunc>(f1);
+        auto f2_p = StereoVision::Correlation::getFeatureVectorForMatchFunc<matchFunc>(f2);
+
+        ComputeT cost = MatchFuncTrait::featureComparison(f1_p,f2_p);
+
+        if constexpr (MatchFuncTrait::extractionStrategy == StereoVision::Correlation::dispExtractionStartegy::Score) {
+            cost = -cost;
+        }
+
+        if constexpr(!MatchFuncTrait::Normalized) {
+            cost /= nFeatureElem;
+        }
+
+        return cost;
+    }
+
 };
 
 enum class PushBroomInflexionPointsIntensityPerLineFlags {
@@ -1134,17 +1197,13 @@ StereoVision::IterativeNumericalAlgorithmOutput<std::vector<float>> estimatePush
 }
 
 /*!
- * \brief estimatePushBroomVerticalReorderBayesian estimate the most likely order of the lines in an image based on a stochastic model
- * \param image the image
- * \param hwindow the horizontal window to compute the stochastic model
- * \param searchRadius the maximal distance any line is considered to still be a neighboor of.
- * \param linesAxis the axis representing sucesive lines
- * \param samplesAxis the axis representing different pixels in the sensor
- * \param bandsAxis the axis representing the channels in the data.
- * \return the estimated order of the lines
+ * \brief radiusLimitedExactTsp
+ * \param costs the costs to travel to next 2 r nodes for each node (the maximal node that can be reached from any given node is 2r nodes further away).
+ * \return the traversal order
  *
- * This function transform the estimation problem into a traveling salesman problem and uses the Bellman–Held–Karp algorithm to solve it.
- * It also uses the assumption that any line cannot be matched past a certain distance to prune the search space a lot, reducing the algorithm complexity.
+ * This function estimate a solution to the traveling salesman problem using the Bellman–Held–Karp algorithm.
+ * It also uses the assumption that the points come in a given order and any point cannot be matched past a certain distance r
+ * to prune the search space a lot, reducing the algorithm complexity.
  *
  * More precisely, assuming the lines in the image are labelled 0 to n, and the start and end point is -1 (and n+1), the order in which the nodes are explored
  * in the traveling salesman solution is the order in which the image lines will be sorted. We enforce that any path finishing at node i has length between
@@ -1157,35 +1216,17 @@ StereoVision::IterativeNumericalAlgorithmOutput<std::vector<float>> estimatePush
  *
  * The overall complexity of the modified algorithm is O(l*(2*r+1)(2r-2)!), i.e., it should be able to process large images, but only perform a search at reasonably small range.
  */
-template<bool verbose = false, typename T, Multidim::ArrayDataAccessConstness constNess>
-std::vector<int> estimatePushBroomVerticalReorderBayesian(
-    Multidim::Array<T,3,constNess> const& image,
-    std::vector<double> const& horizontalShifts,
-    int hwindow,
-    int searchRadius,
-    int linesAxis = 0,
-    int samplesAxis = 1,
-    int bandsAxis = 2) {
+template<bool verbose = false>
+std::vector<int> radiusLimitedExactTsp (Multidim::Array<float,2> const& costs) {
 
-    using ComputeT = double;
-    using ParamsVecT = Eigen::Matrix<ComputeT, Eigen::Dynamic, 1>;
-    using CovKer = StereoVision::Statistics::CovarianceKernels::Matern<ComputeT>;
-    using CovKerProbEstimate = CovarianceKernelProbEstimate<T, CovKer, ComputeT>;
+    int nLines = costs.shape()[0];
+    int nComps = costs.shape()[1];
 
-    auto shape = image.shape();
-    int const& nLines = shape[linesAxis];
-
-    if (nLines == 0) {
-        return std::vector<int> {};
+    if (nComps % 2 != 0) {
+        return std::vector<int>();
     }
 
-    if (nLines == 1) {
-        return std::vector<int> {0};
-    }
-
-    if (nLines == 2) {
-        return std::vector<int> {0,1};
-    }
+    int searchRadius = nComps/2;
 
     struct internalDetails {
 
@@ -1244,11 +1285,6 @@ std::vector<int> estimatePushBroomVerticalReorderBayesian(
 
     };
 
-    struct PathInfos {
-        std::vector<int> intermediateDeltas;
-        int finalDelta;
-    };
-
     //the set of of all lines that can be mapped to line j with our constraints has size 2*searchRadius+1,
     // all the lines up to j-searchradius-1 have to have been mapped at that point. (i.e. the nodes in all paths of len j-searchRadius-1 are known)
     // to get a path of lenght j, we still need to choose between searchRadius+1 nodes.
@@ -1258,24 +1294,24 @@ std::vector<int> estimatePushBroomVerticalReorderBayesian(
     // finally, if it is not the last node, the node j+searchRadius cannot be present, as it cannot be a part of any path of len smaller than j
     //This mean 2 nodes are already selected (we need only searchRadius-1 more nodes) and the search space is 2*searchRadius-2 nodes
     StereoVision::Combinatorial::ChooseInSetIndexer standardChoiceIndexer(2*searchRadius-2,searchRadius-1);
-    int nSubPathsPerStep = standardChoiceIndexer.nChoices();
+    size_t nSubPathsPerStep = standardChoiceIndexer.nChoices();
     //in the case the node j-searchRadius is the last in the path then it does not have to be selected in the intermediate nodes
     //meaning that the selectable nodes sets is 1 node larger and the number of choices we have to do is 1 more
     StereoVision::Combinatorial::ChooseInSetIndexer firstChoiceIndexer(2*searchRadius-1,searchRadius);
-    int nSubPathsPerFirstStep = firstChoiceIndexer.nChoices();
+    size_t nSubPathsPerFirstStep = firstChoiceIndexer.nChoices();
     //If the last node is j+searchRadius, the search space increase by 1 node, but we still need to select only searchRadius-1 nodes
     //as j-searchRadius still has to be integrated in the path
     StereoVision::Combinatorial::ChooseInSetIndexer lastChoiceIndexer(2*searchRadius-1,searchRadius-1);
-    int nSubPathsPerLastStep = lastChoiceIndexer.nChoices();
+    size_t nSubPathsPerLastStep = lastChoiceIndexer.nChoices();
 
-    int nPathsPerStep = (2*searchRadius-1)*nSubPathsPerStep + nSubPathsPerFirstStep + nSubPathsPerLastStep;
+    size_t nPathsPerStep = (2*searchRadius-1)*nSubPathsPerStep + nSubPathsPerFirstStep + nSubPathsPerLastStep;
 
     std::vector<StereoVision::Combinatorial::ChooseInSetIndexer*> indexerPerDelta(2*searchRadius+1);
     std::fill(indexerPerDelta.begin(), indexerPerDelta.end(), &standardChoiceIndexer);
     indexerPerDelta[0] = &firstChoiceIndexer;
     indexerPerDelta.back() = &lastChoiceIndexer;
 
-    auto drFromPathIdx = [nSubPathsPerStep, nSubPathsPerFirstStep, nSubPathsPerLastStep, searchRadius] (int i) {
+    auto drFromPathIdx = [nSubPathsPerStep, nSubPathsPerFirstStep, nSubPathsPerLastStep, searchRadius] (int i) -> int {
         if (i < nSubPathsPerFirstStep) {
             return -searchRadius;
         } else if (i >= nSubPathsPerFirstStep + (2*searchRadius-1)*nSubPathsPerStep) {
@@ -1285,7 +1321,7 @@ std::vector<int> estimatePushBroomVerticalReorderBayesian(
         }
     };
 
-    auto drIdxZero = [nSubPathsPerStep, nSubPathsPerFirstStep, nSubPathsPerLastStep, searchRadius] (int dr) {
+    auto drIdxZero = [nSubPathsPerStep, nSubPathsPerFirstStep, nSubPathsPerLastStep, searchRadius] (int dr) -> int {
         if (dr == -searchRadius) {
             return 0;
         } else {
@@ -1293,68 +1329,6 @@ std::vector<int> estimatePushBroomVerticalReorderBayesian(
         }
     };
 
-    //build the cost matrix
-    int nComps = 2*searchRadius;
-
-    Multidim::Array<float,2> logProbs(nLines, nComps);
-
-    int s_j = (shape[samplesAxis] % hwindow) / 2;
-    int jJump = std::min(hwindow,shape[samplesAxis]);
-
-    auto tuple = estimateGaussianProcessMeanAndVar(image, linesAxis, samplesAxis, bandsAxis);
-    std::vector<double>& means = std::get<0>(tuple);
-    std::vector<double>& vars = std::get<1>(tuple);
-
-    constexpr int nIterations = 50;
-    double expectedScale = 10.;
-    double scaleResidualThreshold = 1e-5;
-
-    double optimizedScale = estimateMaternScaleFromPushBroom(image, means, vars, expectedScale,
-                                                             nIterations, scaleResidualThreshold,
-                                                             linesAxis, samplesAxis, bandsAxis);
-
-    constexpr double nu = 1.5; //select by default
-    StereoVision::Statistics::CovarianceKernels::Matern<double> kernel(nu, optimizedScale);
-
-    for (int i = 0; i < nLines; i++) {
-        for (int c = 0; c < nComps; c++) {
-
-            int j = i + c + 1;
-
-            if (j >= nLines) {
-                logProbs.atUnchecked(i,c) = std::numeric_limits<float>::infinity();
-                continue;
-            }
-
-            Multidim::Array<T,2,constNess> line1 = image.sliceView(linesAxis,i);
-            Multidim::Array<T,2,constNess> line2 = image.sliceView(linesAxis,j);
-
-            //measurements
-            double objective = 0;
-            double dx = horizontalShifts[i]-horizontalShifts[j];
-
-            for (int j = s_j; j <= shape[samplesAxis]-jJump; j+= jJump) {
-
-                for (int c = 0; c < shape[bandsAxis]; c++) {
-                    Multidim::Array<T,2> patch1 = line1.subView(Multidim::DimSlice(j,j+hwindow), Multidim::DimSlice(c,c+1));
-                    Multidim::Array<T,2> patch2 = line2.subView(Multidim::DimSlice(j,j+hwindow), Multidim::DimSlice(c,c+1));
-
-                    double sigma0 = vars[c];
-                    double mean = means[c];
-
-                    auto probData = CovKerProbEstimate::logProb(patch1,
-                                                                patch2,
-                                                                kernel,
-                                                                mean,
-                                                                sigma0,
-                                                                dx, 1);
-                    objective += probData.neglogProb;
-                }
-
-            }
-            logProbs.atUnchecked(i,c) = objective;
-        }
-    }
 
     //forward pass
     std::vector<double> previousCosts(nPathsPerStep);
@@ -1463,7 +1437,7 @@ std::vector<int> estimatePushBroomVerticalReorderBayesian(
                 double costCand = previousCosts[prevIdx];
 
                 if (pathLen < nLines) {
-                    costCand += logProbs.valueOrAlt({minLineId,maxLineId-minLineId-1},
+                    costCand += costs.valueOrAlt({minLineId,maxLineId-minLineId-1},
                                                     std::numeric_limits<double>::infinity());
                 }
 
@@ -1480,6 +1454,10 @@ std::vector<int> estimatePushBroomVerticalReorderBayesian(
 
         std::swap(currentCosts, previousCosts);
 
+    }
+
+    if (verbose) {
+        std::cout << "\tStarting backward reconstruction" << std::endl;
     }
 
     //reconstruct path backward
@@ -1509,6 +1487,587 @@ std::vector<int> estimatePushBroomVerticalReorderBayesian(
     std::reverse(path.begin(), path.end());
 
     return path;
+}
+
+template<bool verbose = false>
+std::vector<int> radiusLimitedGreedyTsp(Multidim::Array<float,2> const& costs) {
+
+    int nLines = costs.shape()[0];
+    int nComps = costs.shape()[1];
+
+    std::vector<int> nextElement(nLines);
+    std::vector<int> previousElement(nLines);
+    std::vector<int> pathsGroups(nLines); //cluster the nodes into paths
+    std::fill(nextElement.begin(), nextElement.end(), -1);
+    std::fill(previousElement.begin(), previousElement.end(), -1);
+
+    for (int i = 0; i < pathsGroups.size(); i++) {
+        pathsGroups[i] = i;
+    }
+
+    auto pointsConnected = [&pathsGroups] (int i, int j) {
+
+        int parenti = pathsGroups[i];
+        while(pathsGroups[parenti] != parenti) {
+            parenti = pathsGroups[parenti];
+        }
+        pathsGroups[i] = parenti;
+
+        int parentj = pathsGroups[j];
+        while(pathsGroups[parentj] != parentj) {
+            parentj = pathsGroups[parentj];
+        }
+        pathsGroups[j] = parentj;
+
+        return parenti == parentj;
+    };
+
+    auto connectPoints = [&pathsGroups] (int i, int j) {
+
+        int parenti = pathsGroups[i];
+        while(pathsGroups[parenti] != parenti) {
+            parenti = pathsGroups[parenti];
+        }
+        pathsGroups[i] = parenti;
+
+        int parentj = pathsGroups[j];
+        while(pathsGroups[parentj] != parentj) {
+            parentj = pathsGroups[parentj];
+        }
+        pathsGroups[parentj] = parenti;
+    };
+
+    auto invertSegmentForward = [&nextElement, &previousElement] (int segmentStart) -> int {
+
+        assert(previousElement[segmentStart] < 0);
+
+        int previous = previousElement[segmentStart];
+        int current = segmentStart;
+        int next = nextElement[current];
+
+        nextElement[current] = previous;
+
+        do {
+
+            previousElement[current] = next;
+            if (next < 0) {
+                break;
+            }
+            int nNext = nextElement[next];
+            nextElement[next] = current;
+            current = next;
+            next = nNext;
+        } while (true);
+
+        return current;
+    };
+
+    auto invertSegmentBackward = [&nextElement, &previousElement] (int segmentStart) -> int {
+
+        assert(nextElement[segmentStart] < 0);
+
+        int previous = nextElement[segmentStart];
+        int current = segmentStart;
+        int next = previousElement[current];
+
+        previousElement[current] = previous;
+
+        do {
+
+            nextElement[current] = next;
+            if (next < 0) {
+                break;
+            }
+            int nNext = previousElement[next];
+            previousElement[next] = current;
+            current = next;
+            next = nNext;
+        } while (true);
+
+        return current;
+    };
+
+    if (verbose) {
+        std::cout << "\tStarting forward reconstruction" << std::endl;
+    }
+
+    for (int it = 0; it < nLines-1; it++) {
+
+        int minStartPoint = -1;
+        int minEndPoint = -1;
+        float minCost = std::numeric_limits<float>::infinity();
+
+        //find remaining min cost edge
+        for (int i = 0; i < nLines; i++) {
+
+            if (nextElement[i] >= 0 and previousElement[i] >= 0) {
+                continue; //the node is in the middle of a segment
+            }
+
+            float maxCost = costs.valueUnchecked(i,0);
+
+            int cMax = nLines-i-1;
+            for (int c = 0; c < cMax; c++) {
+
+                int j = i + c + 1;
+
+                if (nextElement[j] >= 0 and previousElement[j] >= 0) {
+                    continue; //the node is in the middle of a segment
+                }
+
+                if (pointsConnected(i,j)) {
+                    continue; //skip points on the same segment
+                }
+
+                float candCost;
+                if (c < costs.shape()[1]) {
+                    candCost = costs.valueUnchecked(i,c);
+                    maxCost = std::max(maxCost, candCost);
+                } else {
+                    candCost = maxCost + 1;
+                }
+
+                if (candCost < minCost) {
+                    minStartPoint = i;
+                    minEndPoint = j;
+                    minCost = candCost;
+                }
+
+            }
+        }
+
+        connectPoints(minStartPoint, minEndPoint);
+
+        //insert the edge
+        if (nextElement[minStartPoint] < 0 and previousElement[minEndPoint] < 0) {
+            nextElement[minStartPoint] = minEndPoint;
+            previousElement[minEndPoint] = minStartPoint;
+        } else if (nextElement[minEndPoint] < 0 and previousElement[minStartPoint] < 0) {
+            nextElement[minEndPoint] = minStartPoint;
+            previousElement[minStartPoint] = minEndPoint;
+        } else if (previousElement[minEndPoint] < 0 and previousElement[minStartPoint] < 0) {
+
+            invertSegmentForward(minStartPoint);
+            assert(nextElement[minStartPoint] < 0);
+
+            nextElement[minStartPoint] = minEndPoint;
+            previousElement[minEndPoint] = minStartPoint;
+
+        } else if (nextElement[minEndPoint] < 0 and nextElement[minStartPoint] < 0) {
+
+            invertSegmentBackward(minEndPoint);
+            assert(previousElement[minEndPoint] < 0);
+
+            nextElement[minStartPoint] = minEndPoint;
+            previousElement[minEndPoint] = minStartPoint;
+        }
+
+    }
+
+    if (verbose) {
+        std::cout << "\tStarting backward reconstruction" << std::endl;
+    }
+
+    int start = -1;
+
+    for (int i = 0; i < nLines; i++) {
+        if (previousElement[i] < 0) {
+            assert(start < 0);
+            start = i;
+            #ifdef NDEBUG
+                break;
+            #endif
+        }
+    }
+    if constexpr (verbose) {
+        if (start < 0) {
+            std::cout << "\tError in backward reconstruction!" << std::endl;
+        }
+    }
+    assert(start >= 0);
+
+    std::vector<int> ret(nLines);
+
+    int current = start;
+
+    for (int i = 0; i < nLines; i++) {
+        ret[i] = current;
+        current = nextElement[current];
+    }
+
+    #ifndef NDEBUG
+        //ensure the solution is valid in debug mode
+        std::vector<bool> mask(ret.size());
+        std::fill(mask.begin(), mask.end(), false);
+        for (int i = 0; i < ret.size(); i++) {
+            mask[ret[i]] = true;
+        }
+        for (int i = 0; i < ret.size(); i++) {
+            assert(mask[i]);
+        }
+    #endif
+
+    return ret;
+
+}
+
+/*!
+ * \brief radiusLimited3CutsHeuristicTsp
+ * \param costs the costs matrix
+ * \return an approximation of the TSP optimal solution
+ *
+ * This heuristic initialize the solution using the Greedy TSP model,
+ * but then perform interative improvements on the solution.
+ * 3 edges in the solution are found such that the edges can be rearranged to find a better solution
+ */
+template<bool verbose = false>
+std::vector<int> radiusLimited3CutsHeuristicTsp(Multidim::Array<float,2> const& costs) {
+
+    int nLines = costs.shape()[0];
+    int nComps = costs.shape()[1];
+
+    std::vector<float> maxCosts(nLines);
+
+    for (int i = 0; i < nLines; i++) {
+        float maxCost = costs.valueUnchecked(i,0);
+
+        for (int c = 1; c < nComps; c++) {
+            float cCand = costs.valueUnchecked(i,c);
+            if (std::isfinite(cCand)) {
+                maxCost = std::max(maxCost, cCand);
+            }
+        }
+
+        maxCosts[i] = maxCost;
+    }
+
+    if constexpr (verbose) {
+        std::cout << "Start computing initial greedy solution" << std::endl;
+    }
+    std::vector<int> ret = radiusLimitedGreedyTsp(costs);
+
+    int nWorse = std::max<int>(100,std::ceil(ret.size()/10.)); //consider that much worse edges, at least 2 out of the 3 cuts being made to improve the solution should be from these.
+
+    std::vector<int> worseIdxs(nWorse);
+
+    if constexpr (verbose) {
+        std::cout << "Start computing refined solution" << std::endl;
+    }
+
+    int nNodes = ret.size();
+
+    std::array<int,3> splitIdxs;
+    std::array<int,3> connectionsStarts;
+    std::array<int,3> connectionsEnds;
+    float costDelta = 0;
+
+    auto compCost = [&costs, &maxCosts, nComps, &ret, nNodes] (int i, int j) -> float {
+
+        if (i < 0 or i >= nNodes) {
+            return 0;
+        }
+
+        if (j < 0 or j >= nNodes) {
+            return 0;
+        }
+
+        assert(i != j);
+
+        int c1 = ret[i];
+        int c2 = ret[j];
+
+        int min = std::min(c1,c2);
+        int max = std::max(c1,c2);
+
+        assert(min >= 0 and min < max and max < nNodes); //check ertreived indices
+
+        int c = max - min - 1;
+
+        if (c >= nComps) {
+            return maxCosts[min];
+        }
+
+        return costs.valueUnchecked(min,c);
+    };
+
+    auto recomputeWorseIdxs = [&compCost, &worseIdxs, &ret, nWorse] () {
+
+        std::vector<float> costs(ret.size());
+        std::vector<int> idxs(ret.size());
+
+        float maxCost = -std::numeric_limits<float>::infinity();
+
+        for (int i = 0; i < ret.size(); i++) {
+            float cost = compCost(i-1,i);
+            maxCost = std::max(maxCost,cost);
+            costs[i] = cost;
+            idxs[i] = i;
+        }
+
+        std::sort(idxs.begin(), idxs.end(), [&costs] (int i1, int i2) {
+            return costs[i1] > costs[i2];
+        });
+
+        for (int i = 0; i < nWorse; i++) {
+            worseIdxs[i] = idxs[i];
+        }
+
+    };
+
+    auto evalCand = [&compCost, &splitIdxs, &connectionsStarts, &connectionsEnds, &costDelta](
+                        float costCurrent,
+                        int i, int j, int k,
+                        int p1s, int p1e,
+                        int p2s, int p2e,
+                        int p3s, int p3e) {
+        float costCand = compCost(p1s,p1e) + compCost(p2s,p2e) + compCost(p3s,p3e);
+        float deltaCand = costCand - costCurrent;
+        if (deltaCand < costDelta) {
+            splitIdxs={i,j,k};
+            connectionsStarts={p1s, p2s, p3s};
+            connectionsEnds={p1e,p2e,p3e};
+            costDelta = deltaCand;
+        }
+    };
+
+    auto evaluateCut = [&evalCand, &compCost, nNodes] (int i, int j, int k) {
+
+        assert(i < j);
+        assert(j < k);
+        assert(i >= -1);
+        assert(k <= nNodes);
+
+        //we assume that the path is cut into 3 subpaths k -> i-1  i -> j-1  j -> k-1
+        //we want to reconstruct a solution based on these subpaths (with them possibly inverted)
+        std::array<int,6> nodes = {i-1,i,j-1,j,k-1,k}; //i-1 is start, k is end
+        //the current path (costDelta=0) is i-1 -> i -> j-1 -> j -> k-1 -> k
+        float costCurrent = compCost(i-1,i) + compCost(j-1,j) + compCost(k-1,k);
+        //we need to test the alternative paths:
+
+        // i-1 -> i -> j-1 -> k-1 -> j -> k
+        evalCand(costCurrent,
+                 i,j,k,
+                 i-1,i, j-1,k-1, j,k);
+
+        // i-1 -> j-1 -> i -> j -> k-1 -> k
+        evalCand(costCurrent,
+                 i,j,k,
+                 i-1,j-1, i,j, k-1,k);
+
+        // i-1 -> j-1 -> i -> k-1 -> j -> k
+        evalCand(costCurrent,
+                 i,j,k,
+                 i-1,j-1, i,k-1, j,k);
+
+        // i-1 -> j -> k-1 -> i -> j-1 -> k
+        evalCand(costCurrent,
+                 i,j,k,
+                 i-1,j, k-1,i, j-1,k);
+
+        // i-1 -> j -> k-1 -> j-1 -> i -> k
+        evalCand(costCurrent,
+                 i,j,k,
+                 i-1,j, k-1,j-1, i,k);
+
+        // i-1 -> k-1 -> j -> i -> j-1 -> k
+        evalCand(costCurrent,
+                 i,j,k,
+                 i-1,k-1, j,i, j-1,k);
+
+        // i-1 -> k-1 -> j -> j-1 -> i -> k
+        evalCand(costCurrent,
+                 i,j,k,
+                 i-1,k-1, j,j-1, i,k);
+
+    };
+
+    auto applyCut = [&splitIdxs, &connectionsStarts, &connectionsEnds, &costDelta, &ret] () {
+
+        int p_pos = -1; //start from the pseudo node before the path.
+        int e_pos = connectionsStarts[0];
+        int delta = 1;
+
+        std::vector<int> newSol;
+        newSol.reserve(ret.size());
+
+        //from beginning to start of first path
+        for (int pos = p_pos+1; pos <= e_pos; pos+=delta) {
+            newSol.push_back(ret[pos]);
+        }
+
+        //do next segment
+        p_pos = connectionsEnds[0];
+        e_pos = connectionsStarts[1];
+        delta = (p_pos > e_pos) ? -1 : 1;
+        for (int pos = p_pos; pos != e_pos; pos+=delta) {
+            newSol.push_back(ret[pos]);
+        }
+        newSol.push_back(ret[e_pos]);
+
+        //do next segment
+        p_pos = connectionsEnds[1];
+        e_pos = connectionsStarts[2];
+        delta = (p_pos > e_pos) ? -1 : 1;
+        for (int pos = p_pos; pos != e_pos; pos+=delta) {
+            newSol.push_back(ret[pos]);
+        }
+        newSol.push_back(ret[e_pos]);
+
+        //finish the cover
+        p_pos = connectionsEnds[2];
+        e_pos = ret.size();
+        delta = 1;
+        for (int pos = p_pos; pos < e_pos; pos+=delta) {
+            newSol.push_back(ret[pos]);
+        }
+
+        assert(newSol.size() == ret.size());
+
+        ret = std::move(newSol);
+
+        #ifndef NDEBUG
+        //ensure the solution stay valid in debug mode
+        std::vector<bool> mask(ret.size());
+        std::fill(mask.begin(), mask.end(), false);
+        for (int i = 0; i < ret.size(); i++) {
+            mask[ret[i]] = true;
+        }
+        for (int i = 0; i < ret.size(); i++) {
+            assert(mask[i]);
+        }
+        #endif
+    };
+
+    int it = 0;
+
+    do {
+        costDelta = 0;
+        recomputeWorseIdxs();
+
+        //search best swap solution
+        for (int i_idx = 0; i_idx < nWorse-1; i_idx++) {
+
+            int i = worseIdxs[i_idx];
+
+            for (int j_idx = i_idx+1; j_idx < nWorse; j_idx++) {
+
+                int j = worseIdxs[j_idx];
+
+                for (int k = 0; k < nNodes+1; k++) {
+                    if (k == i or k == j) {
+                        continue;
+                    }
+                    std::array<int,3> ijk = {i,j,k};
+                    std::sort(ijk.begin(), ijk.end());
+                    evaluateCut(ijk[0],ijk[1],ijk[2]);
+                }
+            }
+        }
+
+        //apply
+        if (costDelta < 0) {
+            applyCut();
+            if constexpr (verbose) {
+                it++;
+                std::cout << "\r\tImprovement iteration " << it << std::flush;
+            }
+        }
+
+    } while (costDelta < 0); //while a swap solution has been found
+
+    if constexpr (verbose) {
+        std::cout << "\n";
+    }
+
+    return ret;
+}
+
+/*!
+ * \brief estimatePushBroomVerticalReorderBayesian estimate the most likely order of the lines in an image based on a stochastic model
+ * \param image the image
+ * \param hwindow the horizontal window to compute the stochastic model
+ * \param searchRadius the maximal distance any line is considered to still be a neighboor of.
+ * \param linesAxis the axis representing sucesive lines
+ * \param samplesAxis the axis representing different pixels in the sensor
+ * \param bandsAxis the axis representing the channels in the data.
+ * \return the estimated order of the lines
+ */
+template<bool verbose = false, typename T, Multidim::ArrayDataAccessConstness constNess>
+std::vector<int> estimatePushBroomVerticalReorderBayesian(
+    Multidim::Array<T,3,constNess> const& image,
+    std::vector<double> const& horizontalShifts,
+    int hwindow,
+    int searchRadius,
+    int linesAxis = 0,
+    int samplesAxis = 1,
+    int bandsAxis = 2) {
+
+    using ComputeT = double;
+    using ParamsVecT = Eigen::Matrix<ComputeT, Eigen::Dynamic, 1>;
+    using CovKer = StereoVision::Statistics::CovarianceKernels::Matern<ComputeT>;
+    using CovKerProbEstimate = CovarianceKernelProbEstimate<T, CovKer, ComputeT>;
+
+    auto shape = image.shape();
+    int const& nLines = shape[linesAxis];
+
+    if (nLines == 0) {
+        return std::vector<int> {};
+    }
+
+    if (nLines == 1) {
+        return std::vector<int> {0};
+    }
+
+    if (nLines == 2) {
+        return std::vector<int> {0,1};
+    }
+
+    //build the cost matrix
+    int nComps = 2*searchRadius;
+
+    Multidim::Array<float,2> costs(nLines, nComps);
+
+    int s_j = (shape[samplesAxis] % hwindow) / 2;
+    int jJump = std::min(hwindow,shape[samplesAxis]);
+
+    constexpr StereoVision::Correlation::matchingFunctions matchFunc = StereoVision::Correlation::matchingFunctions::SSD;
+
+    for (int i = 0; i < nLines; i++) {
+
+        if constexpr (verbose) {
+            std::cout << '\r' << "\tComputing cost for line " << (i+1) << '/' << nLines << std::flush;
+        }
+
+        for (int c = 0; c < nComps; c++) {
+
+            int j = i + c + 1;
+
+            if (j >= nLines) {
+                costs.atUnchecked(i,c) = std::numeric_limits<float>::infinity();
+                continue;
+            }
+
+            Multidim::Array<T,2,constNess> line1 = image.sliceView(linesAxis,i);
+            Multidim::Array<T,2,constNess> line2 = image.sliceView(linesAxis,j);
+
+            //measurements
+            double dx = horizontalShifts[i]-horizontalShifts[j];
+            double objective = MatchFuncCostCompute<T,matchFunc>::matchCost(line1,line2,dx);
+            costs.atUnchecked(i,c) = objective;
+        }
+    }
+
+    if constexpr (verbose) {
+        std::cout << "\n";
+    }
+
+    constexpr int maxExactRadius = 10;
+    //for small radiuses use the exact solver
+    if (searchRadius <= maxExactRadius) {
+        return radiusLimitedExactTsp<verbose>(costs);
+    }
+    //else use the heuristic
+    return radiusLimited3CutsHeuristicTsp<verbose>(costs);
 
 }
 
@@ -1991,6 +2550,61 @@ Multidim::Array<T,3> computeHorizontallyRectifiedImage(Multidim::Array<T,3> cons
                     (samples, {fracCoord});
 
                 out.atUnchecked(outCoords) = interpolated;
+
+            }
+        }
+
+    }
+
+    return out;
+}
+
+template<typename T, Multidim::ArrayDataAccessConstness constNess>
+Multidim::Array<T,3> computeVerticallyReorderedImage(Multidim::Array<T,3,constNess> const& image,
+                                                      std::vector<int> const& reorderedIdxs,
+                                                      int linesAxis = 0,
+                                                      int samplesAxis = 1,
+                                                      int bandsAxis = 2)
+{
+
+    if (image.empty()) {
+        return image;
+    }
+
+    auto shape = image.shape();
+
+    int nLines = shape[linesAxis];
+    int nSamples = shape[samplesAxis];
+    int nBands = shape[bandsAxis];
+
+    std::array<int,3> out_shape;
+
+    out_shape[linesAxis] = nLines;
+    out_shape[samplesAxis] = nSamples;
+    out_shape[bandsAxis] = nBands;
+
+    Multidim::Array<T,3> out(out_shape);
+
+#pragma omp parallel for
+    for (int i = 0; i < nLines; i++) {
+
+        int idx = reorderedIdxs[i];
+
+        for (int b = 0; b < nBands; b++) {
+
+            for (int j = 0; j < nSamples; j++) {
+
+                std::array<int,3> outCoords;
+                outCoords[linesAxis] = i;
+                outCoords[samplesAxis] = j;
+                outCoords[bandsAxis] = b;
+
+                std::array<int,3> inCoords;
+                inCoords[linesAxis] = idx;
+                inCoords[samplesAxis] = j;
+                inCoords[bandsAxis] = b;
+
+                out.atUnchecked(outCoords) = image.valueUnchecked(inCoords);
 
             }
         }

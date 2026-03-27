@@ -1,6 +1,7 @@
-#include "libs/io/read_envi_bil.h"
+#include "io/read_envi_bil.h"
+#include "io/write_envi_bil.h"
 
-#include "libs/processing/relativeoffsetsestimator.h"
+#include "processing/relativeoffsetsestimator.h"
 
 #include <StereoVision/io/image_io.h>
 #include <StereoVision/imageProcessing/colorConversions.h>
@@ -12,15 +13,189 @@
 
 #include <tclap/CmdLine.h>
 #include <QApplication>
+#include <QString>
+#include <QFileInfo>
 
 #include <iostream>
+
+
+struct ShiftsInfos {
+    std::vector<float> horizontal;
+    std::vector<int> vertical;
+};
+
+struct RectifiedResult {
+    Multidim::Array<float,3> rectified;
+    ShiftsInfos infos;
+};
+
+template<bool verbose>
+RectifiedResult horizontalOnly(Multidim::Array<float,3> const& image,
+                                         int hradius,
+                                         double dx_pos_lambda,
+                                         int nIterations,
+                                         double residual_treshold,
+                                         int linesAxis,
+                                         int samplesAxis,
+                                         int bandsAxis) {
+
+    auto rectificationDataInfos = PikaLTools::PushBroomRelativeOffsets::estimatePushBroomHorizontalShiftBayesian<verbose>(
+        image,
+        hradius,
+        dx_pos_lambda,
+        nIterations,
+        residual_treshold,
+        linesAxis,
+        samplesAxis,
+        bandsAxis);
+
+    auto& rectificationData = rectificationDataInfos.value();
+
+    auto accumulated = PikaLTools::PushBroomRelativeOffsets::computeAccumulatedFromRelativeShifts(rectificationData);
+
+    constexpr bool shiftsAccumulated = true;
+
+    Multidim::Array<float,3> rectified = PikaLTools::PushBroomRelativeOffsets::computeHorizontallyRectifiedImage<shiftsAccumulated>(
+        image,
+        accumulated.accumulatedShifts,
+        linesAxis,
+        samplesAxis,
+        bandsAxis);
+
+    return {rectified, ShiftsInfos{.horizontal=accumulated.accumulatedShifts, .vertical={}}};
+
+}
+
+template<bool verbose>
+RectifiedResult verticalOnly(Multidim::Array<float,3> const& image,
+                                       int hwindow,
+                                       int vradius,
+                                       int linesAxis,
+                                       int samplesAxis,
+                                       int bandsAxis) {
+
+    int nLines = image.shape()[linesAxis];
+
+    std::vector<double> horizontalShifts(nLines);
+    std::fill(horizontalShifts.begin(), horizontalShifts.end(), 0);
+
+    std::vector<int> orderEstimated =
+        PikaLTools::PushBroomRelativeOffsets::estimatePushBroomVerticalReorderBayesian<verbose>(
+        image,
+        horizontalShifts,
+        hwindow,
+        vradius,
+        linesAxis,
+        samplesAxis,
+        bandsAxis);
+
+    Multidim::Array<float,3> rectified = PikaLTools::PushBroomRelativeOffsets::computeVerticallyReorderedImage(image,
+                                                                                 orderEstimated,
+                                                                                 linesAxis,
+                                                                                 samplesAxis,
+                                                                                 bandsAxis);
+
+    return {rectified, ShiftsInfos{.horizontal={}, .vertical=orderEstimated}};
+}
+
+template<bool verbose>
+RectifiedResult verticalHorizontal(Multidim::Array<float,3> const& image,
+                                             int hwindow,
+                                             int vradius,
+                                             double x_pos_lambda,
+                                             double y_pos_lambda,
+                                             double dx_pos_lambda,
+                                             double dy_pos_lambda,
+                                             double I_lambda,
+                                             int nIterations,
+                                             double residual_treshold,
+                                             double damping_factor,
+                                             int linesAxis,
+                                             int samplesAxis,
+                                             int bandsAxis) {
+
+    auto rectificationDataInfos = PikaLTools::PushBroomRelativeOffsets::estimateGlobalPushBroomPreRectification<verbose>(
+        image,
+        hwindow,
+        vradius,
+        x_pos_lambda,
+        y_pos_lambda,
+        dx_pos_lambda,
+        dy_pos_lambda,
+        I_lambda,
+        nIterations,
+        residual_treshold,
+        damping_factor,
+        linesAxis,
+        samplesAxis,
+        bandsAxis);
+
+
+    auto& rectificationData = rectificationDataInfos.value();
+
+    //auto accumulated = PikaLTools::PushBroomRelativeOffsets::computeAccumulatedFromRelativeShifts(rectificationData);
+
+    float minxShift = std::numeric_limits<float>::infinity(); // accumulated.minDelta;
+    float maxxShift = -std::numeric_limits<float>::infinity(); // accumulated.maxDelta;
+
+    float minyShift = std::numeric_limits<float>::infinity();
+    float maxyShift = -std::numeric_limits<float>::infinity();
+
+    for (int i = 0; i < rectificationData.size(); i++) {
+        PikaLTools::PushBroomRelativeOffsets::LineShiftInfos const& shiftsInfos = rectificationData[i];
+
+        minxShift = std::min(shiftsInfos.dx, minxShift);
+        maxxShift = std::max(shiftsInfos.dx, maxxShift);
+
+        minyShift = std::min(shiftsInfos.y-i, minyShift);
+        maxyShift = std::max(shiftsInfos.y-i, maxyShift);
+    }
+
+    if (verbose) {
+        std::cout << "\tShifts stats: min x : " << minxShift << " max x : " << maxxShift << " min y : " << minyShift << " max y : " << maxyShift << "\n";
+        std::cout << "Start rectifiying image..." << std::endl;
+    }
+
+    Multidim::Array<float,3> rectified = PikaLTools::PushBroomRelativeOffsets::computeHorizontallyRectifiedVerticallyReorderedImage(
+        image,
+        rectificationData,
+        linesAxis,
+        samplesAxis,
+        bandsAxis);
+
+    std::vector<float> horizontalShift(rectificationData.size());
+    for (int i = 0; i < horizontalShift.size(); i++) {
+        horizontalShift[i] = rectificationData[i].dx;
+    }
+
+    std::vector<int> reorderedIdxs(rectificationData.size());
+    for (int i = 0; i < reorderedIdxs.size(); i++) {
+        reorderedIdxs[i] = i;
+    }
+
+    std::sort(reorderedIdxs.begin(), reorderedIdxs.end(), [&rectificationData] (int i1, int i2) {
+        return rectificationData[i1].y < rectificationData[i2].y;
+    });
+
+    return {rectified, ShiftsInfos{.horizontal=horizontalShift, .vertical=reorderedIdxs}};
+
+}
 
 int main(int argc, char** argv) {
 
     TCLAP::CmdLine cmd("Try and undistort a bil file", '=', "0.0");
 
+    std::vector<std::string> allowedSubtools;
+    allowedSubtools.push_back("horizontal");
+    allowedSubtools.push_back("vertical");
+    allowedSubtools.push_back("both");
+    TCLAP::ValuesConstraint<std::string> allowedVals(allowedSubtools);
+
+    TCLAP::UnlabeledValueArg<std::string> subtoolArg("subTool", "Subtool to use", true, "", &allowedVals);
+
     TCLAP::UnlabeledValueArg<std::string> bilFilePathArg("bildFilePath", "Path where the bil is stored", true, "", "local path to bil file");
 
+    cmd.add(subtoolArg);
     cmd.add(bilFilePathArg);
 
     TCLAP::ValueArg<int> startLineArg("s","lineStart", "initial line of the section to treat", false, 0, "int");
@@ -35,9 +210,17 @@ int main(int argc, char** argv) {
     cmd.add(hRadiusArg);
     cmd.add(vradiusArg);
 
+    TCLAP::ValueArg<std::string> outBilFilePathArg("o", "output-file", "Path where the rectified bil is stored", false, "", "local path to bil file");
+
+    cmd.add(outBilFilePathArg);
+
     cmd.parse(argc, argv);
 
+    std::string tool(subtoolArg.getValue());
+
     std::string filename(bilFilePathArg.getValue());
+
+    std::string outfilename(outBilFilePathArg.getValue());
 
     int startLine = startLineArg.getValue();
     int endLine = endLineArg.getValue();
@@ -74,75 +257,57 @@ int main(int argc, char** argv) {
 
     constexpr bool verbose = true;
 
-    std::cout << "Start estimating distortion..." << std::endl;
+    RectifiedResult rectifiedResults;
 
-    auto rectificationDataInfos = PikaLTools::PushBroomRelativeOffsets::estimateGlobalPushBroomPreRectification<verbose>(
-        normalized,
-        hradius,
-        vradius,
-        x_pos_lambda,
-        y_pos_lambda,
-        dx_pos_lambda,
-        dy_pos_lambda,
-        I_lambda,
-        nIterations,
-        residual_treshold,
-        damping_factor,
-        linesAxis,
-        samplesAxis,
-        bandsAxis);
-
-    /*auto rectificationDataInfos = PikaLTools::PushBroomRelativeOffsets::estimatePushBroomHorizontalShiftBayesian<verbose>(
-        normalized,
-        hradius,
-        dx_pos_lambda,
-        nIterations,
-        residual_treshold,
-        linesAxis,
-        samplesAxis,
-        bandsAxis);*/
-
-    auto& rectificationData = rectificationDataInfos.value();
-
-    //auto accumulated = PikaLTools::PushBroomRelativeOffsets::computeAccumulatedFromRelativeShifts(rectificationData);
-
-    float minxShift = std::numeric_limits<float>::infinity(); // accumulated.minDelta;
-    float maxxShift = -std::numeric_limits<float>::infinity(); // accumulated.maxDelta;
-
-    float minyShift = std::numeric_limits<float>::infinity();
-    float maxyShift = -std::numeric_limits<float>::infinity();
-
-    for (int i = 0; i < rectificationData.size(); i++) {
-        PikaLTools::PushBroomRelativeOffsets::LineShiftInfos const& shiftsInfos = rectificationData[i];
-
-        minxShift = std::min(shiftsInfos.dx, minxShift);
-        maxxShift = std::max(shiftsInfos.dx, maxxShift);
-
-        minyShift = std::min(shiftsInfos.y-i, minyShift);
-        maxyShift = std::max(shiftsInfos.y-i, maxyShift);
+    if (verbose) {
+        std::cout << "Start estimating distortion..." << std::endl;
     }
 
-    std::cout << "\tShifts stats: min x : " << minxShift << " max x : " << maxxShift << " min y : " << minyShift << " max y : " << maxyShift << "\n";
+    if (tool == "horizontal") {
+        rectifiedResults = horizontalOnly<verbose>(normalized,
+                                            hradius,
+                                            dx_pos_lambda,
+                                            nIterations,
+                                            residual_treshold,
+                                            linesAxis,
+                                            samplesAxis,
+                                            bandsAxis);
 
-    std::cout << "Start rectifiying image..." << std::endl;
+    } else if (tool == "vertical") {
+        rectifiedResults = verticalOnly<verbose>(normalized,
+                                          hradius,
+                                          vradius,
+                                          linesAxis,
+                                          samplesAxis,
+                                          bandsAxis);
+    } else if (tool == "both") {
+        rectifiedResults = verticalHorizontal<verbose>(normalized,
+                                                hradius,
+                                                vradius,
+                                                x_pos_lambda,
+                                                y_pos_lambda,
+                                                dx_pos_lambda,
+                                                dy_pos_lambda,
+                                                I_lambda,
+                                                nIterations,
+                                                residual_treshold,
+                                                damping_factor,
+                                                linesAxis,
+                                                samplesAxis,
+                                                bandsAxis);
+    }
 
-    Multidim::Array<float,3> rectified = PikaLTools::PushBroomRelativeOffsets::computeHorizontallyRectifiedVerticallyReorderedImage(
-        normalized,
-        rectificationData,
-        linesAxis,
-        samplesAxis,
-        bandsAxis);
+    Multidim::Array<float,3>& rectified = rectifiedResults.rectified;
 
-    /*constexpr bool shiftsAccumulated = true;
+    if (rectified.empty()) {
 
-    Multidim::Array<float,3> rectified = PikaLTools::PushBroomRelativeOffsets::computeHorizontallyRectifiedImage<shiftsAccumulated>(
-        normalized,
-        accumulated.accumulatedShifts,
-        linesAxis,
-        samplesAxis,
-        bandsAxis);*/
+        std::cerr << "Failed to rectify image!" << std::endl;
+        return 1;
+    }
 
-    std::cout << "Image rectified!" << std::endl;
+    if (verbose) {
+        std::cout << "Image rectified!" << std::endl;
+    }
 
     float blackLevel = 0;
     float whiteLevel = 1;
@@ -181,5 +346,42 @@ int main(int argc, char** argv) {
     rectifiedViewWindow.show();
 
 
-    return app.exec();
+    int code = app.exec();
+
+    if (!outfilename.empty()) {
+
+        write_envi_bil(rectified, outfilename, {}, linesAxis, samplesAxis, bandsAxis);
+
+        std::string shifts_outfilename = outfilename + ".shifts";
+
+        std::fstream shiftsFile(shifts_outfilename, std::fstream::out);
+
+        shiftsFile << "#dx, y_idx\n";
+
+        int linesToWrite = 0;
+
+        if (!rectifiedResults.infos.horizontal.empty()) {
+            linesToWrite = rectifiedResults.infos.horizontal.size();
+        } else if (!rectifiedResults.infos.vertical.empty()) {
+            linesToWrite = rectifiedResults.infos.vertical.size();
+        }
+
+        for (int i = 0; i < linesToWrite; i++) {
+            float dx = 0;
+            float y_idx = i;
+
+            if (!rectifiedResults.infos.horizontal.empty()) {
+                dx = rectifiedResults.infos.horizontal[i];
+            }
+
+            if (!rectifiedResults.infos.vertical.empty()) {
+                y_idx = rectifiedResults.infos.vertical[i];
+            }
+
+            shiftsFile << dx << "," << y_idx << "\n";
+        }
+
+    }
+
+    return code;
 }
