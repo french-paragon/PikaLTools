@@ -7,6 +7,7 @@ set(LIB_SRC io_globals.h
     read_envi_bil.cpp
     read_aviris4_bin.h
     read_aviris4_bin.cpp
+    write_envi_bil.h
     georasterreader.h
     georasterreader.cpp)
 

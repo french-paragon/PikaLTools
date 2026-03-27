@@ -24,6 +24,7 @@ constexpr int BandsAxis = 2;
 
 // source = https://www.l3harrisgeospatial.com/docs/enviheaderfiles.html
 enum BilTypes {
+    InvalidBilT = 0,
     BilUint8T = 1,
     BilInt16T = 2,
     BilInt32T = 3,
