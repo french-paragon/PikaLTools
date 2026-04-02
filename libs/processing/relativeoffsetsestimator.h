@@ -31,6 +31,13 @@ struct AccumulatedShiftsInfos {
     int maxDelta;
 };
 
+enum OffsetsDirections {
+    None = 0,
+    Horizontal = 1,
+    Vertical = 2,
+    Both = Horizontal | Vertical
+};
+
 template<bool meanZero = false, typename T>
 AccumulatedShiftsInfos<T> computeAccumulatedFromRelativeShifts(std::vector<T> const& shifts) {
 
@@ -951,6 +958,7 @@ StereoVision::IterativeNumericalAlgorithmOutput<std::vector<float>> estimatePush
     Multidim::Array<T,3,constNess> const& image,
     int hwindow,
     double dx_pos_lambda,
+    bool smoothOut = true,
     int nIterations = 500,
     double residual_treshold = 1e-5,
     int linesAxis = 0,
@@ -1190,6 +1198,22 @@ StereoVision::IterativeNumericalAlgorithmOutput<std::vector<float>> estimatePush
         params[i] = opt.solution()[0];
         convType = std::max(convType, opt.convergenceType());
 
+    }
+
+    if (smoothOut) {
+        if constexpr (verbose) {
+            std::cout << "smoothing solution!" << std::endl;
+        }
+
+        for (int i = 1; i < params.size()-1; i++) {
+
+            float interpolated = (params[i-1] + params[i+1])/2;
+
+            if (std::abs(params[i] - interpolated) > 4*std::max(std::abs(params[i-1]),std::abs(params[i+1]))) {
+                params[i] = interpolated;
+            }
+
+        }
     }
 
     return RType( params, convType);
@@ -1995,7 +2019,7 @@ std::vector<int> radiusLimited3CutsHeuristicTsp(Multidim::Array<float,2> const& 
 template<bool verbose = false, typename T, Multidim::ArrayDataAccessConstness constNess>
 std::vector<int> estimatePushBroomVerticalReorderBayesian(
     Multidim::Array<T,3,constNess> const& image,
-    std::vector<double> const& horizontalShifts,
+    std::vector<float> const& horizontalShifts,
     int hwindow,
     int searchRadius,
     int linesAxis = 0,
@@ -2030,7 +2054,7 @@ std::vector<int> estimatePushBroomVerticalReorderBayesian(
     int s_j = (shape[samplesAxis] % hwindow) / 2;
     int jJump = std::min(hwindow,shape[samplesAxis]);
 
-    constexpr StereoVision::Correlation::matchingFunctions matchFunc = StereoVision::Correlation::matchingFunctions::SSD;
+    constexpr StereoVision::Correlation::matchingFunctions matchFunc = StereoVision::Correlation::matchingFunctions::SAD;
 
     for (int i = 0; i < nLines; i++) {
 
@@ -2069,6 +2093,53 @@ std::vector<int> estimatePushBroomVerticalReorderBayesian(
     //else use the heuristic
     return radiusLimited3CutsHeuristicTsp<verbose>(costs);
 
+}
+
+struct HorizontalShiftsVerticalIdxs {
+    std::vector<float> dx_shifts;
+    std::vector<int> y_idx;
+};
+
+template<bool verbose = false, typename T, Multidim::ArrayDataAccessConstness constNess>
+StereoVision::IterativeNumericalAlgorithmOutput<HorizontalShiftsVerticalIdxs> estimatePushBroomHorizontalVerticalBayesian(
+    Multidim::Array<T,3,constNess> const& image,
+    int hwindow,
+    int searchRadius,
+    double dx_pos_lambda,
+    bool smoothOutHorizontal,
+    int nIterations = 500,
+    double residual_treshold = 1e-5,
+    int linesAxis = 0,
+    int samplesAxis = 1,
+    int bandsAxis = 2) {
+
+    StereoVision::IterativeNumericalAlgorithmOutput<std::vector<float>> horizontalShifts =
+        estimatePushBroomHorizontalShiftBayesian<verbose>
+        (
+        image, hwindow, dx_pos_lambda, smoothOutHorizontal,
+        nIterations, residual_treshold,
+        linesAxis, samplesAxis, bandsAxis);
+
+    if (horizontalShifts.convergence() != StereoVision::Converged) {
+        return StereoVision::IterativeNumericalAlgorithmOutput<HorizontalShiftsVerticalIdxs>(
+            {horizontalShifts.value(), std::vector<int>()}, horizontalShifts.convergence());
+    }
+
+    auto& rectificationData = horizontalShifts.value();
+
+    auto accumulated = PikaLTools::PushBroomRelativeOffsets::computeAccumulatedFromRelativeShifts(rectificationData);
+
+    std::vector<int> order = estimatePushBroomVerticalReorderBayesian<verbose>(
+        image,
+        accumulated.accumulatedShifts,
+        hwindow,
+        searchRadius,
+        linesAxis,
+        samplesAxis,
+        bandsAxis);
+
+    return StereoVision::IterativeNumericalAlgorithmOutput<HorizontalShiftsVerticalIdxs>(
+        {accumulated.accumulatedShifts, order}, horizontalShifts.convergence());
 }
 
 template<bool verbose = false, typename T, Multidim::ArrayDataAccessConstness constNess>
@@ -2684,18 +2755,29 @@ Multidim::Array<T,3> computeHorizontallyRectifiedVerticallyReorderedImage(Multid
                 float fracCoord = j + baseOffset - accumulatedShift;
 
                 std::array<int,3> outCoords;
-                outCoords[linesAxis] = idx;
+                outCoords[linesAxis] = i;
                 outCoords[samplesAxis] = j;
                 outCoords[bandsAxis] = b;
 
-                constexpr T(*kernel)(std::array<T,1> const&) = StereoVision::Interpolation::pyramidFunction<T,1>;
-                constexpr int kernelRadius = 1;
-                constexpr StereoVision::Interpolation::BorderCondition bCond = StereoVision::Interpolation::BorderCondition::Zero;
+                if constexpr (std::is_floating_point_v<T>) {
 
-                T interpolated = StereoVision::Interpolation::interpolateValue<1, T, kernel, kernelRadius, bCond>
-                    (samples, {fracCoord});
+                    constexpr T(*kernel)(std::array<T,1> const&) = StereoVision::Interpolation::pyramidFunction<T,1>;
+                    constexpr int kernelRadius = 1;
+                    constexpr StereoVision::Interpolation::BorderCondition bCond = StereoVision::Interpolation::BorderCondition::Zero;
 
-                out.atUnchecked(outCoords) = interpolated;
+                    T interpolated = StereoVision::Interpolation::interpolateValue<1, T, kernel, kernelRadius, bCond>
+                        (samples, {fracCoord});
+
+                    out.atUnchecked(outCoords) = interpolated;
+                } else {
+                    int nearest = std::round(fracCoord);
+
+                    if (nearest >= samples.shape()[0] or nearest < 0) {
+                        out.atUnchecked(outCoords) = 0;
+                    } else {
+                        out.atUnchecked(outCoords) = samples.valueUnchecked(nearest);
+                    }
+                }
 
             }
         }
@@ -2705,6 +2787,99 @@ Multidim::Array<T,3> computeHorizontallyRectifiedVerticallyReorderedImage(Multid
     return out;
 }
 
+template<typename T, Multidim::ArrayDataAccessConstness constNess>
+Multidim::Array<T,3> computeHorizontallyRectifiedVerticallyReorderedImage(Multidim::Array<T,3,constNess> const& image,
+                                                                           std::vector<float> const& dxs,
+                                                                           std::vector<int> const& y_idxs,
+                                                                           int linesAxis = 0,
+                                                                           int samplesAxis = 1,
+                                                                           int bandsAxis = 2)
+{
+
+    if (image.empty()) {
+        return image;
+    }
+
+    auto shape = image.shape();
+
+    int nLines = shape[linesAxis];
+    int nSamples = shape[samplesAxis];
+    int nBands = shape[bandsAxis];
+
+    int outWidth = nSamples;
+
+    float maxDelta = 0;
+    float minDelta = 0;
+
+    for (float const& dx : dxs) {
+        maxDelta = std::max(maxDelta, dx);
+        minDelta = std::min(minDelta, dx);
+    }
+
+    int delta_w = static_cast<int>(std::ceil(maxDelta)) -
+                  static_cast<int>(std::floor(minDelta));
+
+    int baseOffset = std::floor(minDelta);
+    outWidth += delta_w;
+
+    std::array<int,3> out_shape;
+
+    out_shape[linesAxis] = nLines;
+    out_shape[samplesAxis] = outWidth;
+    out_shape[bandsAxis] = nBands;
+
+    Multidim::Array<T,3> out(out_shape);
+
+#pragma omp parallel for
+    for (int i = 0; i < nLines; i++) {
+
+        int idx = y_idxs[i];
+
+        float const& accumulatedShift = dxs[idx];
+
+        for (int b = 0; b < nBands; b++) {
+
+            std::array<int,2> subCoords;
+            subCoords[(linesAxis > samplesAxis) ? linesAxis - 1 : linesAxis] = idx;
+            subCoords[(bandsAxis > samplesAxis) ? bandsAxis - 1 : bandsAxis] = b;
+
+            Multidim::Array<T,1> samples = image.indexDimView(samplesAxis, subCoords);
+
+            for (int j = 0; j < outWidth; j++) {
+                float fracCoord = j + baseOffset - accumulatedShift;
+
+                std::array<int,3> outCoords;
+                outCoords[linesAxis] = i;
+                outCoords[samplesAxis] = j;
+                outCoords[bandsAxis] = b;
+
+                if constexpr (std::is_floating_point_v<T>) {
+
+                    constexpr T(*kernel)(std::array<T,1> const&) = StereoVision::Interpolation::pyramidFunction<T,1>;
+                    constexpr int kernelRadius = 1;
+                    constexpr StereoVision::Interpolation::BorderCondition bCond = StereoVision::Interpolation::BorderCondition::Zero;
+
+                    T interpolated = StereoVision::Interpolation::interpolateValue<1, T, kernel, kernelRadius, bCond>
+                        (samples, {fracCoord});
+
+                    out.atUnchecked(outCoords) = interpolated;
+                } else {
+                    int nearest = std::round(fracCoord);
+
+                    if (nearest >= samples.shape()[0] or nearest < 0) {
+                        out.atUnchecked(outCoords) = 0;
+                    } else {
+                        out.atUnchecked(outCoords) = samples.valueUnchecked(nearest);
+                    }
+                }
+
+            }
+        }
+
+    }
+
+    return out;
+}
 
 template<typename T>
 Multidim::Array<bool,2> computeHorizontallyRectifiedImageMask(Multidim::Array<T,3> const& image,

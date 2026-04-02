@@ -122,6 +122,7 @@ private Q_SLOTS:
     void testComputeVerticallyReorderedImage();
     void testTSPGreedyHeuristic();
     void testGlobalEstimatorVerticalBehavior();
+    void testHorizontallyRectifiedVerticallyReorderedImage();
 };
 
 
@@ -385,7 +386,7 @@ void TestPushBroomRelativeOffsetsEstimators::testVerticalReordererBehavior() {
         frame.atUnchecked(i,0,0) = frameUnshifted.atUnchecked(disorderedIndicesR1[i],0,0);
     }
 
-    std::vector<double> horizontalShifts(nLines);
+    std::vector<float> horizontalShifts(nLines);
     std::fill(horizontalShifts.begin(), horizontalShifts.end(), 0);
     constexpr int hWindow = 1;
     int searchRadius = 1;
@@ -706,6 +707,40 @@ void TestPushBroomRelativeOffsetsEstimators::testGlobalEstimatorVerticalBehavior
 }
 
 
+void TestPushBroomRelativeOffsetsEstimators::testHorizontallyRectifiedVerticallyReorderedImage() {
+
+    constexpr int nPoints = 7, nSamples = 1, nChannels = 1;
+    constexpr int searchRadius = nPoints;
+
+    Multidim::Array<int,3> frameUnshifted(nPoints, nSamples, nChannels);
+    Multidim::Array<int,3> frameShifted(nPoints, nSamples, nChannels);
+
+    std::vector<int> shuffleIdxs = generateShuffledIdxs(nPoints, searchRadius);
+
+    for (int i = 0; i < nPoints; i++) {
+        frameUnshifted.atUnchecked(i,0,0) = i;
+        frameShifted.atUnchecked(i,0,0) = shuffleIdxs[i];
+    }
+
+    std::vector<float> dxs(nPoints);
+
+    std::fill(dxs.begin(), dxs.end(), 0);
+
+    Multidim::Array<int,3> reordered =
+        PikaLTools::PushBroomRelativeOffsets::computeHorizontallyRectifiedVerticallyReorderedImage
+        (
+        frameShifted,
+        dxs,
+        shuffleIdxs,
+        linesDim,
+        samplesDim,
+        channelsDim);
+
+    for (int i = 0; i < nPoints; i++) {
+        QCOMPARE(reordered.atUnchecked(i,0,0), i);
+    }
+
+}
 QTEST_MAIN(TestPushBroomRelativeOffsetsEstimators)
 
 #include "testPushBroomRelativeOffsetsEstimators.moc"

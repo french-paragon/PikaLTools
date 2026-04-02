@@ -83,6 +83,8 @@
 #include <QGroupBox>
 #include <QSpinBox>
 #include <QDoubleSpinBox>
+#include <QFormLayout>
+#include <QDialogButtonBox>
 
 #include <algorithm>
 #include <random>
@@ -2552,12 +2554,12 @@ class PreRectifiedBillMatchBuilder : public StereoVisionApp::CornerMatchingEdito
 public:
     PreRectifiedBillMatchBuilder(BilSequenceAcquisitionData* seq,
                                  int startLine, int endLine,
-                                 std::vector<int> && verticalLinesMatch,
+                                 std::vector<int> && verticalLinesOrder,
                                  std::vector<float> && horizontalLinesOffsets) :
         _seq(seq),
         _startLine(startLine),
         _endLine(endLine),
-        _shiftConverter(verticalLinesMatch,
+        _shiftConverter(verticalLinesOrder,
                         horizontalLinesOffsets)
     {
         _im_width = seq->getBilWidth();
@@ -2684,7 +2686,10 @@ bool cornerMatchRawBill(BilSequenceAcquisitionData *bilSequence, std::optional<i
 
 
 }
-bool cornerMatchPreRectifiedBill(BilSequenceAcquisitionData *bilSequence, std::optional<int> lineMin, std::optional<int> lineMax) {
+bool cornerMatchPreRectifiedBill(BilSequenceAcquisitionData *bilSequence,
+                                 std::optional<int> lineMin,
+                                 std::optional<int> lineMax,
+                                 std::optional<int> directions) {
 
     if (bilSequence == nullptr) {
         return false;
@@ -2715,22 +2720,66 @@ bool cornerMatchPreRectifiedBill(BilSequenceAcquisitionData *bilSequence, std::o
     int start = lineMin.value_or(0);
     int end = lineMax.value_or(-1);
 
+    int dir = directions.value_or(PushBroomRelativeOffsets::OffsetsDirections::Both);
+
     bool ok = true;
 
-    if (!lineMin.has_value()) {
-        start = QInputDialog::getInt(mw, BilSequenceActionManager::tr("Range start line"), BilSequenceActionManager::tr("Line#"), start, -nLines, nLines-1, 1, &ok);
-    }
+    QDialog optionsDialog(editor);
+    QFormLayout layout(&optionsDialog);
 
-    if (!ok) {
-        return false;
+    QSpinBox lineMinBox;
+    QSpinBox lineMaxBox;
+
+    QComboBox directionsBox;
+
+    lineMinBox.setMinimum(-nLines);
+    lineMinBox.setMaximum(nLines);
+
+    lineMaxBox.setMinimum(-nLines+1);
+    lineMaxBox.setMaximum(nLines);
+
+    directionsBox.addItem(BilSequenceActionManager::tr("Horizontal"), PushBroomRelativeOffsets::OffsetsDirections::Horizontal);
+    directionsBox.addItem(BilSequenceActionManager::tr("Vertical"), PushBroomRelativeOffsets::OffsetsDirections::Vertical);
+    directionsBox.addItem(BilSequenceActionManager::tr("Both"), PushBroomRelativeOffsets::OffsetsDirections::Both);
+    directionsBox.setCurrentIndex(2);
+
+    QDialogButtonBox buttonBox(QDialogButtonBox::Ok|QDialogButtonBox::Cancel, &optionsDialog);
+
+    QObject::connect(&buttonBox, &QDialogButtonBox::accepted, &optionsDialog, &QDialog::accept);
+    QObject::connect(&buttonBox, &QDialogButtonBox::rejected, &optionsDialog, &QDialog::reject);
+
+    if (!lineMin.has_value()) {
+        layout.addRow(BilSequenceActionManager::tr("Range start line"), &lineMinBox);
     }
 
     if (!lineMax.has_value()) {
-        end = QInputDialog::getInt(mw, BilSequenceActionManager::tr("Range end line"), BilSequenceActionManager::tr("Line#"), end, -nLines, nLines-1, 1, &ok);
+        layout.addRow(BilSequenceActionManager::tr("Range end line"), &lineMaxBox);
+    }
+
+    if (!directions.has_value()) {
+        layout.addRow(BilSequenceActionManager::tr("Direction"), &directionsBox);
+    }
+
+    layout.addRow(&buttonBox);
+
+    if (!lineMin.has_value() or !lineMax.has_value() or !directions.has_value()) {
+        ok = optionsDialog.exec();
     }
 
     if (!ok) {
         return false;
+    }
+
+    if (!lineMin.has_value()) {
+        start = lineMinBox.value();
+    }
+
+    if (!lineMax.has_value()) {
+        end = lineMaxBox.value();
+    }
+
+    if (!directions.has_value()) {
+        dir = directionsBox.currentData().toInt();
     }
 
     if (start < 0) {
@@ -2759,6 +2808,14 @@ bool cornerMatchPreRectifiedBill(BilSequenceAcquisitionData *bilSequence, std::o
         end = tmp;
     }
 
+    if (dir != PushBroomRelativeOffsets::OffsetsDirections::Vertical and
+        dir != PushBroomRelativeOffsets::OffsetsDirections::Horizontal and
+        dir != PushBroomRelativeOffsets::OffsetsDirections::Both)
+    {
+        QMessageBox::warning(mw, BilSequenceActionManager::tr("Could not rectify bil sequence data"), BilSequenceActionManager::tr("Invalid direction"));
+        return false;
+    }
+
     std::vector<int> channels = bilSequence->assumedRgbChannels();
 
     Multidim::Array<float, 3> data = bilSequence->getFloatBilData(start, end, channels);
@@ -2768,38 +2825,44 @@ bool cornerMatchPreRectifiedBill(BilSequenceAcquisitionData *bilSequence, std::o
         return false;
     }
 
+    nLines = data.shape()[0];
+
     QString name = QString("%1_l%2-l%3").arg(bilSequence->objectName()).arg(start).arg(end);
 
     auto normalized = StereoVision::ImageProcessing::normalizeImageChannels(data);
 
-    std::vector<float> shifts = PushBroomRelativeOffsets::estimatePushBroomHorizontalShiftCorr(normalized);
+    constexpr bool verbose = true;
+
+    int hWindow = 16;
+    int verticalSearchRadius = nLines;
+    float dx_pos_lambda = 1;
+
+    std::vector<float> shifts(nLines-1);
+
+    if (dir | PushBroomRelativeOffsets::OffsetsDirections::Horizontal) {
+        auto shiftsIt = PushBroomRelativeOffsets::estimatePushBroomHorizontalShiftBayesian<verbose>(normalized, hWindow, dx_pos_lambda);
+        if (shiftsIt.convergence() != StereoVision::Converged) {
+            QMessageBox::warning(mw, BilSequenceActionManager::tr("Could not rectify bil sequence data"),
+                                 BilSequenceActionManager::tr("Convergence error in horizontal rectification"));
+            return false;
+        }
+        shifts = std::move(shiftsIt.value());
+    } else {
+        std::fill(shifts.begin(), shifts.end(), 0);
+    }
 
     PushBroomRelativeOffsets::AccumulatedShiftsInfos<float> accumulated =
         PushBroomRelativeOffsets::computeAccumulatedFromRelativeShifts(shifts);
 
     Multidim::Array<float, 3> horizontalRectified = PushBroomRelativeOffsets::computeHorizontallyRectifiedImage(normalized, shifts);
     Multidim::Array<bool, 2> horizontalRectifiedMask = PushBroomRelativeOffsets::computeHorizontallyRectifiedImageMask(normalized, shifts);
-    constexpr float countWeight = 1;
-    constexpr float magnitudeWeight = 0;
-    std::vector<float> inflexions = PushBroomRelativeOffsets::estimatePushBroomInflexionPointsIntensityPerLine(horizontalRectified,
-                                                                                                               horizontalRectifiedMask,
-                                                                                                               countWeight,
-                                                                                                               magnitudeWeight);
 
-    constexpr float peakInflexionQuantile = 0.5;
+    std::vector<int> order = PushBroomRelativeOffsets::estimatePushBroomVerticalReorderBayesian<verbose>(normalized,
+                                                                                                         accumulated.accumulatedShifts,
+                                                                                                         hWindow,
+                                                                                                         verticalSearchRadius);
 
-    int nThElement = std::max<int>(0,peakInflexionQuantile*(inflexions.size()-1));
-
-    std::vector<float> sortedInflexions = inflexions;
-
-    std::nth_element(sortedInflexions.begin(), sortedInflexions.begin() + nThElement, sortedInflexions.end());
-
-    float peakThreshold = 1; //sortedInflexions[nThElement];
-    int maxInterval = 5;
-
-    std::vector<int> selected = PushBroomRelativeOffsets::filterPushBroomLinesWithInflexion(inflexions, peakThreshold, maxInterval);
-
-    Multidim::Array<float, 3> finalImage = PushBroomRelativeOffsets::removeUnfilteredLinesFromPushBroomImage(horizontalRectified, selected);
+    Multidim::Array<float, 3> finalImage = PushBroomRelativeOffsets::computeVerticallyReorderedImage(horizontalRectified, order);
 
     for (int i = 0; i < finalImage.shape()[0]; i++) {
         for (int j = 0; j < finalImage.shape()[1]; j++) {
@@ -2810,7 +2873,7 @@ bool cornerMatchPreRectifiedBill(BilSequenceAcquisitionData *bilSequence, std::o
     }
 
     cmte->addImageData(name, finalImage, new PreRectifiedBillMatchBuilder(bilSequence, start, end,
-                                                                          std::move(selected), std::move(accumulated.accumulatedShifts)));
+                                                                          std::move(order), std::move(accumulated.accumulatedShifts)));
     return true;
 }
 

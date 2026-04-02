@@ -39,10 +39,13 @@ RectifiedResult horizontalOnly(Multidim::Array<float,3> const& image,
                                          int samplesAxis,
                                          int bandsAxis) {
 
+    constexpr bool smoothOut = true;
+
     auto rectificationDataInfos = PikaLTools::PushBroomRelativeOffsets::estimatePushBroomHorizontalShiftBayesian<verbose>(
         image,
         hradius,
         dx_pos_lambda,
+        smoothOut,
         nIterations,
         residual_treshold,
         linesAxis,
@@ -76,7 +79,7 @@ RectifiedResult verticalOnly(Multidim::Array<float,3> const& image,
 
     int nLines = image.shape()[linesAxis];
 
-    std::vector<double> horizontalShifts(nLines);
+    std::vector<float> horizontalShifts(nLines);
     std::fill(horizontalShifts.begin(), horizontalShifts.end(), 0);
 
     std::vector<int> orderEstimated =
@@ -102,30 +105,23 @@ template<bool verbose>
 RectifiedResult verticalHorizontal(Multidim::Array<float,3> const& image,
                                              int hwindow,
                                              int vradius,
-                                             double x_pos_lambda,
-                                             double y_pos_lambda,
                                              double dx_pos_lambda,
-                                             double dy_pos_lambda,
-                                             double I_lambda,
                                              int nIterations,
                                              double residual_treshold,
-                                             double damping_factor,
                                              int linesAxis,
                                              int samplesAxis,
                                              int bandsAxis) {
 
-    auto rectificationDataInfos = PikaLTools::PushBroomRelativeOffsets::estimateGlobalPushBroomPreRectification<verbose>(
+    constexpr bool smoothOutHorizontal = true;
+
+    auto rectificationDataInfos = PikaLTools::PushBroomRelativeOffsets::estimatePushBroomHorizontalVerticalBayesian<verbose>(
         image,
         hwindow,
         vradius,
-        x_pos_lambda,
-        y_pos_lambda,
         dx_pos_lambda,
-        dy_pos_lambda,
-        I_lambda,
         nIterations,
         residual_treshold,
-        damping_factor,
+        smoothOutHorizontal,
         linesAxis,
         samplesAxis,
         bandsAxis);
@@ -135,49 +131,42 @@ RectifiedResult verticalHorizontal(Multidim::Array<float,3> const& image,
 
     //auto accumulated = PikaLTools::PushBroomRelativeOffsets::computeAccumulatedFromRelativeShifts(rectificationData);
 
-    float minxShift = std::numeric_limits<float>::infinity(); // accumulated.minDelta;
-    float maxxShift = -std::numeric_limits<float>::infinity(); // accumulated.maxDelta;
-
-    float minyShift = std::numeric_limits<float>::infinity();
-    float maxyShift = -std::numeric_limits<float>::infinity();
-
-    for (int i = 0; i < rectificationData.size(); i++) {
-        PikaLTools::PushBroomRelativeOffsets::LineShiftInfos const& shiftsInfos = rectificationData[i];
-
-        minxShift = std::min(shiftsInfos.dx, minxShift);
-        maxxShift = std::max(shiftsInfos.dx, maxxShift);
-
-        minyShift = std::min(shiftsInfos.y-i, minyShift);
-        maxyShift = std::max(shiftsInfos.y-i, maxyShift);
-    }
-
     if (verbose) {
-        std::cout << "\tShifts stats: min x : " << minxShift << " max x : " << maxxShift << " min y : " << minyShift << " max y : " << maxyShift << "\n";
+
+        float minxShift = std::numeric_limits<float>::infinity(); // accumulated.minDelta;
+        float maxxShift = -std::numeric_limits<float>::infinity(); // accumulated.maxDelta;
+
+        float minyShift = std::numeric_limits<float>::infinity(); // accumulated.minDelta;
+        float maxyShift = -std::numeric_limits<float>::infinity(); // accumulated.maxDelta;
+
+        for (int i = 0; i < rectificationData.dx_shifts.size(); i++) {
+            float const& dx = rectificationData.dx_shifts[i];
+
+            minxShift = std::min(dx, minxShift);
+            maxxShift = std::max(dx, maxxShift);
+        }
+
+        for (int i = 0; i < rectificationData.y_idx.size(); i++) {
+            int dy = rectificationData.y_idx[i] - i;
+
+            minyShift = std::min<float>(dy, minyShift);
+            maxyShift = std::max<float>(dy, maxyShift);
+
+        }
+
+        std::cout << "\tShifts stats: min x : " << minxShift << " max x : " << maxxShift << " min y : " << int(minyShift) << " max y : " << int(maxyShift) << "\n";
         std::cout << "Start rectifiying image..." << std::endl;
     }
 
     Multidim::Array<float,3> rectified = PikaLTools::PushBroomRelativeOffsets::computeHorizontallyRectifiedVerticallyReorderedImage(
         image,
-        rectificationData,
+        rectificationData.dx_shifts,
+        rectificationData.y_idx,
         linesAxis,
         samplesAxis,
         bandsAxis);
 
-    std::vector<float> horizontalShift(rectificationData.size());
-    for (int i = 0; i < horizontalShift.size(); i++) {
-        horizontalShift[i] = rectificationData[i].dx;
-    }
-
-    std::vector<int> reorderedIdxs(rectificationData.size());
-    for (int i = 0; i < reorderedIdxs.size(); i++) {
-        reorderedIdxs[i] = i;
-    }
-
-    std::sort(reorderedIdxs.begin(), reorderedIdxs.end(), [&rectificationData] (int i1, int i2) {
-        return rectificationData[i1].y < rectificationData[i2].y;
-    });
-
-    return {rectified, ShiftsInfos{.horizontal=horizontalShift, .vertical=reorderedIdxs}};
+    return {rectified, ShiftsInfos{.horizontal=rectificationData.dx_shifts, .vertical=rectificationData.y_idx}};
 
 }
 
@@ -240,7 +229,7 @@ int main(int argc, char** argv) {
     double x_pos_lambda = 0.01;
     double y_pos_lambda = 1;
 
-    double dx_pos_lambda = 0.1;
+    double dx_pos_lambda = 1.0;
     double dy_pos_lambda = 0.1;
 
     double I_lambda = 0.5;
@@ -284,14 +273,9 @@ int main(int argc, char** argv) {
         rectifiedResults = verticalHorizontal<verbose>(normalized,
                                                 hradius,
                                                 vradius,
-                                                x_pos_lambda,
-                                                y_pos_lambda,
                                                 dx_pos_lambda,
-                                                dy_pos_lambda,
-                                                I_lambda,
                                                 nIterations,
                                                 residual_treshold,
-                                                damping_factor,
                                                 linesAxis,
                                                 samplesAxis,
                                                 bandsAxis);

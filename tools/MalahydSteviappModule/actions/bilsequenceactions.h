@@ -89,7 +89,10 @@ bool cornerMatchRawBill(BilSequenceAcquisitionData *bilSequence, std::optional<i
  * \param lineMax the end line of the range of lines to load (-1 mean last line, negative numbers are wrapped via modulo, nullopt means query the user via a dialog).
  * \return true on success, false otherwise
  */
-bool cornerMatchPreRectifiedBill(BilSequenceAcquisitionData *bilSequence, std::optional<int> lineMin = std::nullopt, std::optional<int> lineMax = std::nullopt);
+bool cornerMatchPreRectifiedBill(BilSequenceAcquisitionData *bilSequence,
+                                 std::optional<int> lineMin = std::nullopt,
+                                 std::optional<int> lineMax = std::nullopt,
+                                 std::optional<int> directions = std::nullopt);
 
 StereoVisionApp::StatusOptionalReturn<void> addBilSequenceHeadless(QMap<QString,QString> const& kwargs, QStringList const& argv);
 StereoVisionApp::StatusOptionalReturn<void> autoDetectBilSequencesTiePointsHeadless(QMap<QString,QString> const& kwargs, QStringList const& argv);
