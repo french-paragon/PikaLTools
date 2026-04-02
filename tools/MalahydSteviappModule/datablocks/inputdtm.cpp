@@ -353,6 +353,15 @@ void InputDtm::extendDataModel() {
                                                                 &InputDtm::setCrsOverride,
                                                                 &InputDtm::crsOverrideChanged);
 
+
+    StereoVisionApp::ItemDataModel::Category* optCat = _dataModel->addCategory(tr("Optimizer properties"));
+
+    optCat->addCatProperty<bool, DataBlock, false, StereoVisionApp::ItemDataModel::ItemPropertyDescription::PassByValueSignal>
+        (tr("Enabled"),
+         &DataBlock::isEnabled,
+         &DataBlock::setEnabled,
+         &DataBlock::isEnabledChanged);
+
     StereoVisionApp::ItemDataModel::Category* p = _dataModel->addCategory(tr("Dtm boundaries"));
 
 

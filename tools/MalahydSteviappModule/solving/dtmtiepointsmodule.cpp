@@ -43,9 +43,7 @@ bool DtmTiePointsModule::addGraphReductorObservations(StereoVisionApp::Project *
             continue;
         }
 
-        auto optDtmData = inputDtm->dtmData();
-
-        if (!optDtmData.has_value()) {
+        if (!inputDtm->isEnabled()) {
             continue;
         }
 
@@ -115,6 +113,10 @@ bool DtmTiePointsModule::init(StereoVisionApp::ModularSBASolver* solver, ceres::
         InputDtm* inputDtm = currentProject->getDataBlock<InputDtm>(dtmId);
 
         if (inputDtm == nullptr) {
+            continue;
+        }
+
+        if (!inputDtm->isEnabled()) {
             continue;
         }
 
