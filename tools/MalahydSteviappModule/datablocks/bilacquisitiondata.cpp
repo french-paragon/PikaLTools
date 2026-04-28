@@ -387,7 +387,22 @@ std::vector<std::array<double, 3>> BilSequenceAcquisitionData::getSensorViewDire
         bs[5] = cam->optimizedB5().value();
 
     } else {
-        optical_center = getBilWidth()/2;
+
+        as[0] = cam->a0().valueOr(0);
+        as[1] = cam->a1().valueOr(0);
+        as[2] = cam->a2().valueOr(0);
+        as[3] = cam->a3().valueOr(0);
+        as[4] = cam->a4().valueOr(0);
+        as[5] = cam->a5().valueOr(0);
+
+        bs[0] = cam->b0().valueOr(0);
+        bs[1] = cam->b1().valueOr(0);
+        bs[2] = cam->b2().valueOr(0);
+        bs[3] = cam->b3().valueOr(0);
+        bs[4] = cam->b4().valueOr(0);
+        bs[5] = cam->b5().valueOr(0);
+
+        optical_center = cam->opticalCenterX().valueOr(getBilWidth()/2);
         f_len_pix = cam->fLen().value();
     }
 
