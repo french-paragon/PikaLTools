@@ -2166,157 +2166,145 @@ bool exportImageGeometry(BilSequenceAcquisitionData *bilSequence) {
     return true;
 }
 
-bool estimateBilShift(BilSequenceAcquisitionData *bilSequence) {
+struct BilRectInfos {
+    int start;
+    int end;
+    int directions;
+};
 
-    if (bilSequence == nullptr) {
-        return false;
+std::optional<BilRectInfos> collectPreRectInfos(QWidget * parent,
+                                                int nLines,
+                                                std::optional<int> lineMin = std::nullopt,
+                                                std::optional<int> lineMax = std::nullopt,
+                                                std::optional<int> directions = std::nullopt) {
+
+    BilRectInfos ret{.start=lineMin.value_or(0),
+                     .end=lineMax.value_or(nLines),
+                     .directions=directions.value_or(
+                         PushBroomRelativeOffsets::OffsetsDirections::Both)};
+
+    bool ok = true;
+
+    QDialog optionsDialog(parent);
+    QFormLayout layout(&optionsDialog);
+
+    QSpinBox lineMinBox;
+    QSpinBox lineMaxBox;
+
+    QComboBox directionsBox;
+
+    lineMinBox.setMinimum(-nLines);
+    lineMinBox.setMaximum(nLines);
+
+    lineMaxBox.setMinimum(-nLines+1);
+    lineMaxBox.setMaximum(nLines);
+
+    directionsBox.addItem(BilSequenceActionManager::tr("Horizontal"), PushBroomRelativeOffsets::OffsetsDirections::Horizontal);
+    directionsBox.addItem(BilSequenceActionManager::tr("Vertical"), PushBroomRelativeOffsets::OffsetsDirections::Vertical);
+    directionsBox.addItem(BilSequenceActionManager::tr("Both"), PushBroomRelativeOffsets::OffsetsDirections::Both);
+    directionsBox.setCurrentIndex(2);
+
+    QDialogButtonBox buttonBox(QDialogButtonBox::Ok|QDialogButtonBox::Cancel, &optionsDialog);
+
+    QObject::connect(&buttonBox, &QDialogButtonBox::accepted, &optionsDialog, &QDialog::accept);
+    QObject::connect(&buttonBox, &QDialogButtonBox::rejected, &optionsDialog, &QDialog::reject);
+
+    if (!lineMin.has_value()) {
+        layout.addRow(BilSequenceActionManager::tr("Range start line"), &lineMinBox);
     }
 
-    QWidget* mw = StereoVisionApp::MainWindow::getActiveMainWindow();
-
-    QString dirPath = QStandardPaths::writableLocation(QStandardPaths::StandardLocation::PicturesLocation);
-    QString filter = BilSequenceAcquisitionData::tr("Tiff Image (*.tiff)");
-
-    QString saveFile = QFileDialog::getSaveFileName(mw, BilSequenceAcquisitionData::tr("Save rectified sequence to"), dirPath, filter);
-
-    if (saveFile.isEmpty()) {
-        return true;
+    if (!lineMax.has_value()) {
+        layout.addRow(BilSequenceActionManager::tr("Range end line"), &lineMaxBox);
     }
 
-    if (!saveFile.endsWith(".tif", Qt::CaseInsensitive) and
-        !saveFile.endsWith(".tiff", Qt::CaseInsensitive)) {
-        saveFile += ".tiff";
+    if (!directions.has_value()) {
+        layout.addRow(BilSequenceActionManager::tr("Direction"), &directionsBox);
     }
 
-    QFileInfo infos(saveFile);
-    QString shiftSaveFile = infos.dir().filePath(infos.baseName() + "_shifts.csv");
+    layout.addRow(&buttonBox);
 
-    int nLines = bilSequence->nLinesInSequence();
-
-    std::vector<int> channels = bilSequence->assumedRgbChannels();
-
-    Multidim::Array<float, 3> data = bilSequence->getFloatBilData(0, nLines, channels);
-
-    if (data.empty()) {
-        return false;
+    if (!lineMin.has_value() or !lineMax.has_value() or !directions.has_value()) {
+        ok = optionsDialog.exec();
     }
 
-    std::vector<float> shifts = PushBroomRelativeOffsets::estimatePushBroomHorizontalShiftCorr(data);
-
-    Multidim::Array<float, 3> rectified = PushBroomRelativeOffsets::computeHorizontallyRectifiedImage(data, shifts);
-
-    Multidim::Array<float, 3> normalized = StereoVision::ImageProcessing::normalizeImageChannels(rectified);
-
-    StereoVision::IO::writeImage<float>(saveFile.toStdString(), normalized);
-
-    if (!shiftSaveFile.isEmpty()) {
-        QFile out(shiftSaveFile);
-
-        if (!out.open(QFile::WriteOnly)) {
-            return false;
-        }
-
-        QTextStream outStream(&out);
-
-        for (float shift : shifts) {
-            outStream << shift << "\n";
-        }
-
-        outStream.flush();
+    if (!ok) {
+        return std::nullopt;
     }
 
-    return true;
+    ret.start = lineMinBox.value();
+    ret.end = lineMaxBox.value();
+    ret.directions = directionsBox.currentData().toInt();
+
+    if (ret.start < 0) {
+        ret.start += nLines;
+    }
+
+    if (ret.end < 0) {
+        ret.end += nLines;
+    }
+
+    if (ret.start > ret.end) {
+        std::swap(ret.start, ret.end);
+    }
+
+    return ret;
+
 }
 
-bool estimateBilShiftVertical(BilSequenceAcquisitionData *bilSequence) {
+struct BilRectificationDataOutput {
+    Multidim::Array<float,3> rectifiedImage;
+    PushBroomRelativeOffsets::AccumulatedShiftsInfos<float> shifts;
+    std::vector<int> order;
+};
 
-    if (bilSequence == nullptr) {
-        return false;
-    }
+StereoVisionApp::StatusOptionalReturn<BilRectificationDataOutput> loadRectifiedBillSequence(BilSequenceAcquisitionData* bilSequence, BilRectInfos const& rInfos, int verticalSearchRadius = -1) {
 
-    QWidget* mw = StereoVisionApp::MainWindow::getActiveMainWindow();
-
-    QString dirPath = QStandardPaths::writableLocation(QStandardPaths::StandardLocation::PicturesLocation);
-    QString filter = BilSequenceAcquisitionData::tr("Tiff Image (*.tiff)");
-
-    QString saveFile = QFileDialog::getSaveFileName(mw, BilSequenceAcquisitionData::tr("Save rectified sequence to"), dirPath, filter);
-
-    if (saveFile.isEmpty()) {
-        return true;
-    }
-
-    if (!saveFile.endsWith(".tif", Qt::CaseInsensitive) and
-        !saveFile.endsWith(".tiff", Qt::CaseInsensitive)) {
-        saveFile += ".tiff";
-    }
-
-    QFileInfo infos(saveFile);
-    QString inflexionsSaveFile = infos.dir().filePath(infos.baseName() + "_inflexions.csv");
-    QString selectedSaveFile = infos.dir().filePath(infos.baseName() + "_selected_lines.csv");
-
-    int nLines = bilSequence->nLinesInSequence();
+    using RType = StereoVisionApp::StatusOptionalReturn<BilRectificationDataOutput>;
 
     std::vector<int> channels = bilSequence->assumedRgbChannels();
 
-    Multidim::Array<float, 3> data = bilSequence->getFloatBilData(0, nLines, channels);
+    Multidim::Array<float, 3> data = bilSequence->getFloatBilData(rInfos.start, rInfos.end, channels);
 
     if (data.empty()) {
-        return false;
+        return RType::error(qPrintable(BilSequenceActionManager::tr("Impossible to load bil raster data!")));
     }
 
-    constexpr float countWeight = 1;
-    constexpr float magnitudeWeight = 0;
-    std::vector<float> inflexions = PushBroomRelativeOffsets::estimatePushBroomInflexionPointsIntensityPerLine(data, countWeight, magnitudeWeight);
+    Multidim::Array<float, 3> normalized = StereoVision::ImageProcessing::normalizeImageChannels(data);
 
-    constexpr float peakInflexionQuantile = 0.5;
+    int nLines = bilSequence->nLinesInSequence();
 
-    int nThElement = std::max<int>(0,peakInflexionQuantile*(inflexions.size()-1));
+    constexpr bool verbose = true;
 
-    std::vector<float> sortedInflexions = inflexions;
+    int hWindow = 16;
+    int vSearchRadius = nLines;
+    float dx_pos_lambda = 1;
 
-    std::nth_element(sortedInflexions.begin(), sortedInflexions.begin() + nThElement, sortedInflexions.end());
+    std::vector<float> shifts(nLines-1);
 
-    float peakThreshold = 1; //sortedInflexions[nThElement];
-    int maxInterval = 5;
-
-    std::vector<int> selected = PushBroomRelativeOffsets::filterPushBroomLinesWithInflexion(inflexions, peakThreshold, maxInterval);
-
-    Multidim::Array<float, 3> filteredData = PushBroomRelativeOffsets::removeUnfilteredLinesFromPushBroomImage(data, selected);
-
-    Multidim::Array<float, 3> normalized = StereoVision::ImageProcessing::normalizeImageChannels(filteredData);
-
-    StereoVision::IO::writeImage<float>(saveFile.toStdString(), normalized);
-
-    QFile outInflexions(inflexionsSaveFile);
-
-    if (!outInflexions.open(QFile::WriteOnly)) {
-        return false;
+    if (rInfos.directions | PushBroomRelativeOffsets::OffsetsDirections::Horizontal) {
+        auto shiftsIt = PushBroomRelativeOffsets::estimatePushBroomHorizontalShiftBayesian<verbose>(normalized, hWindow, dx_pos_lambda);
+        if (shiftsIt.convergence() != StereoVision::Converged) {
+            return RType::error(qPrintable(BilSequenceActionManager::tr("Convergence error in horizontal rectification")));
+        }
+        shifts = std::move(shiftsIt.value());
+    } else {
+        std::fill(shifts.begin(), shifts.end(), 0);
     }
 
-    QTextStream outInflexionsStream(&outInflexions);
+    PushBroomRelativeOffsets::AccumulatedShiftsInfos<float> accumulated =
+        PushBroomRelativeOffsets::computeAccumulatedFromRelativeShifts(shifts);
 
-    for (float count : inflexions) {
-        outInflexionsStream << count << "\n";
-    }
+    Multidim::Array<float, 3> horizontalRectified = PushBroomRelativeOffsets::computeHorizontallyRectifiedImage(normalized, shifts);
+    Multidim::Array<bool, 2> horizontalRectifiedMask = PushBroomRelativeOffsets::computeHorizontallyRectifiedImageMask(normalized, shifts);
 
-    outInflexionsStream.flush();
+    std::vector<int> order = PushBroomRelativeOffsets::estimatePushBroomVerticalReorderBayesian<verbose>(normalized,
+                                                                                                         accumulated.accumulatedShifts,
+                                                                                                         hWindow,
+                                                                                                         vSearchRadius);
 
-    QFile outSelected(selectedSaveFile);
+    Multidim::Array<float, 3> finalImage = PushBroomRelativeOffsets::computeVerticallyReorderedImage(horizontalRectified, order);
 
-    if (!outSelected.open(QFile::WriteOnly)) {
-        return false;
-    }
-
-    QTextStream outSelectedStream(&outSelected);
-
-    for (float count : selected) {
-        outSelectedStream << count << "\n";
-    }
-
-    outSelectedStream.flush();
-
-    return true;
-
+    return BilRectificationDataOutput{finalImage, accumulated, order};
 }
 
 bool estimateBilShiftHorizontalAndVertical(BilSequenceAcquisitionData *bilSequence) {
@@ -2344,103 +2332,67 @@ bool estimateBilShiftHorizontalAndVertical(BilSequenceAcquisitionData *bilSequen
     QFileInfo infos(saveFile);
     QString shiftSaveFile = infos.dir().filePath(infos.baseName() + "_shifts.csv");
 
-    QString horizontalRectSaveFile = infos.dir().filePath(infos.baseName() + "_horizontal_shifts.tiff");
-    QString horizontalRectMaskSaveFile = infos.dir().filePath(infos.baseName() + "_horizontal_mask_shifts.tiff");
-
-    QString inflexionsSaveFile = infos.dir().filePath(infos.baseName() + "_inflexions.csv");
-    QString selectedSaveFile = infos.dir().filePath(infos.baseName() + "_selected.csv");
+    QString reorderSaveFile = infos.dir().filePath(infos.baseName() + "_reorder.csv");
 
     int nLines = bilSequence->nLinesInSequence();
 
-    std::vector<int> channels = bilSequence->assumedRgbChannels();
+    std::optional<BilRectInfos> rInfosOpt  = collectPreRectInfos(mw,
+                                                                nLines);
 
-    Multidim::Array<float, 3> data = bilSequence->getFloatBilData(0, nLines, channels);
-
-    if (data.empty()) {
+    if (!rInfosOpt.has_value()) {
         return false;
     }
 
-    Multidim::Array<float, 3> normalized = StereoVision::ImageProcessing::normalizeImageChannels(data);
+    BilRectInfos const& rInfos = rInfosOpt.value();
 
-    std::vector<float> shifts = PushBroomRelativeOffsets::estimatePushBroomHorizontalShiftCorr(data);
 
-    Multidim::Array<float, 3> horizontalRectified = PushBroomRelativeOffsets::computeHorizontallyRectifiedImage(normalized, shifts);
-    Multidim::Array<bool, 2> horizontalRectifiedMask = PushBroomRelativeOffsets::computeHorizontallyRectifiedImageMask(normalized, shifts);
+    auto rectifiedOpt = loadRectifiedBillSequence(bilSequence, rInfos);
 
-    StereoVision::IO::writeImage<float>(horizontalRectSaveFile.toStdString(), horizontalRectified);
-    StereoVision::IO::writeImage<uint8_t>(horizontalRectMaskSaveFile.toStdString(), horizontalRectifiedMask);
+    if (!rectifiedOpt.isValid()) {
 
-    if (!shiftSaveFile.isEmpty()) {
-        QFile out(shiftSaveFile);
+        QMessageBox::warning(mw, BilSequenceActionManager::tr("Could not rectify bil sequence data"), rectifiedOpt.errorMessage());
+        return false;
+    }
 
-        if (!out.open(QFile::WriteOnly)) {
+    BilRectificationDataOutput const& rectified = rectifiedOpt.value();
+
+
+    StereoVision::IO::writeImage<float>(saveFile.toStdString(), rectified.rectifiedImage);
+
+
+    if (rInfos.directions & PushBroomRelativeOffsets::Vertical) {
+        QFile outOrder(reorderSaveFile);
+
+        if (!outOrder.open(QFile::WriteOnly)) {
+            return false;
+        }
+        QTextStream outOrderStream(&outOrder);
+
+        for (int idx : rectified.order) {
+            outOrderStream << idx << "\n";
+        }
+
+        outOrderStream.flush();
+    }
+
+    if (rInfos.directions & PushBroomRelativeOffsets::Horizontal) {
+        QFile outShifts(shiftSaveFile);
+
+        if (!outShifts.open(QFile::WriteOnly)) {
             return false;
         }
 
-        QTextStream outStream(&out);
+        QTextStream outShiftsStream(&outShifts);
 
-        for (float shift : shifts) {
-            outStream << shift << "\n";
+        for (float shift : rectified.shifts.accumulatedShifts) {
+            outShiftsStream << shift << "\n";
         }
 
-        outStream.flush();
+        outShiftsStream.flush();
     }
-
-    constexpr float countWeight = 1;
-    constexpr float magnitudeWeight = 0;
-    std::vector<float> inflexions = PushBroomRelativeOffsets::estimatePushBroomInflexionPointsIntensityPerLine(horizontalRectified,
-                                                                                                               horizontalRectifiedMask,
-                                                                                                               countWeight,
-                                                                                                               magnitudeWeight);
-
-    constexpr float peakInflexionQuantile = 0.5;
-
-    int nThElement = std::max<int>(0,peakInflexionQuantile*(inflexions.size()-1));
-
-    std::vector<float> sortedInflexions = inflexions;
-
-    std::nth_element(sortedInflexions.begin(), sortedInflexions.begin() + nThElement, sortedInflexions.end());
-
-    float peakThreshold = 1; //sortedInflexions[nThElement];
-    int maxInterval = 5;
-
-    std::vector<int> selected = PushBroomRelativeOffsets::filterPushBroomLinesWithInflexion(inflexions, peakThreshold, maxInterval);
-
-    Multidim::Array<float, 3> finalImage = PushBroomRelativeOffsets::removeUnfilteredLinesFromPushBroomImage(horizontalRectified, selected);
-
-    StereoVision::IO::writeImage<float>(saveFile.toStdString(), finalImage);
-
-    QFile outInflexions(inflexionsSaveFile);
-
-    if (!outInflexions.open(QFile::WriteOnly)) {
-        return false;
-    }
-
-    QTextStream outInflexionsStream(&outInflexions);
-
-    for (float count : inflexions) {
-        outInflexionsStream << count << "\n";
-    }
-
-    outInflexionsStream.flush();
-
-    QFile outSelected(selectedSaveFile);
-
-    if (!outSelected.open(QFile::WriteOnly)) {
-        return false;
-    }
-
-    QTextStream outSelectedStream(&outSelected);
-
-    for (float count : selected) {
-        outSelectedStream << count << "\n";
-    }
-
-    outSelectedStream.flush();
 
     return true;
 }
-
 
 
 bool viewPreRectifiedBill(BilSequenceAcquisitionData *bilSequence) {
@@ -2457,44 +2409,47 @@ bool viewPreRectifiedBill(BilSequenceAcquisitionData *bilSequence) {
 
     int nLines = bilSequence->nLinesInSequence();
 
-    std::vector<int> channels = bilSequence->assumedRgbChannels();
+    std::optional<BilRectInfos> rInfosOpt  = collectPreRectInfos(mw,
+                                                                nLines);
 
-    Multidim::Array<float, 3> data = bilSequence->getFloatBilData(0, nLines, channels);
-
-    if (data.empty()) {
+    if (!rInfosOpt.has_value()) {
         return false;
     }
 
-    Multidim::Array<float, 3> normalized = StereoVision::ImageProcessing::normalizeImageChannels(data);
+    BilRectInfos const& rInfos = rInfosOpt.value();
 
-    std::vector<float> shifts = PushBroomRelativeOffsets::estimatePushBroomHorizontalShiftCorr(data);
+    if (rInfos.start < 0 or rInfos.start >= nLines) {
+        QMessageBox::warning(mw, BilSequenceActionManager::tr("Could not rectify bil sequence data"), BilSequenceActionManager::tr("Invalid lines indices"));
+        return false;
+    }
 
-    PushBroomRelativeOffsets::AccumulatedShiftsInfos<float> accumulated =
-        PushBroomRelativeOffsets::computeAccumulatedFromRelativeShifts(shifts);
+    if (rInfos.end < 0 or rInfos.end > nLines) {
+        QMessageBox::warning(mw, BilSequenceActionManager::tr("Could not rectify bil sequence data"), BilSequenceActionManager::tr("Invalid lines indices"));
+        return false;
+    }
 
-    Multidim::Array<float, 3> horizontalRectified = PushBroomRelativeOffsets::computeHorizontallyRectifiedImage(normalized, shifts);
-    Multidim::Array<bool, 2> horizontalRectifiedMask = PushBroomRelativeOffsets::computeHorizontallyRectifiedImageMask(normalized, shifts);
-    constexpr float countWeight = 1;
-    constexpr float magnitudeWeight = 0;
-    std::vector<float> inflexions = PushBroomRelativeOffsets::estimatePushBroomInflexionPointsIntensityPerLine(horizontalRectified,
-                                                                                                               horizontalRectifiedMask,
-                                                                                                               countWeight,
-                                                                                                               magnitudeWeight);
+    if (rInfos.start == rInfos.end) {
+        QMessageBox::warning(mw, BilSequenceActionManager::tr("Could not rectify bil sequence data"), BilSequenceActionManager::tr("Invalid lines indices"));
+        return false;
+    }
 
-    constexpr float peakInflexionQuantile = 0.5;
+    if (rInfos.directions != PushBroomRelativeOffsets::OffsetsDirections::Vertical and
+        rInfos.directions != PushBroomRelativeOffsets::OffsetsDirections::Horizontal and
+        rInfos.directions != PushBroomRelativeOffsets::OffsetsDirections::Both)
+    {
+        QMessageBox::warning(mw, BilSequenceActionManager::tr("Could not rectify bil sequence data"), BilSequenceActionManager::tr("Invalid direction"));
+        return false;
+    }
 
-    int nThElement = std::max<int>(0,peakInflexionQuantile*(inflexions.size()-1));
+    auto rectifiedOpt = loadRectifiedBillSequence(bilSequence, rInfos);
 
-    std::vector<float> sortedInflexions = inflexions;
+    if (!rectifiedOpt.isValid()) {
 
-    std::nth_element(sortedInflexions.begin(), sortedInflexions.begin() + nThElement, sortedInflexions.end());
+        QMessageBox::warning(mw, BilSequenceActionManager::tr("Could not rectify bil sequence data"), rectifiedOpt.errorMessage());
+        return false;
+    }
 
-    float peakThreshold = 1; //sortedInflexions[nThElement];
-    int maxInterval = 5;
-
-    std::vector<int> selected = PushBroomRelativeOffsets::filterPushBroomLinesWithInflexion(inflexions, peakThreshold, maxInterval);
-
-    Multidim::Array<float, 3> finalImage = PushBroomRelativeOffsets::removeUnfilteredLinesFromPushBroomImage(horizontalRectified, selected);
+    BilRectificationDataOutput const& rectified = rectifiedOpt.value();
 
     //open editor
 
@@ -2512,9 +2467,9 @@ bool viewPreRectifiedBill(BilSequenceAcquisitionData *bilSequence) {
     constexpr float blackLevel = 0;
 
     prbve->setImageFromArray(bilSequence,
-                             QVector<int>(selected.begin(), selected.end()),
-                             QVector<float>(accumulated.accumulatedShifts.begin(), accumulated.accumulatedShifts.end()),
-                             finalImage,
+                             QVector<int>(rectified.order.begin(), rectified.order.end()),
+                             QVector<float>(rectified.shifts.accumulatedShifts.begin(), rectified.shifts.accumulatedShifts.end()),
+                             rectified.rectifiedImage,
                              whiteLevel,
                              blackLevel);
 
@@ -2686,6 +2641,7 @@ bool cornerMatchRawBill(BilSequenceAcquisitionData *bilSequence, std::optional<i
 
 
 }
+
 bool cornerMatchPreRectifiedBill(BilSequenceAcquisitionData *bilSequence,
                                  std::optional<int> lineMin,
                                  std::optional<int> lineMax,
@@ -2722,90 +2678,33 @@ bool cornerMatchPreRectifiedBill(BilSequenceAcquisitionData *bilSequence,
 
     int dir = directions.value_or(PushBroomRelativeOffsets::OffsetsDirections::Both);
 
-    bool ok = true;
+    std::optional<BilRectInfos> rInfosOpt  = collectPreRectInfos(editor,
+                                                                nLines,
+                                                                lineMin,
+                                                                lineMax,
+                                                                directions);
 
-    QDialog optionsDialog(editor);
-    QFormLayout layout(&optionsDialog);
-
-    QSpinBox lineMinBox;
-    QSpinBox lineMaxBox;
-
-    QComboBox directionsBox;
-
-    lineMinBox.setMinimum(-nLines);
-    lineMinBox.setMaximum(nLines);
-
-    lineMaxBox.setMinimum(-nLines+1);
-    lineMaxBox.setMaximum(nLines);
-
-    directionsBox.addItem(BilSequenceActionManager::tr("Horizontal"), PushBroomRelativeOffsets::OffsetsDirections::Horizontal);
-    directionsBox.addItem(BilSequenceActionManager::tr("Vertical"), PushBroomRelativeOffsets::OffsetsDirections::Vertical);
-    directionsBox.addItem(BilSequenceActionManager::tr("Both"), PushBroomRelativeOffsets::OffsetsDirections::Both);
-    directionsBox.setCurrentIndex(2);
-
-    QDialogButtonBox buttonBox(QDialogButtonBox::Ok|QDialogButtonBox::Cancel, &optionsDialog);
-
-    QObject::connect(&buttonBox, &QDialogButtonBox::accepted, &optionsDialog, &QDialog::accept);
-    QObject::connect(&buttonBox, &QDialogButtonBox::rejected, &optionsDialog, &QDialog::reject);
-
-    if (!lineMin.has_value()) {
-        layout.addRow(BilSequenceActionManager::tr("Range start line"), &lineMinBox);
-    }
-
-    if (!lineMax.has_value()) {
-        layout.addRow(BilSequenceActionManager::tr("Range end line"), &lineMaxBox);
-    }
-
-    if (!directions.has_value()) {
-        layout.addRow(BilSequenceActionManager::tr("Direction"), &directionsBox);
-    }
-
-    layout.addRow(&buttonBox);
-
-    if (!lineMin.has_value() or !lineMax.has_value() or !directions.has_value()) {
-        ok = optionsDialog.exec();
-    }
-
-    if (!ok) {
+    if (!rInfosOpt.has_value()) {
         return false;
     }
 
-    if (!lineMin.has_value()) {
-        start = lineMinBox.value();
-    }
-
-    if (!lineMax.has_value()) {
-        end = lineMaxBox.value();
-    }
-
-    if (!directions.has_value()) {
-        dir = directionsBox.currentData().toInt();
-    }
-
-    if (start < 0) {
-        start += nLines;
-    }
-
-    if (end < 0) {
-        end += nLines;
-    }
+    start = rInfosOpt.value().start;
+    end = rInfosOpt.value().end;
+    dir = rInfosOpt.value().directions;
 
     if (start < 0 or start >= nLines) {
+        QMessageBox::warning(mw, BilSequenceActionManager::tr("Could not rectify bil sequence data"), BilSequenceActionManager::tr("Invalid lines indices"));
         return false;
     }
 
-    if (start < 0 or start >= nLines) {
+    if (end < 0 or end > nLines) {
+        QMessageBox::warning(mw, BilSequenceActionManager::tr("Could not rectify bil sequence data"), BilSequenceActionManager::tr("Invalid lines indices"));
         return false;
     }
 
     if (start == end) {
+        QMessageBox::warning(mw, BilSequenceActionManager::tr("Could not rectify bil sequence data"), BilSequenceActionManager::tr("Invalid lines indices"));
         return false;
-    }
-
-    if (start > end) {
-        int tmp = start;
-        start = end;
-        end = tmp;
     }
 
     if (dir != PushBroomRelativeOffsets::OffsetsDirections::Vertical and

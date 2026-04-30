@@ -143,17 +143,7 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
         exportImageGeometry(bilSeq);
     });
 
-    /*QAction* analyzeShift = new QAction(tr("Analyze horizontal shift"), parent);
-    connect(analyzeShift, &QAction::triggered, [bilSeq] () {
-        estimateBilShift(bilSeq);
-    });
-
-    QAction* analyzeVShift = new QAction(tr("Analyze vertical shift"), parent);
-    connect(analyzeVShift, &QAction::triggered, [bilSeq] () {
-        estimateBilShiftVertical(bilSeq);
-    });*/
-
-    QAction* analyzeHVShift = new QAction(tr("Analyze horizontal and vertical shift"), parent);
+    QAction* analyzeHVShift = new QAction(tr("Analyze shifts"), parent);
     connect(analyzeHVShift, &QAction::triggered, [bilSeq] () {
         estimateBilShiftHorizontalAndVertical(bilSeq);
     });

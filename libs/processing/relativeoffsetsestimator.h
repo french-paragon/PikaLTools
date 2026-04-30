@@ -19,6 +19,10 @@
 
 #include <iostream>
 
+#if defined(_OPENMP)
+#include <omp.h>
+#endif
+
 namespace PikaLTools {
 
 namespace PushBroomRelativeOffsets {
@@ -468,7 +472,7 @@ public:
 
         using MatchFuncTrait = StereoVision::Correlation::MatchingFunctionTraits<matchFunc>;
 
-        int di = std::ceil(dx);
+        int di = std::ceil(std::abs(dx));
 
         int nFeatureElem = nElements - di;
         int nFeaturePix = nChannels*nFeatureElem;
@@ -476,11 +480,28 @@ public:
         Multidim::Array<ComputeT,1> f1(nFeaturePix);
         Multidim::Array<ComputeT,1> f2(nFeaturePix);
 
+        constexpr int pixDim = 0;
+        constexpr int channelDim = 1;
+        constexpr int nDim = 1;
+
+        constexpr auto Kernel = StereoVision::Interpolation::bicubicKernel<ImageT, 1>;
+        constexpr int kernelRadius = 2;
+
         int id = 0;
         for (int i = 0; i < nFeatureElem; i++) {
             for (int c = 0; c < nChannels; c++,id++) {
-                f1.atUnchecked(id) = patch1.valueUnchecked(i,c);
-                f2.atUnchecked(id) = patch2.valueUnchecked(i+di,c); //TODO interpolate for more precision
+                if (di == 0) {
+                    f1.atUnchecked(id) = patch1.valueUnchecked(i,c);
+                    f2.atUnchecked(id) = patch2.valueUnchecked(i,c);
+                } else if (dx > 0) {
+                    f1.atUnchecked(id) = patch1.valueUnchecked(i,c);
+                    f2.atUnchecked(id) = StereoVision::Interpolation::interpolateValue<nDim, ImageT, Kernel, kernelRadius>
+                    (patch2.sliceView(channelDim,c), {i+dx});
+                } else {
+                    f1.atUnchecked(id) = StereoVision::Interpolation::interpolateValue<nDim, ImageT, Kernel, kernelRadius>
+                        (patch1.sliceView(channelDim,c), {i-dx});
+                    f2.atUnchecked(id) = patch2.valueUnchecked(i,c);
+                }
             }
         }
 
@@ -2056,10 +2077,17 @@ std::vector<int> estimatePushBroomVerticalReorderBayesian(
 
     constexpr StereoVision::Correlation::matchingFunctions matchFunc = StereoVision::Correlation::matchingFunctions::SAD;
 
+    #pragma omp parallel for
     for (int i = 0; i < nLines; i++) {
 
         if constexpr (verbose) {
-            std::cout << '\r' << "\tComputing cost for line " << (i+1) << '/' << nLines << std::flush;
+            #if defined(_OPENMP)
+            if (omp_get_thread_num() == 0) {
+                std::cout << '\r' << "\tComputing cost for line " << (i+1) << '/' << nLines << std::flush;
+            }
+            #else
+                std::cout << '\r' << "\tComputing cost for line " << (i+1) << '/' << nLines << std::flush;
+            #endif
         }
 
         for (int c = 0; c < nComps; c++) {
@@ -2082,7 +2110,7 @@ std::vector<int> estimatePushBroomVerticalReorderBayesian(
     }
 
     if constexpr (verbose) {
-        std::cout << "\n";
+        std::cout << '\r' << "\tComputing cost for line " << nLines << '/' << nLines << std::endl;
     }
 
     constexpr int maxExactRadius = 10;
