@@ -251,40 +251,38 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeBilProjection(int bilId) {
         return false;
     }
 
-    //Boresight is body2sensor
-    StereoVision::Geometry::RigidBodyTransform<double> body2sensor(Eigen::Vector3d::Zero(),
+    //Boresight is sensor2body
+    StereoVision::Geometry::RigidBodyTransform<double> sensor2body(Eigen::Vector3d::Zero(),
                                                                  Eigen::Vector3d::Zero());
 
     if (_useOptimzedLeverArm) {
 
         if (leverArm->optRot().isSet()) {
-            body2sensor.r[0] = leverArm->optRot().value(0);
-            body2sensor.r[1] = leverArm->optRot().value(1);
-            body2sensor.r[2] = leverArm->optRot().value(2);
+            sensor2body.r[0] = leverArm->optRot().value(0);
+            sensor2body.r[1] = leverArm->optRot().value(1);
+            sensor2body.r[2] = leverArm->optRot().value(2);
         }
 
         if (leverArm->optPos().isSet()) {
-            body2sensor.t[0] = leverArm->optPos().value(0);
-            body2sensor.t[1] = leverArm->optPos().value(1);
-            body2sensor.t[2] = leverArm->optPos().value(2);
+            sensor2body.t[0] = leverArm->optPos().value(0);
+            sensor2body.t[1] = leverArm->optPos().value(1);
+            sensor2body.t[2] = leverArm->optPos().value(2);
         }
 
     } else {
 
         if (leverArm->xRot().isSet() and leverArm->yRot().isSet() and leverArm->zRot().isSet()) {
-            body2sensor.r[0] = leverArm->xRot().value();
-            body2sensor.r[1] = leverArm->yRot().value();
-            body2sensor.r[2] = leverArm->zRot().value();
+            sensor2body.r[0] = leverArm->xRot().value();
+            sensor2body.r[1] = leverArm->yRot().value();
+            sensor2body.r[2] = leverArm->zRot().value();
         }
 
         if (leverArm->xCoord().isSet() and leverArm->yCoord().isSet() and leverArm->zCoord().isSet()) {
-            body2sensor.t[0] = leverArm->xCoord().value();
-            body2sensor.t[1] = leverArm->yCoord().value();
-            body2sensor.t[2] = leverArm->zCoord().value();
+            sensor2body.t[0] = leverArm->xCoord().value();
+            sensor2body.t[1] = leverArm->yCoord().value();
+            sensor2body.t[2] = leverArm->zCoord().value();
         }
     }
-
-    StereoVision::Geometry::RigidBodyTransform<double> sensor2body = body2sensor.inverse();
 
     //#pragma omp parallel for
     for (int i = 0; i < nLines; i++) {
@@ -430,40 +428,38 @@ bool RectifyBilSeqToOrthoSteppedProcess::exportBilProjection(int bilId, QString 
         return false;
     }
 
-    //Boresight is body2sensor
-    StereoVision::Geometry::RigidBodyTransform<double> body2sensor(Eigen::Vector3d::Zero(),
+    //Boresight is sensor2body
+    StereoVision::Geometry::RigidBodyTransform<double> sensor2body(Eigen::Vector3d::Zero(),
                                                                  Eigen::Vector3d::Zero());
 
     if (_useOptimzedLeverArm) {
 
         if (leverArm->optRot().isSet()) {
-            body2sensor.r[0] = leverArm->optRot().value(0);
-            body2sensor.r[1] = leverArm->optRot().value(1);
-            body2sensor.r[2] = leverArm->optRot().value(2);
+            sensor2body.r[0] = leverArm->optRot().value(0);
+            sensor2body.r[1] = leverArm->optRot().value(1);
+            sensor2body.r[2] = leverArm->optRot().value(2);
         }
 
         if (leverArm->optPos().isSet()) {
-            body2sensor.t[0] = leverArm->optPos().value(0);
-            body2sensor.t[1] = leverArm->optPos().value(1);
-            body2sensor.t[2] = leverArm->optPos().value(2);
+            sensor2body.t[0] = leverArm->optPos().value(0);
+            sensor2body.t[1] = leverArm->optPos().value(1);
+            sensor2body.t[2] = leverArm->optPos().value(2);
         }
 
     } else {
 
         if (leverArm->xRot().isSet() and leverArm->yRot().isSet() and leverArm->zRot().isSet()) {
-            body2sensor.r[0] = leverArm->xRot().value();
-            body2sensor.r[1] = leverArm->yRot().value();
-            body2sensor.r[2] = leverArm->zRot().value();
+            sensor2body.r[0] = leverArm->xRot().value();
+            sensor2body.r[1] = leverArm->yRot().value();
+            sensor2body.r[2] = leverArm->zRot().value();
         }
 
         if (leverArm->xCoord().isSet() and leverArm->yCoord().isSet() and leverArm->zCoord().isSet()) {
-            body2sensor.t[0] = leverArm->xCoord().value();
-            body2sensor.t[1] = leverArm->yCoord().value();
-            body2sensor.t[2] = leverArm->zCoord().value();
+            sensor2body.t[0] = leverArm->xCoord().value();
+            sensor2body.t[1] = leverArm->yCoord().value();
+            sensor2body.t[2] = leverArm->zCoord().value();
         }
     }
-
-    StereoVision::Geometry::RigidBodyTransform<double> sensor2body = body2sensor.inverse();
 
 
     PJ_CONTEXT* ctx = proj_context_create();

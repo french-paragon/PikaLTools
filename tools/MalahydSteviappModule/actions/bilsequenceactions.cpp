@@ -1739,7 +1739,7 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
 
     constexpr int UVCostFlags = StereoVisionApp::UVProjFlags::PlaneCost;
     using UVCost = StereoVisionApp::InvertPose<StereoVisionApp::UV2ParametrizedXYZCost<StereoVisionApp::PinholePushbroomUVProjector,UVCostFlags,1,1,6,6>,0>;
-    using LeverArmCost = StereoVisionApp::LeverArm<UVCost,StereoVisionApp::Body2World|StereoVisionApp::Body2Sensor,0>;
+    using LeverArmCost = StereoVisionApp::LeverArm<UVCost,StereoVisionApp::Body2World|StereoVisionApp::Sensor2Body,0>;
     using PoseTransformCost = StereoVisionApp::PoseTransform<UVCost,StereoVisionApp::PoseTransformDirection::SourceToInitial,0>;
     using PoseTransformLeverArmCost = StereoVisionApp::PoseTransform<LeverArmCost,StereoVisionApp::PoseTransformDirection::SourceToInitial,0>;
 
@@ -1829,19 +1829,19 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
     auto optPos = mounting->optPos();
     auto optRot = mounting->optRot();
 
-    StereoVision::Geometry::RigidBodyTransform<double> body2sensor;
+    StereoVision::Geometry::RigidBodyTransform<double> sensor2body;
 
     if (!optPos.isSet() or !optRot.isSet()) {
-        body2sensor.r.setZero();
-        body2sensor.t.setZero();
+        sensor2body.r.setZero();
+        sensor2body.t.setZero();
     } else {
-        body2sensor.r.x() = optRot.value(0);
-        body2sensor.r.y() = optRot.value(1);
-        body2sensor.r.z() = optRot.value(2);
+        sensor2body.r.x() = optRot.value(0);
+        sensor2body.r.y() = optRot.value(1);
+        sensor2body.r.z() = optRot.value(2);
 
-        body2sensor.t.x() = optPos.value(0);
-        body2sensor.t.y() = optPos.value(1);
-        body2sensor.t.z() = optPos.value(2);
+        sensor2body.t.x() = optPos.value(0);
+        sensor2body.t.y() = optPos.value(1);
+        sensor2body.t.z() = optPos.value(2);
     }
 
     StereoVisionApp::PushBroomPinholeCamera* cam = bilSequence->getAssignedCamera();
@@ -1864,8 +1864,8 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
         }
     }
 
-    std::array<double,3> leverArmOrientation = {body2sensor.r.x(), body2sensor.r.y(), body2sensor.r.z()};
-    std::array<double,3> leverArmPosition = {body2sensor.t.x(), body2sensor.t.y(), body2sensor.t.z()};
+    std::array<double,3> leverArmOrientation = {sensor2body.r.x(), sensor2body.r.y(), sensor2body.r.z()};
+    std::array<double,3> leverArmPosition = {sensor2body.t.x(), sensor2body.t.y(), sensor2body.t.z()};
 
     std::array<double,6> horizontalDistortion;
     std::array<double,6> verticalDistortion;
@@ -2032,7 +2032,7 @@ bool exportTrajectoryWithBilMounting(BilSequenceAcquisitionData *bilSequence) {
 
     StereoVisionApp::Mounting* mounting = bilSequence->getAssignedMounting();
 
-    StereoVision::Geometry::RigidBodyTransform<double> body2sensor;
+    StereoVision::Geometry::RigidBodyTransform<double> sensor2body;
 
     if (mounting != nullptr) {
 
@@ -2040,20 +2040,20 @@ bool exportTrajectoryWithBilMounting(BilSequenceAcquisitionData *bilSequence) {
         auto optRot = mounting->optRot();
 
         if (!optPos.isSet() or !optRot.isSet()) {
-            body2sensor.r.setZero();
-            body2sensor.t.setZero();
+            sensor2body.r.setZero();
+            sensor2body.t.setZero();
         } else {
-            body2sensor.r.x() = optRot.value(0);
-            body2sensor.r.y() = optRot.value(1);
-            body2sensor.r.z() = optRot.value(2);
+            sensor2body.r.x() = optRot.value(0);
+            sensor2body.r.y() = optRot.value(1);
+            sensor2body.r.z() = optRot.value(2);
 
-            body2sensor.t.x() = optPos.value(0);
-            body2sensor.t.y() = optPos.value(1);
-            body2sensor.t.z() = optPos.value(2);
+            sensor2body.t.x() = optPos.value(0);
+            sensor2body.t.y() = optPos.value(1);
+            sensor2body.t.z() = optPos.value(2);
         }
     }
 
-    StereoVisionApp::exportTrajectory(traj, body2sensor.inverse());
+    StereoVisionApp::exportTrajectory(traj, sensor2body);
     return true;
 }
 

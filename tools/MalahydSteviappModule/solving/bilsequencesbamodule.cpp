@@ -24,7 +24,7 @@ StereoVisionApp::LeverArm< //need to add lever arm
 StereoVisionApp::InvertPose< //UV2ParametrizedXYZCost takes mapping2sensor but we parametrize the trajectory as body2mapping
 StereoVisionApp::UV2ParametrizedXYZCost<PushBroomUVProj,1,1,6,6>
 >,
-StereoVisionApp::Body2World | StereoVisionApp::Body2Sensor
+StereoVisionApp::Body2World | StereoVisionApp::Sensor2Body
 >
 >;
 using PushBroomUVCostTransformed =
@@ -33,7 +33,7 @@ StereoVisionApp::LeverArm< //need to add lever arm
 StereoVisionApp::InvertPose< //UV2ParametrizedXYZCost takes mapping2sensor but we parametrize the trajectory as body2mapping
 StereoVisionApp::UV2ParametrizedXYZCost<PushBroomUVProj,1,1,6,6>
 >,
-StereoVisionApp::Body2World | StereoVisionApp::Body2Sensor
+StereoVisionApp::Body2World | StereoVisionApp::Sensor2Body
 >,
 StereoVisionApp::PoseTransformDirection::SourceToInitial
 >;
@@ -296,12 +296,23 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
 
             if (trajNodeId < 0 or trajNodeId+1 >= trajNode->nodes.size()) {
 
-                QString message = QObject::tr("[Warning] Could not get timing for bil sequence %1 (\"%2\"), bil landmark %3 (%4)(\"%5\"), skipping!")
-                        .arg(seqId)
-                        .arg(seq->objectName())
-                        .arg(imlmid)
-                        .arg(lmid)
-                        .arg(lm->objectName());
+                double startTime = std::nan("");
+                double endTime = std::nan("");
+
+                if (!trajNode->nodes.empty()) {
+                    startTime = trajNode->nodes.front().time;
+                    endTime = trajNode->nodes.back().time;
+                }
+
+                QString message = QObject::tr("[Warning] Could not get timing for bil sequence %1 (\"%2\"), bil landmark %3 (%4)(\"%5\"). Landmark time is %6, traj start time is %7, traj end time is %8. Skipping!")
+                                      .arg(seqId)
+                                      .arg(seq->objectName())
+                                      .arg(imlmid)
+                                      .arg(lmid)
+                                      .arg(lm->objectName())
+                                      .arg(time)
+                                      .arg(startTime)
+                                      .arg(endTime);
 
                 solver->logMessage(message);
                 continue;
