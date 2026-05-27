@@ -325,7 +325,7 @@ double BilSequenceAcquisitionData::getTimeFromPixCoord(double yPos) const {
             std::vector<double> bilTimes = get_envi_bil_lines_times(bilFilePath.toStdString());
 
             if (bilTimes.size() != bilnLines) { // error loading times
-                return 0;
+                return std::nan("");
             }
 
             for (int i = 0; i < bilnLines; i++) {

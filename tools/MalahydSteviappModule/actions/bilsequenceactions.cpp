@@ -2493,6 +2493,9 @@ public:
         ret.u = u;
         ret.v = 0;
         ret.t = _seq->getTimeFromPixCoord(_startLine + v);
+        if (std::isnan(ret.t)) { //put the line id, in case the timing cannot be determined.
+            ret.t = _startLine + v;
+        }
         return ret;
     }
     virtual QString targetTitle() const {
