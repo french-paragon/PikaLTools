@@ -4,6 +4,8 @@
 
 #include "inputdtmactions.h"
 
+#include <steviapp/datablocks/landmark.h>
+
 #include <QAction>
 
 namespace PikaLTools {
@@ -58,6 +60,80 @@ QList<QAction*> InputDtmActionManager::factorizeMultiItemsContextActions(QObject
                                                                          StereoVisionApp::Project* p,
                                                                          QModelIndexList const& projectIndex) const {
     return StereoVisionApp::DatablockActionManager::factorizeMultiItemsContextActions(parent, p, projectIndex);
+}
+
+void InputDtmActionManager::registerAppHeadlessActions(StereoVisionApp::StereoVisionApplication* application) const {
+    constexpr char const* InputDTMNamespace = "InputDTM";
+
+    application->registerHeadlessAction(InputDTMNamespace,"importLandmarks", [] (QMap<QString,QString> const& kwargs, QStringList const& argv) {
+
+        bool ok = true;
+
+        int infosStartId = 0;
+        QString idStr = kwargs.value("id", "");
+
+        if (idStr.isEmpty()) {
+            idStr = argv[0];
+            infosStartId++;
+        }
+
+        qint64 id = idStr.toInt(&ok);
+
+        if (!ok) {
+            return StereoVisionApp::StatusOptionalReturn<void>::error("Invalid inputDTM id provided, should be either the first argument, or named argument \"id\"!");
+        }
+
+        StereoVisionApp::StereoVisionApplication* app = StereoVisionApp::StereoVisionApplication::GetAppInstance();
+
+        if (app == nullptr) {
+            return StereoVisionApp::StatusOptionalReturn<void>::error("No active app instance!");
+        }
+
+        StereoVisionApp::Project* p = app->getCurrentProject();
+
+        if (p == nullptr) {
+            return StereoVisionApp::StatusOptionalReturn<void>::error("No active project!");
+        }
+
+        InputDtm* dtm = p->getDataBlock<InputDtm>(id);
+
+        if (dtm == nullptr) {
+            return StereoVisionApp::StatusOptionalReturn<void>::error("Invalid inputDTM id: does not correspond to a DTM in the project!");
+        }
+
+        for (int i = infosStartId; i < argv.size(); i++) {
+            QString const& matchInfos = argv[i];
+            QStringList splitted = matchInfos.split(" ", Qt::SkipEmptyParts);
+
+            if (splitted.size() < 3) {
+                continue;
+            }
+
+            QString name = splitted[0];
+
+            StereoVisionApp::Landmark* lm = p->getDataBlockByName<StereoVisionApp::Landmark>(name);
+
+            if (lm == nullptr) {
+                continue;
+            }
+
+            bool ok = true;
+            double u = splitted[1].toDouble(&ok);
+            double v = splitted[2].toDouble(&ok);
+
+            if (!ok) {
+                continue;
+            }
+
+            dtm->addDtmLandmark(QPointF(u,v), lm->internalId());
+        }
+
+        if (!ok) {
+            return StereoVisionApp::StatusOptionalReturn<void>::error("Unknwon error!");
+        }
+
+        return StereoVisionApp::StatusOptionalReturn<void>();
+    });
 }
 
 } // namespace PikaLTools
