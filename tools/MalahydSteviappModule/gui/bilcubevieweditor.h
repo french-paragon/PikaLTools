@@ -14,6 +14,7 @@ class QComboBox;
 class QPushButton;
 class QToolButton;
 class QCheckBox;
+class QLabel;
 
 namespace StereoVisionApp {
     class ImageWidget;
@@ -62,6 +63,8 @@ protected:
 
     BilSequenceAcquisitionData* _currentSequence;
     int _sequence_nLines;
+
+    QLabel* _sequence_label;
 
     QToolButton* _displayOptionButton;
     QWidget* _displayOptionPopup;

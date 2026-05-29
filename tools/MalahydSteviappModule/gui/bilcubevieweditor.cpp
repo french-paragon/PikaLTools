@@ -35,6 +35,7 @@ BilCubeViewEditor::BilCubeViewEditor(QWidget* parent) :
     _current_landmark_id(-1)
 {
     QCommonStyle style;
+    _sequence_label = new QLabel(this);
     _viewWidget = new StereoVisionApp::ImageWidget(this);
 
     _viewWidget->setMouseMoveHandler([this] (QMouseEvent* event) -> bool {
@@ -123,7 +124,10 @@ BilCubeViewEditor::BilCubeViewEditor(QWidget* parent) :
     //main layout
     QVBoxLayout* layout = new QVBoxLayout();
     layout->addLayout(toolsLayout);
+    layout->addWidget(_sequence_label);
     layout->addWidget(_viewWidget);
+    _sequence_label->setSizePolicy(QSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum));
+    _viewWidget->setSizePolicy(QSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding));
 
     layout->setSpacing(0);
     layout->setMargin(0);
@@ -159,6 +163,7 @@ void BilCubeViewEditor::setSequence(BilSequenceAcquisitionData* sequence) {
 
     if (sequence != nullptr) {
 
+        _sequence_label->setText(sequence->objectName());
         _sequence_nLines = sequence->nLinesInSequence();
 
         if (_sequence_nLines <= 0) {
@@ -300,6 +305,8 @@ void BilCubeViewEditor::clearSequence() {
 
         _blackLevelChannelSpinBox->setEnabled(false);
         _whiteLevelChannelSpinBox->setEnabled(false);
+
+        _sequence_label->clear();
     }
 
 }
