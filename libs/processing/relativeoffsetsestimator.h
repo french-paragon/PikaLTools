@@ -3024,7 +3024,9 @@ class RelativeShiftConverter {
 
 public:
 
-    RelativeShiftConverter();
+    RelativeShiftConverter() {
+
+    }
     template<typename VLineIterator, typename HLinesIterator>
     RelativeShiftConverter(VLineIterator vLineMatchBegin, VLineIterator vLineMatchEnd,
                            HLinesIterator hLineBegin, HLinesIterator hLineEnd) :
