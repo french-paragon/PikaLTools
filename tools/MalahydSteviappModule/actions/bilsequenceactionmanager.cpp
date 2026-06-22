@@ -40,6 +40,11 @@ QList<QAction*> BilSequenceActionManager::factorizeClassContextActions(QObject* 
         loadBilSequenceFromFolder(p);
     });
 
+    QAction* listWithLm = new QAction(tr("List images with landmark"), parent);
+    connect(listWithLm, &QAction::triggered, [p] () {
+        listBilSequencesWithLandmark(-1, p);
+    });
+
     QAction* generateSimulated = new QAction(tr("Generate simulated bil sequence"), parent);
     connect(generateSimulated, &QAction::triggered, [p] () {
         simulatePseudoPushBroomData();
@@ -55,7 +60,7 @@ QList<QAction*> BilSequenceActionManager::factorizeClassContextActions(QObject* 
         }
     });
 
-    return {add, generateSimulated, initLandmarks};
+    return {add, listWithLm, generateSimulated, initLandmarks};
 
 }
 

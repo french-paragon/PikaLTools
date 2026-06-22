@@ -83,6 +83,15 @@ void BilSequenceLandmarksOverlay::setActivePoint(const qint64 &ap)  {
 
 }
 
+void BilSequenceLandmarksOverlay::setHighlightPointFilter(QString const& ptFilter) {
+
+    if (ptFilter != _highlightPointFilter) {
+        _highlightPointFilter = ptFilter;
+        requestFullRepainting();
+    }
+
+}
+
 void BilSequenceLandmarksOverlay::setInitialLine(int intlLine) {
 
     if (_initialLine != intlLine) {
@@ -245,6 +254,10 @@ void BilSequenceLandmarksOverlay::drawLandmark(QPainter* painter,
     QColor pColor(106, 193, 74);
     QColor tColor(255, 255, 255);
     QColor black(0, 0, 0);
+
+    if (_highlightPointFilter == ptName) {
+        pColor = QColor(210, 140, 0);
+    }
 
     if (isActive) {
         tColor = pColor;

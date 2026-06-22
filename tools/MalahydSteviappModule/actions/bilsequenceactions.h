@@ -34,6 +34,7 @@ bool showCovariance(BilSequenceAcquisitionData *bilSequence);
 bool setBilSequenceTrajectory(BilSequenceAcquisitionData *bilSequence, qint64 trajId);
 
 bool initBilSequencesTiePoints();
+bool listBilSequencesWithLandmark(qint64 lmId, StereoVisionApp::Project* p);
 
 /*!
  * \brief openBilSequenceFolder open the  folder where the bil files are located (if a GUI is active)

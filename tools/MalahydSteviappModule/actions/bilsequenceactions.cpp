@@ -739,6 +739,67 @@ bool setBilSequenceTrajectory(BilSequenceAcquisitionData *bilSequence, qint64 tr
 
 }
 
+bool listBilSequencesWithLandmark(qint64 pLmId, StereoVisionApp::Project* p) {
+
+    if (p == nullptr) {
+        qDebug() << "missing project";
+        return false;
+    }
+
+    StereoVisionApp::Landmark* lm = p->getDataBlock<StereoVisionApp::Landmark>(pLmId);
+
+    StereoVisionApp::MainWindow* mw = StereoVisionApp::MainWindow::getActiveMainWindow();
+
+    if (lm == nullptr and mw != nullptr) {
+
+        QLineEdit::EchoMode echoMode = QLineEdit::Normal;
+        QString text = "";
+        bool ok = true;
+
+        QString inLmName = QInputDialog::getText(mw, "Landmark name", "Landmark name", echoMode, text, &ok);
+
+        if (!ok) {
+            return true;
+        }
+
+        lm = qobject_cast<StereoVisionApp::Landmark*>(p->getByName(inLmName, StereoVisionApp::Landmark::staticMetaObject.className()));
+    }
+
+    if (lm == nullptr) {
+        qDebug() << "missing landmark";
+        return false;
+    }
+
+    qint64 lmId = lm->internalId();
+
+    QTextStream out(stdout);
+
+    out << "Listing images containing landmark \"" << lm->objectName() << "\":\n";
+
+    QVector<qint64> seqsIdxs = p->getIdsByClass(BilSequenceAcquisitionData::staticMetaObject.className());
+
+        for (qint64 seqIdx : seqsIdxs) {
+
+            BilSequenceAcquisitionData* seq = p->getDataBlock<BilSequenceAcquisitionData>(seqIdx);
+
+            if (seq == nullptr) {
+                continue;
+            }
+
+        QVector<BilSequenceLandmark*> lms = seq->getBilSequenceLandmarkByLandmarkId(lmId);
+
+        if (lms.empty()) {
+            continue;
+        }
+
+        out << "\t" << seq->objectName() << "\n";
+    }
+
+    out << "\n";
+    out.flush();
+
+    return 0;
+}
 
 bool initBilSequencesTiePoints() {
 

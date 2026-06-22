@@ -121,6 +121,20 @@ BilCubeViewEditor::BilCubeViewEditor(QWidget* parent) :
 
     connect(commitLinesButton, &QPushButton::pressed, this, &BilCubeViewEditor::commit_lines_changes);
 
+    //bottom options layout
+    QHBoxLayout* bottomOptionLayout = new QHBoxLayout();
+
+    bottomOptionLayout->setMargin(3);
+    bottomOptionLayout->setSpacing(0);
+
+    bottomOptionLayout->addWidget(new QLabel(tr("Landmark filter:")));
+
+    QLineEdit* landmarkFilterEdit = new QLineEdit(this);
+    landmarkFilterEdit->setClearButtonEnabled(true);
+    landmarkFilterEdit->setPlaceholderText(tr("Enter landmark name to highlight"));
+
+    bottomOptionLayout->addWidget(landmarkFilterEdit);
+
     //main layout
     QVBoxLayout* layout = new QVBoxLayout();
     layout->addLayout(toolsLayout);
@@ -128,6 +142,8 @@ BilCubeViewEditor::BilCubeViewEditor(QWidget* parent) :
     layout->addWidget(_viewWidget);
     _sequence_label->setSizePolicy(QSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum));
     _viewWidget->setSizePolicy(QSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding));
+
+    layout->addLayout(bottomOptionLayout);
 
     layout->setSpacing(0);
     layout->setMargin(0);
@@ -142,6 +158,9 @@ BilCubeViewEditor::BilCubeViewEditor(QWidget* parent) :
     connect(_displayOverlay, &BilSequenceLandmarksOverlay::newPointClick, this, &BilCubeViewEditor::addPoint);
     connect(_displayOverlay, &BilSequenceLandmarksOverlay::menuPointClick, this, &BilCubeViewEditor::openPointMenu);
     connect(_viewWidget, &StereoVisionApp::ImageWidget::menuNonPointClick, this, &BilCubeViewEditor::openNonPointMenu);
+
+    connect(landmarkFilterEdit, &QLineEdit::textChanged,
+            _displayOverlay, &BilSequenceLandmarksOverlay::setHighlightPointFilter);
 
     _moveToNextLandmark = new QAction(tr("Next landmark"), this);
     _moveToPrevLandmark = new QAction(tr("Previous landmark"), this);
