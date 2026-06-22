@@ -616,7 +616,7 @@ Multidim::Array<float, 3> read_bil_sequence_to_float(std::vector<std::string> co
  * \param filename the bil filename
  * \return the list of times
  *
- * This function load the times only if a time file exist. It tries to load in priority the .timings file, if not present loads the .times file.
+ * This function load the times only if a time file exist. It tries to load in priority the .timing file, if not present loads the .times file.
  */
 std::vector<double> read_envi_bil_times(std::string const& filename);
 
@@ -625,7 +625,7 @@ std::vector<double> read_envi_bil_times(std::string const& filename);
  * \param filename the bil filename
  * \return the list of times
  *
- * this function tries to load the times from the .timings file, if it exists. if not, it compute the times from the headers and lcf files.
+ * this function tries to load the times from the .timing file, if it exists. if not, it compute the times from the headers and lcf files.
  */
 std::vector<double> get_envi_bil_lines_times(std::string const& filename);
 

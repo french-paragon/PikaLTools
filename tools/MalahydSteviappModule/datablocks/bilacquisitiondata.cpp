@@ -1356,6 +1356,10 @@ StereoVisionApp::StatusOptionalReturn<Eigen::Matrix<double,3,2>> BilSequenceLand
         return RType::error("Invalid focal length!");
     }
 
+    if (!std::isfinite(time)) {
+        return RType::error("Error loading bil sequence time!");
+    }
+
     if (time < posSeq.value().sequenceStartTime()) {
         return RType::error(qPrintable(QString("Image landmark time before sequence start time (%1 vs. %2)!").arg(time).arg(posSeq.value().sequenceStartTime())));
     }

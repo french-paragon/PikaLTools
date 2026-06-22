@@ -353,6 +353,10 @@ std::vector<double> get_envi_bil_lines_times(std::string const& filename) {
 
         double tVal;
 
+        if (lineData[0] == '#') {
+            continue; //skip comment line
+        }
+
         try {
             tVal = std::stod(lineData);
         } catch(std::invalid_argument const& e) {
