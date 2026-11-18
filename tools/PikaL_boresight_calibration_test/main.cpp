@@ -370,11 +370,11 @@ std::optional<std::vector<RayPairInfos>> getRayPairsInfos(std::vector<RawPointIn
         double time2 = bil2Data.linesTimes[line2];
 
         auto pose1Interp = bil1Data.trajectory.getValueAtTime(time1);
-        StereoVision::Geometry::RigidBodyTransform<double> pose1 = pose1Interp.weigthLower*pose1Interp.valLower + pose1Interp.weigthUpper*pose1Interp.valUpper;
+        StereoVision::Geometry::RigidBodyTransform<double> pose1 = pose1Interp.weightLower*pose1Interp.valLower + pose1Interp.weightUpper*pose1Interp.valUpper;
         //body1Toecef
 
         auto pose2Interp = bil2Data.trajectory.getValueAtTime(time2);
-        StereoVision::Geometry::RigidBodyTransform<double> pose2 = pose2Interp.weigthLower*pose2Interp.valLower + pose2Interp.weigthUpper*pose2Interp.valUpper;
+        StereoVision::Geometry::RigidBodyTransform<double> pose2 = pose2Interp.weightLower*pose2Interp.valLower + pose2Interp.weightUpper*pose2Interp.valUpper;
         //body2Toecef
 
         //body1ToBody2

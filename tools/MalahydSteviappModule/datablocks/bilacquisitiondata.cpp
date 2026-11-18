@@ -1372,7 +1372,7 @@ StereoVisionApp::StatusOptionalReturn<Eigen::Matrix<double,3,2>> BilSequenceLand
 
     auto interpolablePose = posSeq.value().getValueAtTime(time);
 
-    StereoVision::Geometry::RigidBodyTransform<double> pose = interpolablePose.weigthLower*interpolablePose.valLower + interpolablePose.weigthUpper*interpolablePose.valUpper;
+    StereoVision::Geometry::RigidBodyTransform<double> pose = interpolablePose.weightLower*interpolablePose.valLower + interpolablePose.weightUpper*interpolablePose.valUpper;
 
     Eigen::Matrix<double,3,2> ret;
     ret.block<3,1>(0,0) = ecef2optim*(StereoVision::Geometry::angleAxisRotate(pose.r,leverArm.t) + pose.t);

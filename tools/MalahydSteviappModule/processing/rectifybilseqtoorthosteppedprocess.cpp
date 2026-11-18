@@ -297,7 +297,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::computeBilProjection(int bilId) {
         Trajectory<double>::TimeInterpolableVals vals = _bil_trajectory.getValueAtTime(targetTime);
         StereoVision::Geometry::RigidBodyTransform<double> delta = vals.valLower.inverse()*vals.valUpper;
 
-        double w = vals.weigthUpper;
+        double w = vals.weightUpper;
         StereoVision::Geometry::RigidBodyTransform<double> body2ecef = vals.valLower*(w*delta);
 
         StereoVision::Geometry::RigidBodyTransform<double> sensor2ecef = body2ecef*sensor2body;
@@ -535,7 +535,7 @@ bool RectifyBilSeqToOrthoSteppedProcess::exportBilProjection(int bilId, QString 
         Trajectory<double>::TimeInterpolableVals vals = _bil_trajectory.getValueAtTime(targetTime);
         StereoVision::Geometry::RigidBodyTransform<double> delta = vals.valLower.inverse()*vals.valUpper;
 
-        double w = vals.weigthUpper;
+        double w = vals.weightUpper;
         StereoVision::Geometry::RigidBodyTransform<double> body2ecef = vals.valLower*(w*delta);
 
         StereoVision::Geometry::RigidBodyTransform<double> sensor2ecef = body2ecef*sensor2body;

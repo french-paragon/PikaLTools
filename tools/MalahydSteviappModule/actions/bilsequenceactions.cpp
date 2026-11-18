@@ -1466,14 +1466,14 @@ bool simulatePseudoPushBroomData() {
         auto interpolabeOrient = orientationSequence.getValueAtTime(time);
 
         Eigen::Vector3f interpolatedPos;
-        interpolatedPos.x() = interpolabePos.weigthLower*interpolabePos.valLower[0] + interpolabePos.weigthUpper*interpolabePos.valUpper[0];
-        interpolatedPos.y() = interpolabePos.weigthLower*interpolabePos.valLower[1] + interpolabePos.weigthUpper*interpolabePos.valUpper[1];
-        interpolatedPos.z() = interpolabePos.weigthLower*interpolabePos.valLower[2] + interpolabePos.weigthUpper*interpolabePos.valUpper[2];
+        interpolatedPos.x() = interpolabePos.weightLower*interpolabePos.valLower[0] + interpolabePos.weightUpper*interpolabePos.valUpper[0];
+        interpolatedPos.y() = interpolabePos.weightLower*interpolabePos.valLower[1] + interpolabePos.weightUpper*interpolabePos.valUpper[1];
+        interpolatedPos.z() = interpolabePos.weightLower*interpolabePos.valLower[2] + interpolabePos.weightUpper*interpolabePos.valUpper[2];
 
         Eigen::Vector3f interpolatedOrient;
-        interpolatedOrient.x() = interpolabeOrient.weigthLower*interpolabeOrient.valLower[0] + interpolabeOrient.weigthUpper*interpolabeOrient.valUpper[0];
-        interpolatedOrient.y() = interpolabeOrient.weigthLower*interpolabeOrient.valLower[1] + interpolabeOrient.weigthUpper*interpolabeOrient.valUpper[1];
-        interpolatedOrient.z() = interpolabeOrient.weigthLower*interpolabeOrient.valLower[2] + interpolabeOrient.weigthUpper*interpolabeOrient.valUpper[2];
+        interpolatedOrient.x() = interpolabeOrient.weightLower*interpolabeOrient.valLower[0] + interpolabeOrient.weightUpper*interpolabeOrient.valUpper[0];
+        interpolatedOrient.y() = interpolabeOrient.weightLower*interpolabeOrient.valLower[1] + interpolabeOrient.weightUpper*interpolabeOrient.valUpper[1];
+        interpolatedOrient.z() = interpolabeOrient.weightLower*interpolabeOrient.valLower[2] + interpolabeOrient.weightUpper*interpolabeOrient.valUpper[2];
 
         Eigen::Matrix3f R = StereoVision::Geometry::rodriguezFormula(interpolatedOrient);
 
@@ -2004,9 +2004,9 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
 
         StereoVision::Geometry::RigidBodyTransform<double> body2world =
             StereoVision::Geometry::interpolateRigidBodyTransformOnManifold(
-            interpolablePose.weigthLower,
+            interpolablePose.weightLower,
             interpolablePose.valLower,
-            interpolablePose.weigthUpper,
+            interpolablePose.weightUpper,
             interpolablePose.valUpper);
 
         StereoVision::Geometry::RigidBodyTransform<double> measure2node;
@@ -2023,13 +2023,13 @@ bool analyzeReprojections(BilSequenceAcquisitionData *bilSequence) {
 
             StereoVision::Geometry::RigidBodyTransform<double> node2worldInitial =
                 StereoVision::Geometry::interpolateRigidBodyTransformOnManifold
-                (nodeInitialPose.weigthLower, nodeInitialPose.valLower,
-                 nodeInitialPose.weigthUpper, nodeInitialPose.valUpper);
+                (nodeInitialPose.weightLower, nodeInitialPose.valLower,
+                 nodeInitialPose.weightUpper, nodeInitialPose.valUpper);
 
             StereoVision::Geometry::RigidBodyTransform<double> measure2worldInitial =
                 StereoVision::Geometry::interpolateRigidBodyTransformOnManifold
-                (measureInitialPose.weigthLower, measureInitialPose.valLower,
-                 measureInitialPose.weigthUpper, measureInitialPose.valUpper);
+                (measureInitialPose.weightLower, measureInitialPose.valLower,
+                 measureInitialPose.weightUpper, measureInitialPose.valUpper);
 
             StereoVision::Geometry::RigidBodyTransform<double> measure2node =
                 node2worldInitial.inverse()*measure2worldInitial;

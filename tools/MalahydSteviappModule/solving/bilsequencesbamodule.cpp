@@ -334,13 +334,13 @@ bool BilSequenceSBAModule::init(StereoVisionApp::ModularSBASolver* solver, ceres
 
                 StereoVision::Geometry::RigidBodyTransform<double> node2worldInitial =
                         StereoVision::Geometry::interpolateRigidBodyTransformOnManifold
-                        (nodeInitialPose.weigthLower, nodeInitialPose.valLower,
-                         nodeInitialPose.weigthUpper, nodeInitialPose.valUpper);
+                        (nodeInitialPose.weightLower, nodeInitialPose.valLower,
+                         nodeInitialPose.weightUpper, nodeInitialPose.valUpper);
 
                 StereoVision::Geometry::RigidBodyTransform<double> measure2worldInitial =
                         StereoVision::Geometry::interpolateRigidBodyTransformOnManifold
-                        (measureInitialPose.weigthLower, measureInitialPose.valLower,
-                         measureInitialPose.weigthUpper, measureInitialPose.valUpper);
+                        (measureInitialPose.weightLower, measureInitialPose.valLower,
+                         measureInitialPose.weightUpper, measureInitialPose.valUpper);
 
                 StereoVision::Geometry::RigidBodyTransform<double> measure2node =
                         node2worldInitial.inverse()*measure2worldInitial;

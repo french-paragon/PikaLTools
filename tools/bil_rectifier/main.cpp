@@ -369,7 +369,7 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
             double targetTime = times[i];
 
             Trajectory<double>::TimeInterpolableVals vals = trajectory.getValueAtTime(targetTime);
-            StereoVision::Geometry::RigidBodyTransform<double> pose = vals.weigthLower*vals.valLower + vals.weigthUpper*vals.valUpper;
+            StereoVision::Geometry::RigidBodyTransform<double> pose = vals.weightLower*vals.valLower + vals.weightUpper*vals.valUpper;
 
             if (debugOn) {
 
@@ -403,7 +403,7 @@ int projectBilSequence(std::vector<std::string> const& filesList, int argc, char
                 if (trajOrient.isValid()) {
 
                     LocalOrientations<double>::TimeInterpolableVals orientVal = trajOrient.value().getValueAtTime(targetTime);
-                    Eigen::Vector3d orientation = orientVal.weigthLower*orientVal.valLower + orientVal.weigthUpper*orientVal.valUpper;
+                    Eigen::Vector3d orientation = orientVal.weightLower*orientVal.valLower + orientVal.weightUpper*orientVal.valUpper;
 
                     Eigen::Vector3d eulerAnglesOriginal = StereoVision::Geometry::rMat2eulerRadxyz(StereoVision::Geometry::rodriguezFormula(orientation));
 
