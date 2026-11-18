@@ -168,13 +168,13 @@ void TestMalahydModule::billSequence2ImageCorresps() {
     //StereoVision::Geometry::RigidBodyTransform<double> pushbroom2Body(Eigen::Vector3d(0,0,0), Eigen::Vector3d(0,0,0));
     StereoVision::Geometry::RigidBodyTransform<double> body2PushBroom = pushbroom2Body.inverse();
 
-    mounting->setXRot(StereoVisionApp::floatParameter(body2PushBroom.r.x()));
-    mounting->setYRot(StereoVisionApp::floatParameter(body2PushBroom.r.y()));
-    mounting->setZRot(StereoVisionApp::floatParameter(body2PushBroom.r.z()));
+    mounting->setXRot(StereoVisionApp::floatParameter(pushbroom2Body.r.x()));
+    mounting->setYRot(StereoVisionApp::floatParameter(pushbroom2Body.r.y()));
+    mounting->setZRot(StereoVisionApp::floatParameter(pushbroom2Body.r.z()));
 
-    mounting->setXCoord(StereoVisionApp::floatParameter(body2PushBroom.t.x()));
-    mounting->setYCoord(StereoVisionApp::floatParameter(body2PushBroom.t.y()));
-    mounting->setZCoord(StereoVisionApp::floatParameter(body2PushBroom.t.z()));
+    mounting->setXCoord(StereoVisionApp::floatParameter(pushbroom2Body.t.x()));
+    mounting->setYCoord(StereoVisionApp::floatParameter(pushbroom2Body.t.y()));
+    mounting->setZCoord(StereoVisionApp::floatParameter(pushbroom2Body.t.z()));
 
     using TrajGeneratorInfos = StereoVisionApp::GeneratedTrajectory::TrajGeneratorInfos;
 
@@ -234,6 +234,8 @@ void TestMalahydModule::billSequence2ImageCorresps() {
     std::vector<Eigen::Vector3d> pointsImg;
     pointsImg.reserve(points.size());
 
+    correspSet->setVerbose(true); //ensure the error functions from the correspondance set are printed in the log
+
     for (Eigen::Vector3d const& point : points) {
 
         constexpr StereoVisionApp::Correspondences::Types UV = StereoVisionApp::Correspondences::UV;
@@ -284,6 +286,8 @@ void TestMalahydModule::billSequence2ImageCorresps() {
 
     StereoVisionApp::ModularSBASolver sbaSolver(&project);
     sbaSolver.setSilent(true);
+
+    sbaSolver.enableLogging(QDir::currentPath(), "sequence2img_test_");
 
 
     StereoVisionApp::TrajectoryBaseSBAModule* trajSBAModule =
@@ -399,24 +403,24 @@ void TestMalahydModule::billSequence2billSequenceCorresps() {
     StereoVision::Geometry::RigidBodyTransform<double> pushbroom12Body(Eigen::Vector3d(0,0,0), Eigen::Vector3d(-10,0,0));
     StereoVision::Geometry::RigidBodyTransform<double> body2PushBroom1 = pushbroom12Body.inverse();
 
-    mounting1->setXRot(StereoVisionApp::floatParameter(body2PushBroom1.r.x()));
-    mounting1->setYRot(StereoVisionApp::floatParameter(body2PushBroom1.r.y()));
-    mounting1->setZRot(StereoVisionApp::floatParameter(body2PushBroom1.r.z()));
+    mounting1->setXRot(StereoVisionApp::floatParameter(pushbroom12Body.r.x()));
+    mounting1->setYRot(StereoVisionApp::floatParameter(pushbroom12Body.r.y()));
+    mounting1->setZRot(StereoVisionApp::floatParameter(pushbroom12Body.r.z()));
 
-    mounting1->setXCoord(StereoVisionApp::floatParameter(body2PushBroom1.t.x()));
-    mounting1->setYCoord(StereoVisionApp::floatParameter(body2PushBroom1.t.y()));
-    mounting1->setZCoord(StereoVisionApp::floatParameter(body2PushBroom1.t.z()));
+    mounting1->setXCoord(StereoVisionApp::floatParameter(pushbroom12Body.t.x()));
+    mounting1->setYCoord(StereoVisionApp::floatParameter(pushbroom12Body.t.y()));
+    mounting1->setZCoord(StereoVisionApp::floatParameter(pushbroom12Body.t.z()));
 
     StereoVision::Geometry::RigidBodyTransform<double> pushbroom22Body(Eigen::Vector3d(0,0,0), Eigen::Vector3d(10,0,0));
     StereoVision::Geometry::RigidBodyTransform<double> body2PushBroom2 = pushbroom12Body.inverse();
 
-    mounting2->setXRot(StereoVisionApp::floatParameter(body2PushBroom2.r.x()));
-    mounting2->setYRot(StereoVisionApp::floatParameter(body2PushBroom2.r.y()));
-    mounting2->setZRot(StereoVisionApp::floatParameter(body2PushBroom2.r.z()));
+    mounting2->setXRot(StereoVisionApp::floatParameter(pushbroom22Body.r.x()));
+    mounting2->setYRot(StereoVisionApp::floatParameter(pushbroom22Body.r.y()));
+    mounting2->setZRot(StereoVisionApp::floatParameter(pushbroom22Body.r.z()));
 
-    mounting2->setXCoord(StereoVisionApp::floatParameter(body2PushBroom2.t.x()));
-    mounting2->setYCoord(StereoVisionApp::floatParameter(body2PushBroom2.t.y()));
-    mounting2->setZCoord(StereoVisionApp::floatParameter(body2PushBroom2.t.z()));
+    mounting2->setXCoord(StereoVisionApp::floatParameter(pushbroom22Body.t.x()));
+    mounting2->setYCoord(StereoVisionApp::floatParameter(pushbroom22Body.t.y()));
+    mounting2->setZCoord(StereoVisionApp::floatParameter(pushbroom22Body.t.z()));
 
     using TrajGeneratorInfos = StereoVisionApp::GeneratedTrajectory::TrajGeneratorInfos;
 

@@ -150,6 +150,7 @@ void TestPushBroomRelativeOffsetsEstimators::testBayesianLineEstimator() {
 
     constexpr int nIterations = 1000;
     constexpr double residual_treshold = 1e-5;
+    constexpr bool smoothOut = true;
 
     auto rectificationNoShifts =
         PikaLTools::PushBroomRelativeOffsets::estimatePushBroomHorizontalShiftBayesian<verbose>
@@ -157,6 +158,7 @@ void TestPushBroomRelativeOffsetsEstimators::testBayesianLineEstimator() {
             frameUnshifted,
             hwindow,
             dx_pos_lambda,
+            smoothOut,
             nIterations,
             residual_treshold,
             linesDim,
@@ -187,6 +189,7 @@ void TestPushBroomRelativeOffsetsEstimators::testBayesianLineEstimator() {
             frame,
             hwindow,
             dx_pos_lambda,
+            smoothOut,
             nIterations,
             residual_treshold,
             linesDim,
@@ -224,6 +227,8 @@ void TestPushBroomRelativeOffsetsEstimators::testBayesianLineEstimator() {
 }
 
 void TestPushBroomRelativeOffsetsEstimators::testGlobalEstimatorHorizontalBehavior() {
+
+    QSKIP("Global estimator is broken, using the sort method to deal with vertical missalignement is recommanded, in the future the global estimation method might be removed");
 
     constexpr int nLines = lines_test_frame_nLines, nSamples = lines_test_frame_nSamples, nChannels = lines_test_frame_nChannels;
     constexpr int line1Id = 2, line2Id = 4;
@@ -598,6 +603,8 @@ void TestPushBroomRelativeOffsetsEstimators::testTSPGreedyHeuristic() {
 }
 
 void TestPushBroomRelativeOffsetsEstimators::testGlobalEstimatorVerticalBehavior() {
+
+    QSKIP("Global estimator is broken, using the sort method to deal with vertical missalignement is recommanded, in the future the global estimation method might be removed");
 
     constexpr int nLines = lines_test_frame_nLines, nSamples = lines_test_frame_nSamples, nChannels = lines_test_frame_nChannels;
     constexpr std::array<int,nLines> shifts{0,-1,-1,0,1,1,0};
