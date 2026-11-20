@@ -154,7 +154,22 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
     });
 
     QAction* viewHVShift = new QAction(tr("View pre-rectified bil sequence"), parent);
-    connect(viewHVShift, &QAction::triggered, [bilSeq] () {
+
+    QMenu* viewHVShiftMenu = new QMenu();
+    viewHVShift->setMenu(viewHVShiftMenu);
+
+    QAction* viewHVShift_cached = new QAction(tr("from cached"), parent);
+    QAction* viewHVShift_compute = new QAction(tr("compute"), parent);
+
+    viewHVShiftMenu->addAction(viewHVShift_compute);
+    viewHVShiftMenu->addAction(viewHVShift_cached);
+
+    connect(viewHVShift_cached, &QAction::triggered, [bilSeq] () {
+        constexpr bool cached = true;
+        viewPreRectifiedBill(bilSeq, cached);
+    });
+
+    connect(viewHVShift_compute, &QAction::triggered, [bilSeq] () {
         viewPreRectifiedBill(bilSeq);
     });
 

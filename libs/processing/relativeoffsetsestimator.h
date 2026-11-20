@@ -18,6 +18,7 @@
 #include <StereoVision/optimization/bfgs.h>
 
 #include <iostream>
+#include <optional>
 
 #if defined(_OPENMP)
 #include <omp.h>
@@ -3024,6 +3025,11 @@ class RelativeShiftConverter {
 
 public:
 
+    struct ShiftInfos {
+        std::vector<int> verticalLinesMatch;
+        std::vector<float> horizontalLinesOffsets;
+    };
+
     RelativeShiftConverter() {
 
     }
@@ -3046,6 +3052,18 @@ public:
                            std::vector<float> && hLines) :
         _verticalLinesMatch(vLineMatch),
         _horizontalLinesOffsets(hLines)
+    {
+
+    }
+    RelativeShiftConverter(ShiftInfos const& infos) :
+        _verticalLinesMatch(infos.verticalLinesMatch),
+        _horizontalLinesOffsets(infos.horizontalLinesOffsets)
+    {
+
+    }
+    RelativeShiftConverter(ShiftInfos && infos) :
+        _verticalLinesMatch(std::move(infos.verticalLinesMatch)),
+        _horizontalLinesOffsets(std::move(infos.horizontalLinesOffsets))
     {
 
     }
@@ -3118,6 +3136,10 @@ public:
 
         return std::array<float,2>{x,y};
     }
+
+    bool cacheRectificationInfos(std::string const& filePath);
+
+    static std::optional<ShiftInfos> loadCachedRectificationInfos(std::string const& filePath);
 
 protected:
 

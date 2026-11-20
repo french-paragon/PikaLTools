@@ -2365,6 +2365,10 @@ StereoVisionApp::StatusOptionalReturn<BilRectificationDataOutput> loadRectifiedB
 
     Multidim::Array<float, 3> finalImage = PushBroomRelativeOffsets::computeVerticallyReorderedImage(horizontalRectified, order);
 
+    for (int & l_id : order) {
+        l_id += rInfos.start; //ensure lines are properly indexed.
+    }
+
     return BilRectificationDataOutput{finalImage, accumulated, order};
 }
 
@@ -2456,7 +2460,7 @@ bool estimateBilShiftHorizontalAndVertical(BilSequenceAcquisitionData *bilSequen
 }
 
 
-bool viewPreRectifiedBill(BilSequenceAcquisitionData *bilSequence) {
+bool viewPreRectifiedBill(BilSequenceAcquisitionData *bilSequence, bool fromCached) {
 
     if (bilSequence == nullptr) {
         return false;
@@ -2466,6 +2470,76 @@ bool viewPreRectifiedBill(BilSequenceAcquisitionData *bilSequence) {
 
     if (mw == nullptr) {
         return false; //need main windows to display trajectory
+    }
+
+    if (fromCached) {
+
+        QString cacheFile = QFileDialog::getOpenFileName(mw, BilSequenceActionManager::tr("Load cache file"));
+
+        if (cacheFile.isEmpty()) {
+            return true; //user cancelled
+        }
+
+        auto cacheInfos = PushBroomRelativeOffsets::RelativeShiftConverter::loadCachedRectificationInfos(cacheFile.toStdString());
+
+        if (!cacheInfos.has_value()) {
+            QMessageBox::warning(mw, BilSequenceActionManager::tr("Could not rectify bil sequence data"), BilSequenceActionManager::tr("Invalid cache file selected!"));
+            return false;
+        }
+
+        auto& shiftInfos = cacheInfos.value();
+
+        int start = shiftInfos.verticalLinesMatch[0];
+        int end = shiftInfos.verticalLinesMatch[0];
+
+        for (int i = 1; i < shiftInfos.verticalLinesMatch.size(); i++) {
+            int lid = shiftInfos.verticalLinesMatch[i];
+            start = std::min(lid, start);
+            end = std::max(lid, end);
+        }
+
+        end += 1;
+
+        std::vector<int> croppedIdxs(shiftInfos.verticalLinesMatch.size());
+
+        for (int i = 0; i < shiftInfos.verticalLinesMatch.size(); i++) {
+            croppedIdxs[i] = shiftInfos.verticalLinesMatch[i]-start;
+        }
+
+        //open editor
+
+        StereoVisionApp::Editor* e = mw->openEditor(PreRectifiedBillViewEditor::staticMetaObject.className(),
+                                                    QString("%1").arg(bilSequence->internalId()));
+
+        PreRectifiedBillViewEditor* prbve = qobject_cast<PreRectifiedBillViewEditor*>(e);
+
+        if (prbve == nullptr) {
+            return false;
+        }
+
+        //since channels data have been normalized
+        constexpr float whiteLevel = 1;
+        constexpr float blackLevel = 0;
+
+        std::vector<int> channels = bilSequence->assumedRgbChannels();
+        Multidim::Array<float, 3> data = bilSequence->getFloatBilData(start, end, channels);
+
+        Multidim::Array<float, 3> normalized = StereoVision::ImageProcessing::normalizeImageChannels(data);
+
+        constexpr bool shiftsAreAccumulated = true;
+        Multidim::Array<float, 3> horizontalRectified = PushBroomRelativeOffsets::computeHorizontallyRectifiedImage<shiftsAreAccumulated>(normalized, shiftInfos.horizontalLinesOffsets);
+
+        Multidim::Array<float, 3> rectifiedImage = PushBroomRelativeOffsets::computeVerticallyReorderedImage(horizontalRectified, croppedIdxs);
+
+        prbve->setImageFromArray(bilSequence,
+                                 QVector<int>(shiftInfos.verticalLinesMatch.begin(), shiftInfos.verticalLinesMatch.end()),
+                                 QVector<float>(shiftInfos.horizontalLinesOffsets.begin(), shiftInfos.horizontalLinesOffsets.end()),
+                                 rectifiedImage,
+                                 whiteLevel,
+                                 blackLevel);
+
+
+        return true;
     }
 
     int nLines = bilSequence->nLinesInSequence();

@@ -7,12 +7,12 @@ set(LIB_SRC scanlinecleaner.h
     pushbroomprojections.cpp
     darkframestools.h
     darkframestools.cpp
-    relativeoffsetsestimator.h)
+    relativeoffsetsestimator.h
+    relativeoffsetsestimator.cpp)
 
 add_library(
     ${PROCESSING_LIB}
     ${LIB_SRC}
-    relativeoffsetsestimator.h
 )
 
 target_link_libraries(${PROCESSING_LIB} StereoVision::stevi MultidimArrays::MultidimArrays)

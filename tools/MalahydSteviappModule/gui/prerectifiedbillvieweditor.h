@@ -50,6 +50,7 @@ public:
     QPointF mapToOriginalSequence(QPointF const& source) const;
     QPointF mapFromOriginalSequence(QPointF const& source) const;
 
+    void saveRectificationData(QString const& filePath = "");
 
 Q_SIGNALS:
 
@@ -85,6 +86,7 @@ private:
 
     QAction* _moveToNextLandmark;
     QAction* _moveToPrevLandmark;
+    QAction* _cacheRectificationData;
 
     qint64 _current_landmark_id;
 

@@ -12,6 +12,8 @@
 #include <QInputDialog>
 #include <QLineEdit>
 #include <QMenu>
+#include <QFileDialog>
+#include <QMessageBox>
 
 #include "../datablocks/bilacquisitiondata.h"
 
@@ -105,12 +107,14 @@ PreRectifiedBillViewEditor::PreRectifiedBillViewEditor(QWidget *parent)
 
     _moveToNextLandmark = new QAction(tr("Next landmark"), this);
     _moveToPrevLandmark = new QAction(tr("Previous landmark"), this);
+    _cacheRectificationData = new QAction(tr("Cache rectifiction data"), this);
 
     _moveToNextLandmark->setShortcut(Qt::CTRL + Qt::Key_Right);
     _moveToPrevLandmark->setShortcut(Qt::CTRL + Qt::Key_Left);
 
     connect(_moveToNextLandmark, &QAction::triggered, this, &PreRectifiedBillViewEditor::moveToNextLandmark);
     connect(_moveToPrevLandmark, &QAction::triggered, this, &PreRectifiedBillViewEditor::moveToPreviousLandmark);
+    connect(_cacheRectificationData, &QAction::triggered, this, [this] () {saveRectificationData();});
 
     addAction(_moveToNextLandmark);
     addAction(_moveToPrevLandmark);
@@ -130,6 +134,27 @@ QPointF PreRectifiedBillViewEditor::mapFromOriginalSequence(QPointF const& sourc
     auto converted = _shiftConverter.mapFromOriginalSequence(std::array<qreal,2>{source.x(), source.y()});
 
     return QPointF(converted[0],converted[1]);
+}
+
+void PreRectifiedBillViewEditor::saveRectificationData(QString const& filePath) {
+
+    QString outFile = filePath;
+
+    if (outFile.isEmpty()) {
+        outFile = QFileDialog::getSaveFileName(this, tr("Cache bil rectification data"));
+    }
+
+    if (outFile.isEmpty()) {
+        return;
+    }
+
+    bool ok = _shiftConverter.cacheRectificationInfos(outFile.toStdString());
+
+    if (!ok) {
+        QMessageBox::warning(this,
+                             tr("Could not cache rectification data"),
+                             tr("Error while writing cache file!"));
+    }
 }
 
 void PreRectifiedBillViewEditor::setSequenceData(BilSequenceAcquisitionData* sequence,
@@ -246,6 +271,7 @@ void PreRectifiedBillViewEditor::openNonPointMenu(QPoint const& pos) {
 
     cMenu.addAction(_moveToNextLandmark);
     cMenu.addAction(_moveToPrevLandmark);
+    cMenu.addAction(_cacheRectificationData);
 
     cMenu.exec(_viewWidget->mapToGlobal(pos));
 }

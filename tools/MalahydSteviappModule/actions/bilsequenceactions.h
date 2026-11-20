@@ -73,7 +73,7 @@ bool estimateBilShiftVertical(BilSequenceAcquisitionData *bilSequence);
 
 bool estimateBilShiftHorizontalAndVertical(BilSequenceAcquisitionData *bilSequence);
 
-bool viewPreRectifiedBill(BilSequenceAcquisitionData *bilSequence);
+bool viewPreRectifiedBill(BilSequenceAcquisitionData *bilSequence, bool fromCached = false);
 
 /*!
  * \brief cornerMatchRawBill open a bill sequence in the corner matching editor
