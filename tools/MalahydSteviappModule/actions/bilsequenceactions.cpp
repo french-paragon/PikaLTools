@@ -2774,7 +2774,7 @@ bool cornerMatchRawBill(BilSequenceAcquisitionData *bilSequence, std::optional<i
         }
     }
 
-    cmte->addImageData(name, normalized, new DirectBillMatchBuilder(bilSequence, start, end));
+    cmte->addImageData(name, normalized, new DirectBillMatchBuilder(bilSequence, start, end), 0, 1);
     return true;
 
 
@@ -2783,7 +2783,9 @@ bool cornerMatchRawBill(BilSequenceAcquisitionData *bilSequence, std::optional<i
 bool cornerMatchPreRectifiedBill(BilSequenceAcquisitionData *bilSequence,
                                  std::optional<int> lineMin,
                                  std::optional<int> lineMax,
-                                 std::optional<int> directions) {
+                                 std::optional<int> directions,
+                                 const std::string &cacheFilePath,
+                                 bool useCachedRectificationData) {
 
     if (bilSequence == nullptr) {
         return false;
@@ -2807,6 +2809,69 @@ bool cornerMatchPreRectifiedBill(BilSequenceAcquisitionData *bilSequence,
     if (cmte == nullptr) {
         QMessageBox::warning(mw, BilSequenceActionManager::tr("Could not open corner matching editor"), BilSequenceActionManager::tr("Editor type mismatch!"));
         return false;
+    }
+
+    if (useCachedRectificationData) {
+
+        QString cacheFile = QString::fromStdString(cacheFilePath);
+
+        if (cacheFile.isEmpty()) {
+            cacheFile = QFileDialog::getOpenFileName(mw, BilSequenceActionManager::tr("Load cache file"));
+        }
+
+        if (cacheFile.isEmpty()) {
+            return true; //user cancelled
+        }
+
+        auto cacheInfos = PushBroomRelativeOffsets::RelativeShiftConverter::loadCachedRectificationInfos(cacheFile.toStdString());
+
+        if (!cacheInfos.has_value()) {
+            QMessageBox::warning(mw, BilSequenceActionManager::tr("Could not rectify bil sequence data"), BilSequenceActionManager::tr("Invalid cache file selected!"));
+            return false;
+        }
+
+        auto& shiftInfos = cacheInfos.value();
+
+        int start = shiftInfos.verticalLinesMatch[0];
+        int end = shiftInfos.verticalLinesMatch[0];
+
+        for (int i = 1; i < shiftInfos.verticalLinesMatch.size(); i++) {
+            int lid = shiftInfos.verticalLinesMatch[i];
+            start = std::min(lid, start);
+            end = std::max(lid, end);
+        }
+
+        end += 1;
+
+        std::vector<int> croppedIdxs(shiftInfos.verticalLinesMatch.size());
+
+        for (int i = 0; i < shiftInfos.verticalLinesMatch.size(); i++) {
+            croppedIdxs[i] = shiftInfos.verticalLinesMatch[i]-start;
+        }
+
+        //since channels data have been normalized
+        constexpr float whiteLevel = 1;
+        constexpr float blackLevel = 0;
+
+        std::vector<int> channels = bilSequence->assumedRgbChannels();
+        Multidim::Array<float, 3> data = bilSequence->getFloatBilData(start, end, channels);
+
+        Multidim::Array<float, 3> normalized = StereoVision::ImageProcessing::normalizeImageChannels(data);
+
+        constexpr bool shiftsAreAccumulated = true;
+        Multidim::Array<float, 3> horizontalRectified = PushBroomRelativeOffsets::computeHorizontallyRectifiedImage<shiftsAreAccumulated>(normalized, shiftInfos.horizontalLinesOffsets);
+
+        Multidim::Array<float, 3> rectifiedImage = PushBroomRelativeOffsets::computeVerticallyReorderedImage(horizontalRectified, croppedIdxs);
+
+
+        QString name = QString("%1_l%2-l%3").arg(bilSequence->objectName()).arg(start).arg(end);
+
+        cmte->addImageData(name, rectifiedImage, new PreRectifiedBillMatchBuilder(bilSequence, start, end,
+                                                                                  std::move(shiftInfos.verticalLinesMatch),
+                                                                                  std::move(shiftInfos.horizontalLinesOffsets)), 0, 1);
+
+
+        return true;
     }
 
     int nLines = bilSequence->nLinesInSequence();
@@ -2910,7 +2975,7 @@ bool cornerMatchPreRectifiedBill(BilSequenceAcquisitionData *bilSequence,
     }
 
     cmte->addImageData(name, finalImage, new PreRectifiedBillMatchBuilder(bilSequence, start, end,
-                                                                          std::move(order), std::move(accumulated.accumulatedShifts)));
+                                                                          std::move(order), std::move(accumulated.accumulatedShifts)), 0, 1);
     return true;
 }
 

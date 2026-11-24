@@ -93,7 +93,17 @@ bool cornerMatchRawBill(BilSequenceAcquisitionData *bilSequence, std::optional<i
 bool cornerMatchPreRectifiedBill(BilSequenceAcquisitionData *bilSequence,
                                  std::optional<int> lineMin = std::nullopt,
                                  std::optional<int> lineMax = std::nullopt,
-                                 std::optional<int> directions = std::nullopt);
+                                 std::optional<int> directions = std::nullopt,
+                                 std::string const& cacheFilePath = "",
+                                 bool useCachedRectificationData = false);
+inline bool cornerMatchPreRectifiedBill(BilSequenceAcquisitionData *bilSequence,
+                                        std::string const& cacheFilePath) {
+    return cornerMatchPreRectifiedBill(bilSequence, std::nullopt, std::nullopt, std::nullopt, cacheFilePath, true);
+}
+inline bool cornerMatchPreRectifiedBillCached(BilSequenceAcquisitionData *bilSequence,
+                                              std::string const& cacheFilePath = "") {
+    return cornerMatchPreRectifiedBill(bilSequence, std::nullopt, std::nullopt, std::nullopt, cacheFilePath, true);
+}
 
 StereoVisionApp::StatusOptionalReturn<void> addBilSequenceHeadless(QMap<QString,QString> const& kwargs, QStringList const& argv);
 StereoVisionApp::StatusOptionalReturn<void> autoDetectBilSequencesTiePointsHeadless(QMap<QString,QString> const& kwargs, QStringList const& argv);

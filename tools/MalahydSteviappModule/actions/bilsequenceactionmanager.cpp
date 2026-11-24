@@ -187,8 +187,14 @@ QList<QAction*> BilSequenceActionManager::factorizeItemContextActions(QObject* p
         cornerMatchPreRectifiedBill(bilSeq);
     });
 
+    QAction* autoDetectCornersPreRectifiedCached = new QAction(tr("pre-rectified (cached)"), parent);
+    connect(autoDetectCornersPreRectifiedCached, &QAction::triggered, [bilSeq] () {
+        cornerMatchPreRectifiedBillCached(bilSeq);
+    });
+
     autoDetectCornersMenu->addAction(autoDetectCornersDirect);
     autoDetectCornersMenu->addAction(autoDetectCornersPreRectified);
+    autoDetectCornersMenu->addAction(autoDetectCornersPreRectifiedCached);
 
     QAction* compute_corrMat = new QAction(tr("Show data correlation"), parent);
 
